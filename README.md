@@ -3,8 +3,20 @@
 App pessoal de gestão financeira. Especificação completa em [CLAUDE.md](CLAUDE.md);
 plano das duas primeiras fases em [PLANO-FASE-0-1.md](PLANO-FASE-0-1.md).
 
-**Estado atual: Fase 0 concluída.** Schema, RLS, login e deploy em produção estão de pé.
-Não existe nenhuma funcionalidade de negócio ainda: isso é a Fase 1.
+**Estado atual: Fase 1 construída, aguardando o gate de uso.** O app já é usável no
+dia a dia: onboarding, contas, cartões, categorias, lançamento rápido, lista de
+lançamentos, edição, export e modo privado.
+
+O que fecha a fase não é código, é uso: **7 dias seguidos lançando tudo de
+verdade** (§12). Se em algum dia a preguiça vencer, o problema está na folha de
+lançamento e é lá que se volta — não na Fase 2.
+
+Pendências que dependem de você, não do código:
+
+- cronometrar o lançamento comum: a meta é 3 toques e menos de 10 segundos (§5)
+- testar o restore do export JSON pelo menos uma vez (§10.2)
+- tirar o site da proteção de acesso da Netlify, se quiser usá-lo no celular sem
+  logar duas vezes
 
 | | |
 |---|---|

@@ -144,6 +144,9 @@ group by c.id;
 
 ## FASE 1 — Cadastro + lançamento rápido
 
+> **Estado: construída.** 1.1 a 1.12 estão no repositório. Falta o gate de uso —
+> 7 dias seguidos de lançamento real — e a cronometragem dos 10 segundos.
+
 Objetivo da spec: **ao fim desta fase o app já é usável no dia a dia.** Se lançar continuar chato aqui, nada do que vier depois salva o projeto (§12).
 
 A ordem abaixo é de dependência: cada bloco usa o anterior.
