@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ProvedorAutenticacao } from './dados/autenticacao';
 import { AtualizacaoDisponivel } from './ui/AtualizacaoDisponivel';
 import { ProvedorAviso } from './ui/Aviso';
+import { LimiteDeErro } from './ui/LimiteDeErro';
 import { ProvedorPrivacidade } from './ui/Privacidade';
 import { Layout } from './ui/Layout';
 import { RotaProtegida } from './ui/RotaProtegida';
@@ -29,7 +30,8 @@ import { Transacoes } from './telas/Transacoes';
 
 export function App() {
   return (
-    <ProvedorAutenticacao>
+    <LimiteDeErro>
+      <ProvedorAutenticacao>
       <ProvedorPrivacidade>
       <ProvedorAviso>
         <AtualizacaoDisponivel />
@@ -78,6 +80,7 @@ export function App() {
         </BrowserRouter>
       </ProvedorAviso>
       </ProvedorPrivacidade>
-    </ProvedorAutenticacao>
+      </ProvedorAutenticacao>
+    </LimiteDeErro>
   );
 }

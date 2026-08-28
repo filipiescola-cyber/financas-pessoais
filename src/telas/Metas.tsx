@@ -3,7 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { calcularReserva, progressoDaMeta } from '../dominio/orcamento';
-import { mesesParaAlcancar, origemDoValor, projetarMeta } from '../dominio/metas';
+import {
+  HORIZONTE_MAXIMO_MESES,
+  mesesParaAlcancar,
+  origemDoValor,
+  projetarMeta,
+} from '../dominio/metas';
 import { entraNoConsolidado } from '../dominio/saldo';
 import {
   atualizarMeta,
@@ -416,6 +421,13 @@ function SemPrazo({
       </p>
 
       <CampoValor valor={aporte} aoMudar={setAporte} rotulo="Consigo guardar por mês" />
+
+      {aporte > 0 && meses === null && (
+        <p className="text-amber-400/80">
+          Nesse ritmo a meta não chega — nem em {HORIZONTE_MAXIMO_MESES / 12} anos. Para valer, o
+          valor mensal precisa ser maior.
+        </p>
+      )}
 
       {aporte > 0 && meses !== null && (
         <p className="text-slate-400">

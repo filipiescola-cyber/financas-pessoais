@@ -67,13 +67,27 @@ export function projetarMeta(
 }
 
 /**
+ * Além disso a resposta deixa de ser útil. Cinquenta anos é folgado para
+ * qualquer meta pessoal, e o limite também protege quem está digitando: o
+ * campo de valor lê dígito a dígito, então quem vai digitar R$ 300 passa por
+ * R$ 0,03 no caminho — e um centavo por mês projeta uma data no ano 14526,
+ * que este app nem consegue representar (datas são AAAA-MM-DD).
+ */
+export const HORIZONTE_MAXIMO_MESES = 600;
+
+/**
  * Em quantos meses a meta é alcançada guardando um valor por mês.
  * Serve para a pergunta inversa: "consigo guardar X, quando chego lá?"
+ *
+ * `null` quer dizer "esse valor não te leva lá" — seja porque é zero, seja
+ * porque levaria mais de uma vida. As duas respostas são a mesma para quem
+ * está decidindo: precisa guardar mais.
  */
 export function mesesParaAlcancar(falta: Centavos, aporteMensal: Centavos): number | null {
   if (falta <= 0) return 0;
   if (aporteMensal <= 0) return null;
-  return Math.ceil(falta / aporteMensal);
+  const meses = Math.ceil(falta / aporteMensal);
+  return meses > HORIZONTE_MAXIMO_MESES ? null : meses;
 }
 
 export type OrigemDoValor = 'conta' | 'declarado';

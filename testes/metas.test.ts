@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mesesParaAlcancar, origemDoValor, projetarMeta } from '../src/dominio/metas';
+import {
+  HORIZONTE_MAXIMO_MESES,
+  mesesParaAlcancar,
+  origemDoValor,
+  projetarMeta,
+} from '../src/dominio/metas';
 
 const HOJE = '2026-08-28';
 
@@ -65,6 +70,19 @@ describe('pergunta inversa: quando eu chego lá', () => {
 
   it('meta já alcançada leva zero mês', () => {
     expect(mesesParaAlcancar(0, 100000)).toBe(0);
+  });
+
+  it('aporte que levaria mais de uma vida não tem resposta em data', () => {
+    // O bug que isto fecha: o campo de valor lê dígito a dígito, então quem
+    // digita R$ 300 passa por R$ 0,01 no caminho. Um centavo por mês para
+    // R$ 1.500 dava 150.000 meses — uma data no ano 14526, fora do formato
+    // AAAA-MM-DD, que derrubava a tela inteira ao tentar formatá-la.
+    expect(mesesParaAlcancar(150000, 1)).toBeNull();
+  });
+
+  it('responde no limite do horizonte, não um mês antes', () => {
+    expect(mesesParaAlcancar(600, 1)).toBe(HORIZONTE_MAXIMO_MESES);
+    expect(mesesParaAlcancar(601, 1)).toBeNull();
   });
 });
 
