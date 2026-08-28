@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatarBR, type DataISO } from '../dominio/datas';
+import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { calcularReserva, progressoDaMeta } from '../dominio/orcamento';
+import { origemDoValor, projetarMeta } from '../dominio/metas';
 import { entraNoConsolidado } from '../dominio/saldo';
 import {
   atualizarValorDaMeta,
   criarMeta,
   excluirMeta,
   listarMetas,
+  vincularMetaAConta,
 } from '../dados/orcamentos';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { usarContasComSaldo } from '../dados/usarContas';
@@ -91,13 +93,13 @@ export function Metas() {
         {(metas.data ?? []).length === 0 ? (
           <Vazio
             titulo="Nenhuma meta cadastrada"
-            descricao="Viagem, equipamento, troca de carro. A meta guarda o alvo e o quanto já foi juntado — o progresso é atualizado por você, porque o dinheiro pode estar em qualquer lugar."
+            descricao="Viagem, equipamento, troca de carro. Com prazo, a meta responde quanto guardar por mês. Vinculada a uma conta, ela para de depender de você lembrar quanto já juntou."
             acao={<Botao aoClicar={() => setCriando(true)}>Criar a primeira</Botao>}
           />
         ) : (
           <div className="space-y-2">
             {(metas.data ?? []).map((meta) => (
-              <LinhaDaMeta key={meta.id} meta={meta} />
+              <LinhaDaMeta key={meta.id} meta={meta} contas={contas.data ?? []} />
             ))}
           </div>
         )}
@@ -108,14 +110,36 @@ export function Metas() {
 
 function LinhaDaMeta({
   meta,
+  contas,
 }: {
-  meta: { id: string; nome: string; valorAlvo: Centavos; valorAtual: Centavos; prazo: DataISO | null };
+  meta: {
+    id: string;
+    nome: string;
+    valorAlvo: Centavos;
+    valorAtual: Centavos;
+    prazo: DataISO | null;
+    contaId: string | null;
+  };
+  contas: { id: string; nome: string; saldoAtual: Centavos }[];
 }) {
   const cliente = useQueryClient();
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState<Centavos>(meta.valorAtual);
 
-  const progresso = progressoDaMeta(meta.valorAlvo, meta.valorAtual);
+  const contaVinculada = contas.find((c) => c.id === meta.contaId) ?? null;
+
+  // Vinculada, o "quanto já tem" é o saldo real da conta. Sem vínculo, é o
+  // número que o usuário informou — e a tela precisa dizer qual dos dois é.
+  const valorAtual = contaVinculada ? contaVinculada.saldoAtual : meta.valorAtual;
+  const origem = origemDoValor(contaVinculada ? meta.contaId : null);
+
+  const progresso = progressoDaMeta(meta.valorAlvo, valorAtual);
+  const projecao = projetarMeta(meta.valorAlvo, valorAtual, meta.prazo, hoje());
+
+  const vincular = useMutation({
+    mutationFn: (contaId: string | null) => vincularMetaAConta(meta.id, contaId),
+    onSuccess: () => cliente.invalidateQueries({ queryKey: ['metas'] }),
+  });
 
   const salvar = useMutation({
     mutationFn: () => atualizarValorDaMeta(meta.id, valor),
@@ -140,12 +164,14 @@ function LinhaDaMeta({
           )}
         </div>
         <div className="flex shrink-0 gap-3">
-          <button
-            onClick={() => setEditando((v) => !v)}
-            className="text-xs text-slate-500 hover:text-slate-300"
-          >
-            atualizar
-          </button>
+          {origem === 'declarado' && (
+            <button
+              onClick={() => setEditando((v) => !v)}
+              className="text-xs text-slate-500 hover:text-slate-300"
+            >
+              atualizar
+            </button>
+          )}
           <button
             onClick={() => remover.mutate()}
             className="text-xs text-slate-600 hover:text-red-400"
@@ -166,7 +192,7 @@ function LinhaDaMeta({
 
       <div className="mt-1.5 flex items-baseline justify-between gap-3 text-xs">
         <span className="text-slate-500">
-          <Dinheiro centavos={meta.valorAtual} className="text-slate-300" /> de{' '}
+          <Dinheiro centavos={valorAtual} className="text-slate-300" /> de{' '}
           <Dinheiro centavos={meta.valorAlvo} className="text-slate-400" />
         </span>
         <span className={progresso.concluida ? 'text-emerald-400' : 'text-slate-500'}>
@@ -176,7 +202,54 @@ function LinhaDaMeta({
         </span>
       </div>
 
-      {editando && (
+      {!progresso.concluida && (
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          {projecao.mensalNecessario === null ? (
+            <>
+              Sem prazo, não dá para dizer quanto guardar por mês. Um alvo sem data não responde se
+              você está indo bem.
+            </>
+          ) : projecao.prazoVencido ? (
+            <span className="text-amber-400/90">
+              O prazo já passou e faltam {formatar(projecao.falta)}. Vale rever a data ou o alvo.
+            </span>
+          ) : (
+            <>
+              Guardando <strong className="text-slate-300">{formatar(projecao.mensalNecessario)}</strong>{' '}
+              por mês você chega no prazo
+              {projecao.mesesRestantes !== null && projecao.mesesRestantes > 0
+                ? ` — são ${projecao.mesesRestantes} mês(es).`
+                : ' — que é neste mês.'}
+            </>
+          )}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wider text-slate-600">onde está</span>
+        {contas.map((conta) => (
+          <button
+            key={conta.id}
+            onClick={() => vincular.mutate(meta.contaId === conta.id ? null : conta.id)}
+            className={`rounded-full px-2.5 py-1 text-xs transition ${
+              meta.contaId === conta.id
+                ? 'bg-sky-900/60 text-sky-200'
+                : 'border border-borda text-slate-500 hover:border-borda-forte'
+            }`}
+          >
+            {conta.nome}
+          </button>
+        ))}
+      </div>
+
+      {origem === 'declarado' && (
+        <p className="mt-2 text-xs leading-relaxed text-amber-400/70">
+          Este valor foi digitado por você e o app não tem como confirmar. Vinculando a meta à
+          conta onde o dinheiro está de fato, ele passa a vir do saldo real.
+        </p>
+      )}
+
+      {editando && origem === 'declarado' && (
         <div className="mt-3 space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">
           <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto já foi juntado" />
           <div className="flex gap-2">
@@ -199,10 +272,18 @@ function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
   const [valorAlvo, setValorAlvo] = useState<Centavos>(0);
   const [valorAtual, setValorAtual] = useState<Centavos>(0);
   const [prazo, setPrazo] = useState('');
+  const [contaId, setContaId] = useState<string | null>(null);
+  const contas = usarContasComSaldo();
 
   const criar = useMutation({
     mutationFn: () =>
-      criarMeta({ nome, valorAlvo, valorAtual, prazo: prazo === '' ? null : prazo }),
+      criarMeta({
+        nome,
+        valorAlvo,
+        valorAtual,
+        prazo: prazo === '' ? null : prazo,
+        contaId,
+      }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['metas'] });
       aoTerminar();
@@ -222,7 +303,32 @@ function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
       </Campo>
 
       <CampoValor valor={valorAlvo} aoMudar={setValorAlvo} rotulo="Quanto quer juntar" />
-      <CampoValor valor={valorAtual} aoMudar={setValorAtual} rotulo="Quanto já tem" />
+
+      <Campo
+        rotulo="Onde o dinheiro está (opcional)"
+        ajuda="Vinculando a meta a uma conta, o quanto você já tem passa a vir do saldo real em vez de ser digitado. Dizer que guardou sem ter o saldo em lugar nenhum é acreditar, não saber."
+      >
+        <div className="flex flex-wrap gap-2">
+          {(contas.data ?? []).map((conta) => (
+            <button
+              key={conta.id}
+              type="button"
+              onClick={() => setContaId(contaId === conta.id ? null : conta.id)}
+              className={`rounded-full px-3 py-1.5 text-sm transition ${
+                contaId === conta.id
+                  ? 'bg-sky-900/60 text-sky-200'
+                  : 'border border-borda-forte text-slate-300'
+              }`}
+            >
+              {conta.nome}
+            </button>
+          ))}
+        </div>
+      </Campo>
+
+      {contaId === null && (
+        <CampoValor valor={valorAtual} aoMudar={setValorAtual} rotulo="Quanto já tem" />
+      )}
 
       <Campo rotulo="Prazo (opcional)">
         <input

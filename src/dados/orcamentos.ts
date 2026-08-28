@@ -107,13 +107,28 @@ export async function criarMeta(nova: {
   valorAlvo: Centavos;
   valorAtual: Centavos;
   prazo: DataISO | null;
+  /**
+   * Conta onde o dinheiro da meta está de fato (§8.8).
+   *
+   * Com vínculo, o "quanto já tem" passa a ser o saldo real e para de ser um
+   * número digitado: dizer que guardou R$ 1.200 sem ter esse saldo em lugar
+   * nenhum é acreditar, não saber.
+   */
+  contaId?: string | null;
 }): Promise<void> {
   const { error } = await supabase.from('metas').insert({
     nome: nova.nome.trim(),
     valor_alvo: paraNumerico(nova.valorAlvo),
-    valor_atual: paraNumerico(nova.valorAtual),
+    // Meta vinculada não guarda valor: ele vem da conta a cada leitura.
+    valor_atual: paraNumerico(nova.contaId ? 0 : nova.valorAtual),
     prazo: nova.prazo,
+    conta_id: nova.contaId ?? null,
   });
+  if (error) throw new Error(error.message);
+}
+
+export async function vincularMetaAConta(id: string, contaId: string | null): Promise<void> {
+  const { error } = await supabase.from('metas').update({ conta_id: contaId }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
