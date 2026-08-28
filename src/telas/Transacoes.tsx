@@ -30,6 +30,7 @@ import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { IconeConfere, IconeRelogio } from '../ui/icones';
 import { EditarTransacao } from './EditarTransacao';
 
 const MESES = [
@@ -182,7 +183,9 @@ export function Transacoes() {
           acao={
             saldosDoDia?.has(dia) ? (
               <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                saldo
+                {/* Num dia que ainda não chegou, o acumulado é projeção do que
+                    já está lançado — chamar de "saldo" seria afirmar demais. */}
+                {dia > hoje() ? 'saldo previsto' : 'saldo'}
                 <Dinheiro
                   centavos={saldosDoDia.get(dia)!}
                   className={saldosDoDia.get(dia)! < 0 ? 'text-red-400' : 'text-slate-300'}
@@ -312,28 +315,29 @@ function ItemDeTransacao({
   return (
     <li className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-slate-100">
-            {transacao.descricao ||
-              nomeCategoria ||
-              (ehTransferencia ? 'Transferência' : 'Sem descrição')}
-          </p>
-          <p className="truncate text-xs text-slate-500">
-            {nomeConta}
-            {nomeCategoria && ` · ${nomeCategoria}`}
-            {ehParcelado && ` · parcela ${transacao.parcelaNum}/${transacao.parcelaTotal}`}
-          </p>
-          {(ehTransferencia || transacao.motivoEmpresa || futura) && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {ehTransferencia && (
-                <Etiqueta titulo="Não conta como receita nem como despesa">transferência</Etiqueta>
-              )}
-              {transacao.motivoEmpresa && <Etiqueta>{transacao.motivoEmpresa}</Etiqueta>}
-              {futura && (
-                <Etiqueta titulo="Já está no banco, mas ainda não entrou no saldo">futura</Etiqueta>
-              )}
-            </div>
-          )}
+        <div className="flex min-w-0 gap-2.5">
+          <Marcador futura={futura} revisado={transacao.revisado} />
+
+          <div className="min-w-0">
+            <p className="truncate text-slate-100">
+              {transacao.descricao ||
+                nomeCategoria ||
+                (ehTransferencia ? 'Transferência' : 'Sem descrição')}
+            </p>
+            <p className="truncate text-xs text-slate-500">
+              {nomeConta}
+              {nomeCategoria && ` · ${nomeCategoria}`}
+              {ehParcelado && ` · parcela ${transacao.parcelaNum}/${transacao.parcelaTotal}`}
+            </p>
+            {(ehTransferencia || transacao.motivoEmpresa) && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {ehTransferencia && (
+                  <Etiqueta titulo="Não conta como receita nem como despesa">transferência</Etiqueta>
+                )}
+                {transacao.motivoEmpresa && <Etiqueta>{transacao.motivoEmpresa}</Etiqueta>}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -404,5 +408,41 @@ function BotaoEscopo({ children, aoClicar }: { children: React.ReactNode; aoClic
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Marcador de estado do lançamento.
+ *
+ *   relógio — data futura. Já está gravado, mas ainda não aconteceu: é parcela
+ *             ou recorrência à frente, e por isso não entra no saldo de hoje
+ *             (§13.2).
+ *   confere — aconteceu e está confirmado.
+ *   ponto   — aconteceu mas não foi revisado: veio de importação ou de
+ *             recorrência de valor que oscila, e o número ainda pode estar
+ *             errado. É o único dos três que pede alguma coisa de você.
+ */
+function Marcador({ futura, revisado }: { futura: boolean; revisado: boolean }) {
+  if (futura) {
+    return (
+      <span title="Previsto: já está lançado, mas ainda não aconteceu" className="mt-0.5 text-sky-400/80">
+        <IconeRelogio className="h-4 w-4" />
+      </span>
+    );
+  }
+
+  if (revisado) {
+    return (
+      <span title="Confirmado" className="mt-0.5 text-emerald-500/70">
+        <IconeConfere className="h-4 w-4" />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title="Ainda não revisado: veio de importação ou de recorrência de valor variável"
+      className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+    />
   );
 }
