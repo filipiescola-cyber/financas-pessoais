@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatarBR, hoje, type DataISO } from '../dominio/datas';
+import { formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { calcularReserva, progressoDaMeta } from '../dominio/orcamento';
-import { origemDoValor, projetarMeta } from '../dominio/metas';
+import { mesesParaAlcancar, origemDoValor, projetarMeta } from '../dominio/metas';
 import { entraNoConsolidado } from '../dominio/saldo';
 import {
+  atualizarMeta,
   atualizarValorDaMeta,
   criarMeta,
   excluirMeta,
@@ -125,6 +126,8 @@ function LinhaDaMeta({
   const cliente = useQueryClient();
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState<Centavos>(meta.valorAtual);
+  const [alvo, setAlvo] = useState<Centavos>(meta.valorAlvo);
+  const [prazo, setPrazo] = useState(meta.prazo ?? '');
 
   const contaVinculada = contas.find((c) => c.id === meta.contaId) ?? null;
 
@@ -141,8 +144,17 @@ function LinhaDaMeta({
     onSuccess: () => cliente.invalidateQueries({ queryKey: ['metas'] }),
   });
 
+  const definirPrazo = useMutation({
+    mutationFn: (prazo: DataISO | null) => atualizarMeta(meta.id, { prazo }),
+    onSuccess: () => cliente.invalidateQueries({ queryKey: ['metas'] }),
+  });
+
   const salvar = useMutation({
-    mutationFn: () => atualizarValorDaMeta(meta.id, valor),
+    mutationFn: async () => {
+      await atualizarMeta(meta.id, { valorAlvo: alvo, prazo: prazo === '' ? null : prazo });
+      // O valor só é editável quando é declarado: vinculado, ele vem da conta.
+      if (origem === 'declarado') await atualizarValorDaMeta(meta.id, valor);
+    },
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['metas'] });
       setEditando(false);
@@ -164,14 +176,21 @@ function LinhaDaMeta({
           )}
         </div>
         <div className="flex shrink-0 gap-3">
-          {origem === 'declarado' && (
-            <button
-              onClick={() => setEditando((v) => !v)}
-              className="text-xs text-slate-500 hover:text-slate-300"
-            >
-              atualizar
-            </button>
-          )}
+          <button
+            onClick={() => {
+              // Recarrega dos dados a cada abertura: o prazo pode ter sido
+              // definido pelo atalho da projeção desde a última vez.
+              if (!editando) {
+                setAlvo(meta.valorAlvo);
+                setValor(meta.valorAtual);
+                setPrazo(meta.prazo ?? '');
+              }
+              setEditando((v) => !v);
+            }}
+            className="text-xs text-slate-500 hover:text-slate-300"
+          >
+            {editando ? 'fechar' : 'editar'}
+          </button>
           <button
             onClick={() => remover.mutate()}
             className="text-xs text-slate-600 hover:text-red-400"
@@ -203,12 +222,9 @@ function LinhaDaMeta({
       </div>
 
       {!progresso.concluida && (
-        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        <div className="mt-2 text-xs leading-relaxed text-slate-500">
           {projecao.mensalNecessario === null ? (
-            <>
-              Sem prazo, não dá para dizer quanto guardar por mês. Um alvo sem data não responde se
-              você está indo bem.
-            </>
+            <SemPrazo falta={projecao.falta} aoDefinirPrazo={(data) => definirPrazo.mutate(data)} />
           ) : projecao.prazoVencido ? (
             <span className="text-amber-400/90">
               O prazo já passou e faltam {formatar(projecao.falta)}. Vale rever a data ou o alvo.
@@ -222,7 +238,7 @@ function LinhaDaMeta({
                 : ' — que é neste mês.'}
             </>
           )}
-        </p>
+        </div>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -249,11 +265,28 @@ function LinhaDaMeta({
         </p>
       )}
 
-      {editando && origem === 'declarado' && (
-        <div className="mt-3 space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">
-          <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto já foi juntado" />
+      {editando && (
+        <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+          <CampoValor valor={alvo} aoMudar={setAlvo} rotulo="Quanto quer juntar" />
+
+          {origem === 'declarado' && (
+            <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto já foi juntado" />
+          )}
+
+          <Campo
+            rotulo="Prazo"
+            ajuda="Sem data não há por quanto dividir — é o prazo que transforma o alvo em um valor por mês."
+          >
+            <input
+              type="date"
+              value={prazo}
+              onChange={(e) => setPrazo(e.target.value)}
+              className={ENTRADA}
+            />
+          </Campo>
+
           <div className="flex gap-2">
-            <Botao aoClicar={() => salvar.mutate()} desabilitado={salvar.isPending}>
+            <Botao aoClicar={() => salvar.mutate()} desabilitado={alvo <= 0 || salvar.isPending}>
               Salvar
             </Botao>
             <Botao tipo="secundario" aoClicar={() => setEditando(false)}>
@@ -353,5 +386,55 @@ function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
         </Botao>
       </div>
     </Cartao>
+  );
+}
+
+/**
+ * Meta sem prazo.
+ *
+ * Sem data não há por quanto dividir. Mas a pergunta continua respondível pelo
+ * outro lado: dizendo quanto consegue guardar por mês, o usuário descobre
+ * quando chega — e essa data vira o prazo que faltava, fechando o ciclo.
+ */
+function SemPrazo({
+  falta,
+  aoDefinirPrazo,
+}: {
+  falta: Centavos;
+  aoDefinirPrazo: (prazo: DataISO) => void;
+}) {
+  const [aporte, setAporte] = useState<Centavos>(0);
+
+  const meses = mesesParaAlcancar(falta, aporte);
+  const chegaEm = meses !== null && meses > 0 ? somarMeses(hoje(), meses) : null;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-borda bg-superficie-alta p-3">
+      <p className="text-slate-500">
+        Sem prazo não dá para dividir o que falta. Diga quanto consegue guardar por mês e eu digo
+        quando você chega — ou defina uma data em <span className="text-slate-400">editar</span>.
+      </p>
+
+      <CampoValor valor={aporte} aoMudar={setAporte} rotulo="Consigo guardar por mês" />
+
+      {aporte > 0 && meses !== null && (
+        <p className="text-slate-400">
+          {meses === 0 ? (
+            'A meta já está alcançada.'
+          ) : (
+            <>
+              Guardando <strong className="text-slate-200">{formatar(aporte)}</strong> por mês você
+              chega lá em {meses} mês(es), por volta de {formatarBR(chegaEm!).slice(3)}.{' '}
+              <button
+                onClick={() => aoDefinirPrazo(chegaEm!)}
+                className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+              >
+                usar essa data como prazo
+              </button>
+            </>
+          )}
+        </p>
+      )}
+    </div>
   );
 }

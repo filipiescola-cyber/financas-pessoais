@@ -3,6 +3,9 @@
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, primeiroDiaDoMes, type DataISO } from '../dominio/datas';
 import { supabase } from './supabase';
+import type { Database } from './tipos-gerados';
+
+type AtualizacaoMeta = Database['public']['Tables']['metas']['Update'];
 
 export type Orcamento = {
   id: string;
@@ -129,6 +132,23 @@ export async function criarMeta(nova: {
 
 export async function vincularMetaAConta(id: string, contaId: string | null): Promise<void> {
   const { error } = await supabase.from('metas').update({ conta_id: contaId }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Alvo, nome e prazo de uma meta já criada. O prazo é o que faltava: sem ele
+ *  não há como dizer quanto guardar por mês, e antes não havia onde acrescentar. */
+export async function atualizarMeta(
+  id: string,
+  campos: { nome?: string; valorAlvo?: Centavos; prazo?: DataISO | null },
+): Promise<void> {
+  const atualizacao: AtualizacaoMeta = {};
+  if (campos.nome !== undefined) atualizacao.nome = campos.nome.trim();
+  if (campos.valorAlvo !== undefined) atualizacao.valor_alvo = paraNumerico(campos.valorAlvo);
+  if (campos.prazo !== undefined) atualizacao.prazo = campos.prazo;
+
+  if (Object.keys(atualizacao).length === 0) return;
+
+  const { error } = await supabase.from('metas').update(atualizacao).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
