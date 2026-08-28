@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { vencimentosPendentes } from '../src/dados/geracaoRecorrencias';
+import { vencimentosPendentes } from '../src/dominio/recorrencias';
 
 describe('vencimentos pendentes de uma recorrência (§5.2, §13.3)', () => {
   it('gera um por mês entre a criação e hoje', () => {
