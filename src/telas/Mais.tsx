@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 
 const ITENS = [
+  { para: '/importar', titulo: 'Importar extrato', descricao: 'OFX de conta corrente, com conciliação' },
   { para: '/lote', titulo: 'Lançamento em lote', descricao: 'Vários de uma vez, em tabela' },
   { para: '/atalhos', titulo: 'Atalhos', descricao: 'Modelos e recorrências' },
   { para: '/faturas', titulo: 'Faturas', descricao: 'Fatura por mês, compras e pagamento' },

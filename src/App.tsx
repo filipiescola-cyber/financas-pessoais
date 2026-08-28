@@ -10,6 +10,7 @@ import { Categorias } from './telas/Categorias';
 import { Contas } from './telas/Contas';
 import { Faturas } from './telas/Faturas';
 import { Dados } from './telas/Dados';
+import { Importar } from './telas/Importar';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
 import { Lote } from './telas/Lote';
@@ -44,6 +45,7 @@ export function App() {
               <Route path="/" element={<Inicio />} />
               <Route path="/transacoes" element={<Transacoes />} />
               <Route path="/lote" element={<Lote />} />
+              <Route path="/importar" element={<Importar />} />
               <Route path="/atalhos" element={<Atalhos />} />
               <Route path="/contas" element={<Contas />} />
               <Route path="/cartoes" element={<Cartoes />} />
