@@ -165,7 +165,7 @@ export function Relatorios() {
             onClick={() => setVerTabela((v) => !v)}
             className="text-xs text-emerald-400 hover:text-emerald-300"
           >
-            {verTabela ? 'ver gráfico' : 'ver tabela'}
+            {verTabela ? 'Ver gráfico' : 'Ver tabela'}
           </button>
         }
       >

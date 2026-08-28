@@ -180,7 +180,7 @@ function Indicadores() {
           {buscarTaxas.isPending ? 'Buscando…' : 'Atualizar CDI e Selic'}
         </Botao>
         <Botao tipo="discreto" aoClicar={() => setMostrandoManual((v) => !v)}>
-          informar na mão
+          Informar na mão
         </Botao>
       </div>
 
@@ -308,7 +308,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
         onClick={() => setAberto((v) => !v)}
         className="mt-3 text-xs text-slate-500 hover:text-slate-300"
       >
-        {inv.calculoAutomatico ? 'conferir com o banco' : 'atualizar saldo'}
+        {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
       </button>
 
       {aberto && (

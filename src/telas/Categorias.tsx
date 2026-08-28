@@ -116,7 +116,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
               ponto colorido, que nunca deixa de funcionar. */}
           <button
             onClick={() => setEscolhendoIcone((v) => !v)}
-            title={escolhendoIcone ? 'fechar' : 'trocar o ícone'}
+            title={escolhendoIcone ? 'Fechar' : 'Trocar o ícone'}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-borda text-slate-400 transition hover:border-borda-forte hover:text-slate-200"
           >
             {categoria.icone ? (
@@ -143,7 +143,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
             onClick={() => arquivar.mutate()}
             className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
           >
-            arquivar
+            Arquivar
           </button>
         )}
       </div>
@@ -169,7 +169,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
                 : 'border border-borda text-slate-500 hover:border-borda-forte'
             }`}
           >
-            {natureza ? ROTULOS[natureza] : 'sem natureza'}
+            {natureza ? ROTULOS[natureza] : 'Sem natureza'}
           </button>
         ))}
       </div>
@@ -219,7 +219,7 @@ function FormularioCategoria({
                 : 'border border-borda text-slate-500'
             }`}
           >
-            {n ? ROTULOS[n] : 'sem natureza'}
+            {n ? ROTULOS[n] : 'Sem natureza'}
           </button>
         ))}
       </div>

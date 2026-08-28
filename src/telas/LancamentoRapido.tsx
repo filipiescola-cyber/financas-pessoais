@@ -180,7 +180,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
                 onClick={() => setVerTodasCategorias((v) => !v)}
                 className="text-xs text-emerald-400"
               >
-                {verTodasCategorias ? 'ver menos' : 'ver todas'}
+                {verTodasCategorias ? 'Ver menos' : 'Ver todas'}
               </button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">

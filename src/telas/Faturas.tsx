@@ -350,7 +350,7 @@ function PagamentoDeFatura({
           onClick={() => setData(vencimento)}
           className="rounded-full border border-borda-forte px-3 py-1.5 text-xs text-slate-300"
         >
-          no vencimento
+          No vencimento
         </button>
       </div>
 

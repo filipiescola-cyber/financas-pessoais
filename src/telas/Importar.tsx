@@ -448,7 +448,7 @@ function Historico() {
                 disabled={desfazer.isPending}
                 className="shrink-0 text-xs text-slate-600 transition hover:text-red-400"
               >
-                desfazer
+                Desfazer
               </button>
             </li>
           ))}

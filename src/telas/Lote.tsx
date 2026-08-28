@@ -203,7 +203,7 @@ export function Lote() {
                     }
                     className="mt-3 shrink-0 text-xs text-slate-600 transition hover:text-red-400"
                   >
-                    remover
+                    Remover
                   </button>
                 )}
               </div>

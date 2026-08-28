@@ -174,7 +174,7 @@ function LinhaDeConta({
             title="Encerrar — o histórico é preservado"
             className="text-xs text-slate-600 transition hover:text-slate-300"
           >
-            {encerrando ? 'cancelar' : 'encerrar'}
+            {encerrando ? 'Cancelar' : 'Encerrar'}
           </button>
         </div>
       </div>
@@ -408,7 +408,7 @@ function BlocoArquivadas({
                 onClick={() => desarquivar.mutate(conta.id)}
                 className="shrink-0 text-xs text-slate-600 transition hover:text-slate-300"
               >
-                {conta.encerradaEm === null ? 'reativar' : 'reabrir'}
+                {conta.encerradaEm === null ? 'Reativar' : 'Reabrir'}
               </button>
             </li>
           ))}

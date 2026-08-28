@@ -250,7 +250,7 @@ function AvisoDeConexao({
           disabled={sincronizando}
           className="shrink-0 font-medium underline disabled:opacity-50"
         >
-          {sincronizando ? 'enviando…' : 'enviar agora'}
+          {sincronizando ? 'Enviando…' : 'Enviar agora'}
         </button>
       )}
     </div>

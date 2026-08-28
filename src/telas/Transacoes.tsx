@@ -258,7 +258,7 @@ export function Transacoes() {
               <span className="flex items-center gap-1.5 text-xs text-slate-500">
                 {/* Num dia que ainda não chegou, o acumulado é projeção do que
                     já está lançado — chamar de "saldo" seria afirmar demais. */}
-                {dia > hoje() ? 'saldo previsto' : 'saldo'}
+                {dia > hoje() ? 'Saldo previsto' : 'Saldo'}
                 <Dinheiro
                   centavos={saldosDoDia.get(dia)!}
                   className={saldosDoDia.get(dia)! < 0 ? 'text-red-400' : 'text-slate-300'}
@@ -452,7 +452,7 @@ function ItemDeTransacao({
           />
           <div className="flex gap-3">
             <button onClick={aoEditar} className="text-xs text-slate-600 transition hover:text-slate-300">
-              editar
+              Editar
             </button>
             {!ehTransferencia && (
               <button
@@ -461,7 +461,7 @@ function ItemDeTransacao({
                 title="Repete este lançamento com a data de hoje"
                 className="text-xs text-slate-600 transition hover:text-slate-300"
               >
-                duplicar
+                Duplicar
               </button>
             )}
             <button
@@ -469,7 +469,7 @@ function ItemDeTransacao({
               disabled={excluir.isPending}
               className="text-xs text-slate-600 transition hover:text-red-400"
             >
-              excluir
+              Excluir
             </button>
           </div>
         </div>
@@ -490,7 +490,7 @@ function ItemDeTransacao({
               onClick={() => setConfirmandoParcelamento(false)}
               className="px-2 text-xs text-slate-500"
             >
-              cancelar
+              Cancelar
             </button>
           </div>
         </div>
@@ -587,7 +587,7 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
           <div className="min-w-0">
             <p className="truncate text-slate-400">{previsto.descricao}</p>
             <p className="truncate text-xs text-slate-600">
-              {atrasado ? 'era para ter acontecido' : 'previsto'}
+              {atrasado ? 'Era para ter acontecido' : 'Previsto'}
               {previsto.valor === null && ' · valor varia'}
             </p>
           </div>
@@ -605,7 +605,7 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
               onClick={() => setRevisando(true)}
               className="text-xs text-emerald-400 transition hover:text-emerald-300"
             >
-              revisar e lançar
+              Revisar e lançar
             </button>
           )}
         </div>

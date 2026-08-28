@@ -159,7 +159,7 @@ export function Fechamento() {
                   <Dinheiro centavos={t.valor} className="shrink-0" />
                 </li>
               ))}
-              {semCategoria.length > 5 && <li>e mais {semCategoria.length - 5}…</li>}
+              {semCategoria.length > 5 && <li>E mais {semCategoria.length - 5}…</li>}
             </ul>
             <Link to="/transacoes">
               <Botao tipo="secundario">Ir para os lançamentos</Botao>

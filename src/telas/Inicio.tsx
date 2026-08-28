@@ -96,7 +96,7 @@ export function Inicio() {
               ? 'Os parcelamentos em andamento ficaram de fora: sem eles os próximos meses aparecem artificialmente baratos.'
               : 'A fatura aberta ficou de fora: sem ela o app acha que o mês está mais barato do que está.'}{' '}
             <Link to="/comecar" className="underline">
-              preencher agora
+              Preencher agora
             </Link>
           </p>
         </div>
@@ -200,7 +200,7 @@ export function Inicio() {
           titulo="Contas"
           acao={
             <Link to="/contas" className="text-xs text-emerald-400 hover:text-emerald-300">
-              ver todas
+              Ver todas
             </Link>
           }
         >
@@ -227,7 +227,7 @@ export function Inicio() {
           titulo="Faturas a vencer"
           acao={
             <Link to="/faturas" className="text-xs text-emerald-400 hover:text-emerald-300">
-              ver faturas
+              Ver faturas
             </Link>
           }
         >
@@ -277,7 +277,7 @@ function LinhaDeFatura({
       <div className="min-w-0">
         <p className="truncate text-sm text-slate-200">{nome}</p>
         <p className={`text-xs ${vencida ? 'text-amber-400' : 'text-slate-500'}`}>
-          {vencida ? 'venceu' : 'vence'} em {formatarBR(vencimento)}
+          {vencida ? 'Venceu' : 'Vence'} em {formatarBR(vencimento)}
         </p>
       </div>
       <Dinheiro centavos={Math.abs(total.data ?? 0)} className="shrink-0 text-sm text-slate-200" />
@@ -407,7 +407,7 @@ function LinhaPrevista({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-slate-100">{item.descricao}</p>
           <p className={`text-xs ${atrasado ? 'text-amber-400' : 'text-slate-500'}`}>
-            {atrasado ? 'era para ter acontecido em ' : 'previsto para '}
+            {atrasado ? 'Era para ter acontecido em ' : 'Previsto para '}
             {formatarBR(item.dataPrevista)}
             {item.valor === null && ' · valor varia'}
           </p>
@@ -428,7 +428,7 @@ function LinhaPrevista({
             aoClicar={() => setRevisando(true)}
             className="shrink-0 px-3 py-1 text-xs"
           >
-            revisar e lançar
+            Revisar e lançar
           </Botao>
         )}
 

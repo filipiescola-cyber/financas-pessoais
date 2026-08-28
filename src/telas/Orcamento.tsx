@@ -130,7 +130,7 @@ export function Orcamento() {
             onClick={() => setVerTodas((v) => !v)}
             className="text-xs text-emerald-400 hover:text-emerald-300"
           >
-            {verTodas ? 'ver menos' : 'ver todas'}
+            {verTodas ? 'Ver menos' : 'Ver todas'}
           </button>
         }
       >
@@ -199,7 +199,7 @@ function LinhaDoOrcamento({
           onClick={() => setEditando((v) => !v)}
           className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
         >
-          {progresso.planejado > 0 ? 'mudar teto' : 'definir teto'}
+          {progresso.planejado > 0 ? 'Mudar teto' : 'Definir teto'}
         </button>
       </div>
 

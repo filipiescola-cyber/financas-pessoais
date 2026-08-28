@@ -30,7 +30,7 @@ export function EscolherIcone({
             : 'border border-borda text-slate-500 hover:border-borda-forte'
         }`}
       >
-        sem ícone
+        Sem ícone
       </button>
 
       {GRUPOS_DE_ICONES.map((grupo) => (

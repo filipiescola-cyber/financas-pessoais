@@ -26,7 +26,7 @@ export function ListaDePendencias({ itens, limite = 6 }: { itens: readonly Item[
         </li>
       ))}
       {restantes > 0 && (
-        <li className="py-1.5 text-xs text-slate-600">e mais {restantes}</li>
+        <li className="py-1.5 text-xs text-slate-600">E mais {restantes}</li>
       )}
     </ul>
   );

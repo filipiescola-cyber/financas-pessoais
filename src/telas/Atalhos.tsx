@@ -85,13 +85,13 @@ function ListaDeModelos({ aoCriar }: { aoCriar: () => void }) {
                   {modelo.valorPadrao !== null ? (
                     <Dinheiro centavos={modelo.valorPadrao} className="text-sm text-slate-300" />
                   ) : (
-                    <span className="text-xs text-slate-600">pergunta o valor</span>
+                    <span className="text-xs text-slate-600">Pergunta o valor</span>
                   )}
                   <button
                     onClick={() => excluir.mutate(modelo.id)}
                     className="text-xs text-slate-600 transition hover:text-red-400"
                   >
-                    excluir
+                    Excluir
                   </button>
                 </div>
               </li>
@@ -164,13 +164,13 @@ function ListaDeRecorrencias({
                         className="text-sm text-slate-300"
                       />
                     ) : (
-                      <span className="text-xs text-amber-400/80">valor varia</span>
+                      <span className="text-xs text-amber-400/80">Valor varia</span>
                     )}
                     <button
                       onClick={() => arquivar.mutate(recorrencia.id)}
                       className="text-xs text-slate-600 transition hover:text-slate-300"
                     >
-                      arquivar
+                      Arquivar
                     </button>
                   </div>
                 </li>

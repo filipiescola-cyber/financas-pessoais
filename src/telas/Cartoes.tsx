@@ -137,7 +137,7 @@ function EncerrarCartao({ contaId }: { contaId: string }) {
         title="Encerrar — as faturas antigas são preservadas"
         className="text-xs text-slate-500 hover:text-slate-300"
       >
-        {aberto ? 'cancelar' : 'encerrar'}
+        {aberto ? 'Cancelar' : 'Encerrar'}
       </button>
       {aberto && (
         <PainelDeEncerramentoDoCartao contaId={contaId} aoTerminar={() => setAberto(false)} />
@@ -296,7 +296,7 @@ function DesarquivarCartao({
         onClick={() => desarquivar.mutate(contaId)}
         className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
       >
-        {encerradoEm === null ? 'reativar' : 'reabrir'}
+        {encerradoEm === null ? 'Reativar' : 'Reabrir'}
       </button>
     </div>
   );

@@ -194,13 +194,13 @@ function LinhaDaMeta({
             }}
             className="text-xs text-slate-500 hover:text-slate-300"
           >
-            {editando ? 'fechar' : 'editar'}
+            {editando ? 'Fechar' : 'Editar'}
           </button>
           <button
             onClick={() => remover.mutate()}
             className="text-xs text-slate-600 hover:text-red-400"
           >
-            excluir
+            Excluir
           </button>
         </div>
       </div>
@@ -441,7 +441,7 @@ function SemPrazo({
                 onClick={() => aoDefinirPrazo(chegaEm!)}
                 className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
               >
-                usar essa data como prazo
+                Usar essa data como prazo
               </button>
             </>
           )}

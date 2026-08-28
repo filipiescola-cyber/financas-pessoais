@@ -35,7 +35,7 @@ export function AtualizacaoDisponivel() {
           onClick={() => atualizar?.()}
           className="shrink-0 text-sm font-medium text-emerald-300 underline"
         >
-          atualizar
+          Atualizar
         </button>
       </div>
     </div>

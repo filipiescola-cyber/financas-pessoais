@@ -105,7 +105,7 @@ export function Onboarding() {
             Passo {indice + 1} de {PASSOS.length}
           </span>
           <button onClick={() => navegar('/')} className="hover:text-slate-300">
-            continuar depois
+            Continuar depois
           </button>
         </div>
         <div className="h-1 w-full overflow-hidden rounded-full bg-superficie-alta">
