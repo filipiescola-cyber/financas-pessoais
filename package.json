@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "teste": "vitest run --passWithNoTests",
     "teste:watch": "vitest",
-    "tipos": "supabase gen types typescript --linked > src/dados/tipos-gerados.ts"
+    "tipos": "node scripts/gerar-tipos.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

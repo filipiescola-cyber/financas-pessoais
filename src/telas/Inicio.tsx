@@ -1,64 +1,68 @@
-import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { formatar } from '../dominio/dinheiro';
+import { entraNoConsolidado } from '../dominio/saldo';
 import { useAutenticacao } from '../dados/autenticacao';
-import { supabase } from '../dados/supabase';
+import { usarContasComSaldo } from '../dados/usarContas';
 
-// Tela de verificação da Fase 0. Existe só para provar que conexão, sessão e RLS
-// estão de pé (critério de aceite 0.8). A Fase 1 substitui esta tela pelo
-// dashboard de verdade — não construir nada em cima dela.
+/**
+ * Início provisório. O dashboard de verdade é da Fase 5 — aqui só mostra o que
+ * já existe de fato. Estado vazio explícito em vez de gráfico zerado (§13.5):
+ * nunca exibir R$ 0,00 onde a resposta certa é "ainda não sei".
+ */
 export function Inicio() {
-  const { sessao, sair } = useAutenticacao();
+  const { sessao } = useAutenticacao();
+  const contas = usarContasComSaldo();
 
-  const contagens = useQuery({
-    queryKey: ['fase0', 'contagens'],
-    queryFn: async () => {
-      const contas = await supabase.from('contas').select('*', { count: 'exact', head: true });
-      if (contas.error) throw contas.error;
-
-      const categorias = await supabase
-        .from('categorias')
-        .select('*', { count: 'exact', head: true });
-      if (categorias.error) throw categorias.error;
-
-      return { contas: contas.count ?? 0, categorias: categorias.count ?? 0 };
-    },
-  });
+  const lista = contas.data ?? [];
+  const disponiveis = lista.filter(entraNoConsolidado);
+  const consolidado = disponiveis.reduce((total, c) => total + c.saldoAtual, 0);
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 p-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold text-slate-100">Fase 0 — fundação no ar</h1>
-        <p className="text-sm text-slate-400">{sessao?.user.email}</p>
+    <div className="mx-auto max-w-2xl space-y-6 p-4">
+      <header>
+        <h1 className="text-xl font-semibold text-slate-100">Início</h1>
+        <p className="text-sm text-slate-500">{sessao?.user.email}</p>
       </header>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm">
-        {contagens.isPending && <p className="text-slate-400">Consultando o banco…</p>}
+      {contas.isPending && <p className="text-slate-400">Carregando…</p>}
 
-        {contagens.isError && (
-          <p className="text-red-400">
-            Erro ao consultar: {(contagens.error as Error).message}
+      {contas.isError && (
+        <p className="text-red-400">Erro ao carregar: {(contas.error as Error).message}</p>
+      )}
+
+      {contas.isSuccess && disponiveis.length === 0 && (
+        <section className="rounded-xl border border-dashed border-slate-700 p-6">
+          <p className="text-slate-300">Ainda não há contas cadastradas.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Sem conta não existe saldo para mostrar — e mostrar R$ 0,00 aqui seria mentira, não
+            informação.
           </p>
-        )}
+          <Link
+            to="/contas"
+            className="mt-4 inline-block rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+          >
+            Cadastrar conta
+          </Link>
+        </section>
+      )}
 
-        {contagens.isSuccess && (
-          <ul className="space-y-1 text-slate-300">
-            <li>
-              Contas cadastradas: <strong>{contagens.data.contas}</strong>{' '}
-              <span className="text-slate-500">(esperado: 0 nesta fase)</span>
-            </li>
-            <li>
-              Categorias no seed: <strong>{contagens.data.categorias}</strong>{' '}
-              <span className="text-slate-500">(esperado: 25)</span>
-            </li>
-          </ul>
-        )}
+      {contas.isSuccess && disponiveis.length > 0 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <p className="text-sm text-slate-400">Disponível para gastar</p>
+          <p className="mt-1 text-3xl font-semibold text-slate-100">{formatar(consolidado)}</p>
+          <Link to="/contas" className="mt-3 inline-block text-sm text-emerald-400">
+            Ver contas
+          </Link>
+        </section>
+      )}
+
+      <section className="rounded-xl border border-slate-800/60 p-4">
+        <p className="text-sm text-slate-400">Em construção</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Fase 1 em andamento: contas já funcionam. Faltam cartões, o onboarding e a folha de
+          lançamento rápido — que é a razão de existir desta fase.
+        </p>
       </section>
-
-      <button
-        onClick={() => void sair()}
-        className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300"
-      >
-        Sair
-      </button>
     </div>
   );
 }

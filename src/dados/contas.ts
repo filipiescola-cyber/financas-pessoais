@@ -1,0 +1,170 @@
+// Acesso a contas (§4).
+//
+// Esta é a fronteira: aqui o numeric do banco vira centavos inteiros e volta.
+// Nenhuma tela deve conversar com o Supabase direto.
+
+import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
+import type { DataISO } from '../dominio/datas';
+import { supabase } from './supabase';
+import type { Conta, ContaComSaldo, LinhaConta, LinhaSaldo, TipoDeConta } from './tipos';
+import type { Database } from './tipos-gerados';
+
+type AtualizacaoConta = Database['public']['Tables']['contas']['Update'];
+
+function daLinha(linha: LinhaConta): Conta {
+  return {
+    id: linha.id,
+    nome: linha.nome,
+    tipo: linha.tipo as TipoDeConta,
+    instituicao: linha.instituicao,
+    saldoInicial: paraCentavos(linha.saldo_inicial),
+    saldoConferido: linha.saldo_conferido === null ? null : paraCentavos(linha.saldo_conferido),
+    dataConferencia: linha.data_conferencia as DataISO | null,
+    ativo: linha.ativo,
+  };
+}
+
+export type NovaConta = {
+  nome: string;
+  tipo: TipoDeConta;
+  instituicao?: string | null;
+  saldoInicial: Centavos;
+};
+
+export async function listarContas(incluirArquivadas = false): Promise<Conta[]> {
+  let consulta = supabase.from('contas').select('*').order('nome');
+  if (!incluirArquivadas) consulta = consulta.eq('ativo', true);
+
+  const { data, error } = await consulta;
+  if (error) throw error;
+  return (data ?? []).map(daLinha);
+}
+
+/**
+ * Contas com o saldo calculado. O saldo vem da view `saldos_contas`, que já
+ * aplica as três regras do §13.2 (só o passado, sem filhas de divisão, hoje em
+ * America/Sao_Paulo). Nunca somar saldo no cliente.
+ */
+export async function listarContasComSaldo(): Promise<ContaComSaldo[]> {
+  const [contas, saldos] = await Promise.all([
+    listarContas(false),
+    supabase.from('saldos_contas').select('*'),
+  ]);
+  if (saldos.error) throw saldos.error;
+
+  const porConta = new Map<string, Centavos>();
+  for (const linha of (saldos.data ?? []) as LinhaSaldo[]) {
+    if (linha.conta_id === null) continue;
+    porConta.set(linha.conta_id, paraCentavos(linha.saldo_atual ?? 0));
+  }
+
+  return contas.map((conta) => ({
+    ...conta,
+    saldoAtual: porConta.get(conta.id) ?? conta.saldoInicial,
+  }));
+}
+
+export async function criarConta(nova: NovaConta): Promise<Conta> {
+  const { data, error } = await supabase
+    .from('contas')
+    .insert({
+      nome: nova.nome.trim(),
+      tipo: nova.tipo,
+      instituicao: nova.instituicao?.trim() || null,
+      saldo_inicial: paraNumerico(nova.saldoInicial),
+    })
+    .select()
+    .single();
+
+  if (error) throw traduzirErro(error);
+  return daLinha(data);
+}
+
+export async function atualizarConta(
+  id: string,
+  campos: Partial<Pick<NovaConta, 'nome' | 'instituicao' | 'saldoInicial'>>,
+): Promise<Conta> {
+  const atualizacao: AtualizacaoConta = {};
+  if (campos.nome !== undefined) atualizacao.nome = campos.nome.trim();
+  if (campos.instituicao !== undefined) atualizacao.instituicao = campos.instituicao?.trim() || null;
+  if (campos.saldoInicial !== undefined) {
+    atualizacao.saldo_inicial = paraNumerico(campos.saldoInicial);
+  }
+
+  const { data, error } = await supabase
+    .from('contas')
+    .update(atualizacao)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw traduzirErro(error);
+  return daLinha(data);
+}
+
+/**
+ * Arquivar, nunca excluir (§4.8). Conta arquivada some dos seletores e do saldo
+ * consolidado, mas continua nos relatórios de meses fechados.
+ */
+export async function arquivarConta(id: string): Promise<void> {
+  const { error } = await supabase.from('contas').update({ ativo: false }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function desarquivarConta(id: string): Promise<void> {
+  const { error } = await supabase.from('contas').update({ ativo: true }).eq('id', id);
+  if (error) throw traduzirErro(error);
+}
+
+export async function contaTemTransacoes(id: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('transacoes')
+    .select('id', { count: 'exact', head: true })
+    .eq('conta_id', id);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Exclusão só é permitida enquanto a conta não tem histórico. Com transação
+ * vinculada, o próprio banco recusa (ON DELETE RESTRICT) — a checagem aqui
+ * existe para dar mensagem decente antes de tentar.
+ */
+export async function excluirContaSemHistorico(id: string): Promise<void> {
+  if (await contaTemTransacoes(id)) {
+    throw new Error(
+      'Esta conta já tem lançamentos. Arquive em vez de excluir — apagar quebraria os relatórios dos meses fechados.',
+    );
+  }
+  const { error } = await supabase.from('contas').delete().eq('id', id);
+  if (error) throw traduzirErro(error);
+}
+
+/** Só pode existir uma conta Empresa ativa (§4.6). */
+export async function jaExisteContaEmpresa(): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('contas')
+    .select('id', { count: 'exact', head: true })
+    .eq('tipo', 'empresa')
+    .eq('ativo', true);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+type ErroPostgrest = { code?: string; message?: string };
+
+/**
+ * As restrições que criamos no banco viram mensagem legível. Sem isso o usuário
+ * recebe "duplicate key value violates unique constraint contas_uma_empresa_ativa".
+ */
+function traduzirErro(erro: ErroPostgrest): Error {
+  if (erro.code === '23505' && erro.message?.includes('contas_uma_empresa_ativa')) {
+    return new Error(
+      'Já existe uma conta Empresa. Só pode haver uma — se você tem mais de um negócio, arquive a atual antes.',
+    );
+  }
+  if (erro.code === '23503') {
+    return new Error('Esta conta tem lançamentos vinculados e não pode ser removida. Arquive.');
+  }
+  return new Error(erro.message ?? 'Erro ao gravar a conta.');
+}

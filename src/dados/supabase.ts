@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './tipos-gerados';
 
 // A anon key é pública por natureza — o que protege o banco é a RLS (§10.1).
 // Nenhuma chave no repositório: as duas variáveis vêm do .env local e do painel
@@ -13,7 +14,9 @@ if (!url || !chaveAnon) {
   );
 }
 
-export const supabase = createClient(url, chaveAnon, {
+// Tipado com o schema gerado (`npm run tipos`): erro de nome de coluna vira
+// erro de compilação, não erro em produção.
+export const supabase = createClient<Database>(url, chaveAnon, {
   auth: {
     // App pessoal de uso diário: exigir login toda semana é atrito puro (§5).
     persistSession: true,
