@@ -67,6 +67,15 @@ export function IconeOrcamento(p: Props) {
   );
 }
 
+export function IconeInvestimentos(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M3 17.5 9 11l4 4 8-8.5" />
+      <path d="M14 6.5h7v7" />
+    </Svg>
+  );
+}
+
 export function IconeMetas(p: Props) {
   return (
     <Svg {...p}>

@@ -4,6 +4,7 @@ import { useAutenticacao } from '../dados/autenticacao';
 const ITENS = [
   { para: '/orcamento', titulo: 'Orçamento', descricao: 'Teto por categoria, planejado x realizado' },
   { para: '/metas', titulo: 'Metas e reserva', descricao: 'Objetivos e meses de custo fixo cobertos' },
+  { para: '/investimentos', titulo: 'Investimentos', descricao: 'Rendimento diário, bruto x líquido' },
   { para: '/conferencia', titulo: 'Conferência de saldo', descricao: 'O que o banco diz x o que o app diz' },
   { para: '/fluxo', titulo: 'Fluxo de caixa', descricao: 'Projeção de 12 meses em três cenários' },
   { para: '/simulador', titulo: 'Simulador de compra', descricao: 'O que uma compra faz com os próximos meses' },

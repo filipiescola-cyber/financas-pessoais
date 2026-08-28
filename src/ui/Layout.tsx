@@ -13,6 +13,7 @@ import {
   IconeFluxo,
   IconeImportar,
   IconeInicio,
+  IconeInvestimentos,
   IconeLancamentos,
   IconeMais,
   IconeMetas,
@@ -34,6 +35,7 @@ const PRINCIPAIS: Item[] = [
 const SECUNDARIOS: Item[] = [
   { para: '/orcamento', rotulo: 'Orçamento', icone: IconeOrcamento },
   { para: '/metas', rotulo: 'Metas', icone: IconeMetas },
+  { para: '/investimentos', rotulo: 'Investimentos', icone: IconeInvestimentos },
   { para: '/conferencia', rotulo: 'Conferência', icone: IconeConferencia },
   { para: '/fluxo', rotulo: 'Fluxo de caixa', icone: IconeFluxo },
   { para: '/simulador', rotulo: 'Simulador', icone: IconeSimulador },

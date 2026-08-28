@@ -13,6 +13,7 @@ import { Faturas } from './telas/Faturas';
 import { Dados } from './telas/Dados';
 import { FluxoDeCaixa } from './telas/FluxoDeCaixa';
 import { Importar } from './telas/Importar';
+import { Investimentos } from './telas/Investimentos';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
 import { Metas } from './telas/Metas';
@@ -53,6 +54,7 @@ export function App() {
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/orcamento" element={<Orcamento />} />
               <Route path="/metas" element={<Metas />} />
+              <Route path="/investimentos" element={<Investimentos />} />
               <Route path="/conferencia" element={<Conferencia />} />
               <Route path="/fluxo" element={<FluxoDeCaixa />} />
               <Route path="/simulador" element={<Simulador />} />
