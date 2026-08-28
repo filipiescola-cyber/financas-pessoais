@@ -58,6 +58,14 @@ export function IconeFaturas(p: Props) {
   );
 }
 
+export function IconeRelatorios(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+    </Svg>
+  );
+}
+
 export function IconeCategorias(p: Props) {
   return (
     <Svg {...p}>

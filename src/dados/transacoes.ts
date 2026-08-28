@@ -37,6 +37,7 @@ export type Transacao = {
   parcelaNum: number | null;
   parcelaTotal: number | null;
   transferenciaParId: string | null;
+  transacaoPaiId: string | null;
   faturaId: string | null;
   motivoEmpresa: MotivoEmpresa | null;
   revisado: boolean;
@@ -56,6 +57,7 @@ function daLinha(linha: LinhaTransacao): Transacao {
     parcelaNum: linha.parcela_num,
     parcelaTotal: linha.parcela_total,
     transferenciaParId: linha.transferencia_par_id,
+    transacaoPaiId: linha.transacao_pai_id,
     faturaId: linha.fatura_id,
     motivoEmpresa: linha.motivo_empresa as MotivoEmpresa | null,
     revisado: linha.revisado,

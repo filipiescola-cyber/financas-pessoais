@@ -12,6 +12,7 @@ import {
   IconeInicio,
   IconeLancamentos,
   IconeMais,
+  IconeRelatorios,
   IconeOlho,
 } from './icones';
 
@@ -25,6 +26,7 @@ const PRINCIPAIS: Item[] = [
 ];
 
 const SECUNDARIOS: Item[] = [
+  { para: '/relatorios', rotulo: 'Relatórios', icone: IconeRelatorios },
   { para: '/faturas', rotulo: 'Faturas', icone: IconeFaturas },
   { para: '/lote', rotulo: 'Em lote', icone: IconeLancamentos },
   { para: '/atalhos', rotulo: 'Atalhos', icone: IconeCategorias },
