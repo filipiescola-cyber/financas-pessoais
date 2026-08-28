@@ -18,6 +18,7 @@ import {
   excluirParcelamento,
   excluirTransacao,
   excluirTransacoes,
+  marcarRevisado,
   movimentosDeCaixa,
   saldoAte,
   type EscopoDeParcelamento,
@@ -503,13 +504,22 @@ function ItemDeTransacao({
 
   const ehTransferencia = transacao.tipo === 'transferencia';
   const ehParcelado = transacao.grupoParcelamentoId !== null;
+  const revisar = useMutation({
+    mutationFn: () => marcarRevisado(transacao.id, true),
+    onSuccess: () => invalidar(),
+  });
+
   const futura = transacao.dataCompetencia > hoje();
 
   return (
     <li className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 gap-2.5">
-          <Marcador futura={futura} revisado={transacao.revisado} />
+          <Marcador
+            futura={futura}
+            revisado={transacao.revisado}
+            aoRevisar={() => revisar.mutate()}
+          />
 
           <div className="min-w-0">
             <p className="truncate text-slate-100">
@@ -615,7 +625,15 @@ function BotaoEscopo({ children, aoClicar }: { children: React.ReactNode; aoClic
  *             recorrência de valor que oscila, e o número ainda pode estar
  *             errado. É o único dos três que pede alguma coisa de você.
  */
-function Marcador({ futura, revisado }: { futura: boolean; revisado: boolean }) {
+function Marcador({
+  futura,
+  revisado,
+  aoRevisar,
+}: {
+  futura: boolean;
+  revisado: boolean;
+  aoRevisar: () => void;
+}) {
   if (futura) {
     return (
       <span title="Previsto: já está lançado, mas ainda não aconteceu" className="mt-0.5 text-sky-400/80">
@@ -632,11 +650,18 @@ function Marcador({ futura, revisado }: { futura: boolean; revisado: boolean }) 
     );
   }
 
+  // O marcador É o botão de revisar. Ele era a única coisa na tela que pedia
+  // algo do usuário sem oferecer como fazer: o ponto ficava aceso para sempre,
+  // porque nada em lugar nenhum gravava `revisado`.
   return (
-    <span
-      title="Ainda não revisado: veio de importação ou de recorrência de valor variável"
-      className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
-    />
+    <button
+      onClick={aoRevisar}
+      title="Ainda não revisado: veio de importação ou de recorrência de valor variável. Toque para confirmar."
+      aria-label="Marcar como revisado"
+      className="-my-2 -mx-2 flex h-8 w-8 shrink-0 items-center justify-center"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+    </button>
   );
 }
 

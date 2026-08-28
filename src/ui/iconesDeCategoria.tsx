@@ -349,9 +349,7 @@ const D: Record<string, ReactNode> = {
   circulo: <circle cx="12" cy="12" r="8" />,
 };
 
-/** As chaves válidas. Um valor fora daqui é tratado como "sem ícone". */
-export type ChaveDeIcone = keyof typeof D;
-
+/** Um valor fora do banco é tratado como "sem ícone". */
 export function ehChaveDeIcone(valor: string | null): valor is string {
   return valor !== null && valor in D;
 }

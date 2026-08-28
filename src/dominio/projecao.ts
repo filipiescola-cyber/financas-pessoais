@@ -289,9 +289,3 @@ export const ROTULO_CENARIO: Record<Cenario, string> = {
   otimista: 'Mês bom',
 };
 
-export const CONFIANCA_DO_COMPONENTE: Record<keyof ComponentesDoMes, Confianca> = {
-  jaLancado: 'alta',
-  fixas: 'alta',
-  provisaoEventual: 'media',
-  variaveis: 'baixa',
-};

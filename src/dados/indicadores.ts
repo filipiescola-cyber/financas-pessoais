@@ -71,12 +71,6 @@ export async function listarFeriados(): Promise<Set<DataISO>> {
   return new Set((data ?? []).map((linha) => linha.data));
 }
 
-export type TaxaVigente = {
-  nome: 'CDI' | 'SELIC' | 'IPCA';
-  taxaAnual: number;
-  vigenteDesde: DataISO;
-};
-
 /**
  * Taxas vigentes (§9.2). CDI acompanha a Selic e muda a cada Copom.
  *

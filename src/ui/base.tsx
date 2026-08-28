@@ -240,6 +240,17 @@ export function Campo({
   );
 }
 
+/**
+ * Área de toque para ação escrita em texto miúdo (§5.1).
+ *
+ * "Editar", "Excluir", "Arquivar" são `text-xs`, e isso dá um alvo de uns 16
+ * pixels de altura: no computador o mouse acerta, no celular o dedo erra. O
+ * padding aumenta a área clicável e a margem negativa devolve o espaço ao
+ * layout — o botão continua do mesmo tamanho na tela e fica bem maior para o
+ * toque.
+ */
+export const ALVO_DE_TOQUE = 'py-2.5 -my-2.5 px-1.5 -mx-1.5';
+
 export const ENTRADA =
   'w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2.5 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-emerald-600';
 

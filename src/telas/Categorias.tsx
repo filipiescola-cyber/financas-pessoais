@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ROTULOS, type Natureza } from '../dominio/natureza';
-import { arquivarCategoria, atualizarCategoria, criarCategoria } from '../dados/categorias';
+import {
+  arquivarCategoria,
+  atualizarCategoria,
+  criarCategoria,
+  desarquivarCategoria,
+} from '../dados/categorias';
 import { chaves } from '../dados/chaves';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarAviso } from '../ui/Aviso';
-import { Botao, Pagina } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, Pagina, Secao } from '../ui/base';
 import { EscolherIcone } from '../ui/EscolherIcone';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import type { TipoDeCategoria } from '../dados/tipos';
@@ -22,9 +27,11 @@ const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
 export function Categorias() {
   const [tipo, setTipo] = useState<TipoDeCategoria>('despesa');
   const [criando, setCriando] = useState(false);
-  const categorias = usarCategorias();
+  const categorias = usarCategorias(true);
 
-  const lista = (categorias.data ?? []).filter((c) => c.tipo === tipo);
+  const doTipo = (categorias.data ?? []).filter((c) => c.tipo === tipo);
+  const lista = doTipo.filter((c) => c.ativo);
+  const arquivadas = doTipo.filter((c) => !c.ativo);
 
   return (
     <Pagina
@@ -68,6 +75,24 @@ export function Categorias() {
           <LinhaCategoria key={categoria.id} categoria={categoria} />
         ))}
       </ul>
+
+      {/* Arquivar era mão única: a categoria sumia da tela e não havia por onde
+          trazer de volta, mesmo com o histórico dela inteiro no banco. */}
+      {arquivadas.length > 0 && (
+        <Secao titulo="Arquivadas">
+          <Cartao>
+            <ul className="divide-y divide-borda">
+              {arquivadas.map((categoria) => (
+                <LinhaArquivada key={categoria.id} categoria={categoria} />
+              ))}
+            </ul>
+          </Cartao>
+          <p className="text-xs leading-relaxed text-slate-600">
+            Categoria arquivada some dos seletores de lançamento, mas continua nos relatórios dos
+            meses fechados — nada foi apagado.
+          </p>
+        </Secao>
+      )}
     </Pagina>
   );
 }
@@ -236,5 +261,34 @@ function FormularioCategoria({
         Salvar
       </button>
     </div>
+  );
+}
+
+function LinhaArquivada({
+  categoria,
+}: {
+  categoria: { id: string; nome: string; cor: string | null; icone: string | null };
+}) {
+  const cliente = useQueryClient();
+
+  const desarquivar = useMutation({
+    mutationFn: () => desarquivarCategoria(categoria.id),
+    onSuccess: () => cliente.invalidateQueries({ queryKey: chaves.categorias.todas }),
+  });
+
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <span className="flex min-w-0 items-center gap-2.5 text-sm text-slate-500">
+        <IconeDeCategoria chave={categoria.icone} cor={categoria.cor} />
+        <span className="truncate">{categoria.nome}</span>
+      </span>
+      <button
+        onClick={() => desarquivar.mutate()}
+        disabled={desarquivar.isPending}
+        className={`shrink-0 text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+      >
+        Reativar
+      </button>
+    </li>
   );
 }

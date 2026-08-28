@@ -237,17 +237,6 @@ export async function excluirContaSemHistorico(id: string): Promise<void> {
   if (error) throw traduzirErro(error);
 }
 
-/** Só pode existir uma conta Empresa ativa (§4.6). */
-export async function jaExisteContaEmpresa(): Promise<boolean> {
-  const { count, error } = await supabase
-    .from('contas')
-    .select('id', { count: 'exact', head: true })
-    .eq('tipo', 'empresa')
-    .eq('ativo', true);
-  if (error) throw error;
-  return (count ?? 0) > 0;
-}
-
 type ErroPostgrest = { code?: string; message?: string };
 
 /**

@@ -9,14 +9,8 @@
 // daquele momento é gravado. Enquanto aberta, quem pergunta soma as transações.
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
-import { hoje, primeiroDiaDoMes, type DataISO } from '../dominio/datas';
-import {
-  faturaDeReferencia,
-  faturaDoMes,
-  faturaEscolhida,
-  proximasFaturas,
-  type ConfiguracaoDoCartao,
-} from '../dominio/fatura';
+import { hoje, type DataISO } from '../dominio/datas';
+import { faturaEscolhida, proximasFaturas, type ConfiguracaoDoCartao } from '../dominio/fatura';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -401,14 +395,3 @@ export async function backfillFaturas(): Promise<{ atualizadas: number; cartoes:
   return { atualizadas, cartoes: comPendencia };
 }
 
-/** A fatura corrente de um cartão: a que ainda não fechou. */
-export function faturaCorrente(configuracao: ConfiguracaoDoCartao, referencia: DataISO = hoje()) {
-  return faturaDeReferencia(referencia, configuracao);
-}
-
-export function faturaDoMesDeReferencia(
-  mesReferencia: DataISO,
-  configuracao: ConfiguracaoDoCartao,
-) {
-  return faturaDoMes(primeiroDiaDoMes(mesReferencia), configuracao);
-}
