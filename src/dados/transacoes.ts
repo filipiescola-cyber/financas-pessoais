@@ -575,3 +575,53 @@ export function montarLinhasDeTransferenciaOffline(nova: NovaTransferencia): Ins
     },
   ];
 }
+
+/**
+ * Movimentos de CAIXA do período, para a linha de saldo diário.
+ *
+ * É uma consulta separada da lista de lançamentos de propósito: a lista filtra
+ * por competência e esta filtra por caixa. Uma compra no cartão feita em agosto
+ * com fatura em setembro aparece na lista de agosto e no saldo de setembro —
+ * unir as duas consultas produziria um saldo que não bate com o banco.
+ */
+export async function movimentosDeCaixa(filtros: {
+  de: DataISO;
+  ate: DataISO;
+  contaId?: string | null;
+  /** Sem conta escolhida, as mesmas contas que a função `saldo_ate` soma. */
+  contasElegiveis?: readonly string[];
+}) {
+  let consulta = supabase
+    .from('transacoes')
+    .select('valor, data_caixa, transacao_pai_id')
+    .gte('data_caixa', filtros.de)
+    .lte('data_caixa', filtros.ate);
+
+  if (filtros.contaId) {
+    consulta = consulta.eq('conta_id', filtros.contaId);
+  } else if (filtros.contasElegiveis) {
+    // Sem esse recorte o saldo de abertura viria do consolidado e os movimentos
+    // de todas as contas, incluindo Empresa e cartão — e a linha andaria
+    // diferente do número que a abre.
+    consulta = consulta.in('conta_id', [...filtros.contasElegiveis]);
+  }
+
+  const { data, error } = await consulta;
+  if (error) throw error;
+
+  return (data ?? []).map((linha) => ({
+    valor: paraCentavos(linha.valor),
+    dataCaixa: linha.data_caixa,
+    transacaoPaiId: linha.transacao_pai_id,
+  }));
+}
+
+/** Acumulado até a data, pela função do banco. Ver a migration `saldo_ate`. */
+export async function saldoAte(data: DataISO, contaId?: string | null): Promise<Centavos> {
+  const { data: resultado, error } = await supabase.rpc('saldo_ate', {
+    p_data: data,
+    p_conta: contaId ?? undefined,
+  });
+  if (error) throw new Error(error.message);
+  return paraCentavos(Number(resultado ?? 0));
+}

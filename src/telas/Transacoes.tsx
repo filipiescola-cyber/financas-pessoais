@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   formatarBR,
   hoje,
@@ -11,11 +11,15 @@ import {
 import { formatar } from '../dominio/dinheiro';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
+import { entraNoConsolidado } from '../dominio/saldo';
+import { saldosAoFimDoDia, temMovimentoAdiado } from '../dominio/saldoDiario';
 import {
   duplicarTransacao,
   excluirParcelamento,
   excluirTransacao,
   excluirTransacoes,
+  movimentosDeCaixa,
+  saldoAte,
   type EscopoDeParcelamento,
   type Transacao,
 } from '../dados/transacoes';
@@ -24,7 +28,8 @@ import { chaves } from '../dados/chaves';
 import { usarAviso } from '../ui/Aviso';
 import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
-import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
+import { somarDias } from '../dominio/datas';
+import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { EditarTransacao } from './EditarTransacao';
 
 const MESES = [
@@ -57,6 +62,31 @@ export function Transacoes() {
   const despesas = lista.filter((t) => t.tipo === 'despesa').reduce((s, t) => s + t.valor, 0);
 
   const porDia = agruparPorDia(lista);
+
+  // Saldo diário. Vem por CAIXA, não por competência: é o único que bate com o
+  // extrato do banco (§13.2). Sem filtro de conta, usa as mesmas contas que
+  // entram no consolidado (§2.6).
+  const elegiveis = (contas.data ?? []).filter(entraNoConsolidado).map((c) => c.id);
+  const inicio = mes;
+  const fim = ultimoDiaDoMes(mes);
+
+  const abertura = useQuery({
+    queryKey: ['saldo-abertura', inicio, contaId],
+    queryFn: () => saldoAte(somarDias(inicio, -1), contaId),
+  });
+
+  const movimentos = useQuery({
+    queryKey: ['movimentos-caixa', inicio, fim, contaId, elegiveis.length],
+    queryFn: () => movimentosDeCaixa({ de: inicio, ate: fim, contaId, contasElegiveis: elegiveis }),
+    enabled: contaId !== null || elegiveis.length > 0,
+  });
+
+  const saldosDoDia =
+    abertura.data !== undefined && movimentos.data
+      ? saldosAoFimDoDia(abertura.data, movimentos.data, porDia.map(([dia]) => dia))
+      : null;
+
+  const algumAdiado = lista.some((t) => t.dataCaixa > t.dataCompetencia);
 
   return (
     <Pagina
@@ -137,8 +167,35 @@ export function Transacoes() {
         />
       )}
 
+      {algumAdiado && saldosDoDia && (
+        <Nota>
+          O saldo ao lado de cada dia é o do <strong>caixa</strong>: ele anda quando o dinheiro sai
+          de fato. Compra no cartão aparece no dia da compra e só mexe no saldo no vencimento da
+          fatura — por isso um dia pode ter lançamento e o saldo não mudar.
+        </Nota>
+      )}
+
       {porDia.map(([dia, doDia]) => (
-        <Secao key={dia} titulo={formatarBR(dia)}>
+        <Secao
+          key={dia}
+          titulo={formatarBR(dia)}
+          acao={
+            saldosDoDia?.has(dia) ? (
+              <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                saldo
+                <Dinheiro
+                  centavos={saldosDoDia.get(dia)!}
+                  className={saldosDoDia.get(dia)! < 0 ? 'text-red-400' : 'text-slate-300'}
+                />
+                {temMovimentoAdiado(doDia) && (
+                  <span title="Há compra no cartão neste dia: ela só sai do caixa no vencimento da fatura">
+                    ·
+                  </span>
+                )}
+              </span>
+            ) : undefined
+          }
+        >
           <Cartao>
             <ul className="divide-y divide-borda">
               {doDia.map((transacao) => (

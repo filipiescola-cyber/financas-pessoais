@@ -929,7 +929,7 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      saldo_ate: { Args: { p_conta?: string; p_data: string }; Returns: number }
     }
     Enums: {
       [_ in never]: never
