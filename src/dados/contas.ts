@@ -131,7 +131,7 @@ export async function desarquivarConta(id: string): Promise<void> {
  * tela demorar cinco vezes mais para dizer a mesma coisa.
  */
 export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
-  const [saldo, recorrencias, futuros, metas, cartoes, historico] = await Promise.all([
+  const [saldo, recorrencias, futuros, metas, modelos, cartoes, historico] = await Promise.all([
     saldoAte(hoje(), id),
     supabase
       .from('recorrencias')
@@ -144,6 +144,7 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
       .eq('conta_id', id)
       .gt('data_caixa', hoje()),
     supabase.from('metas').select('id', { count: 'exact', head: true }).eq('conta_id', id),
+    supabase.from('modelos').select('id', { count: 'exact', head: true }).eq('conta_id', id),
     supabase
       .from('cartoes')
       .select('conta_id', { count: 'exact', head: true })
@@ -151,7 +152,7 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
     contaTemTransacoes(id),
   ]);
 
-  for (const consulta of [recorrencias, futuros, metas, cartoes]) {
+  for (const consulta of [recorrencias, futuros, metas, modelos, cartoes]) {
     if (consulta.error) throw consulta.error;
   }
 
@@ -161,6 +162,7 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
     lancamentosFuturos: futuros.count ?? 0,
     metasVinculadas: metas.count ?? 0,
     cartoesQuePagam: cartoes.count ?? 0,
+    modelos: modelos.count ?? 0,
     temHistorico: historico,
   };
 }

@@ -1,15 +1,24 @@
 import { useState, type FormEvent } from 'react';
-import { hoje } from '../dominio/datas';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatarBR, hoje, type DataISO } from '../dominio/datas';
+import {
+  conferirEncerramentoDeCartao,
+  type AvisoDoCartao,
+  type BloqueioDoCartao,
+} from '../dominio/encerramento';
+import { situacaoDoCartao } from '../dados/cartoes';
+import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
 import { Botao, Pagina } from '../ui/base';
 import {
-  usarArquivarCartao,
   usarAtualizarCartao,
   usarCartoes,
   usarCriarCartao,
   usarDesarquivarCartao,
+  usarEncerrarCartao,
+  usarExcluirCartao,
 } from '../dados/usarCartoes';
 import { usarContas } from '../dados/usarContas';
 import { podePagarFatura } from '../dominio/saldo';
@@ -71,7 +80,7 @@ export function Cartoes() {
                     {cartao.limite !== null && ` · limite ${formatar(cartao.limite)}`}
                   </p>
                 </div>
-                <ArquivarCartao contaId={cartao.contaId} />
+                <EncerrarCartao contaId={cartao.contaId} />
               </div>
               <p className="mt-3 rounded-md bg-superficie-alta px-3 py-2 text-xs text-slate-300">
                 {descreverFatura(fatura)}
@@ -98,43 +107,193 @@ export function Cartoes() {
 
       {arquivados.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm text-slate-500">Arquivados</h2>
+          <h2 className="text-sm text-slate-500">Fora de circulação</h2>
           {arquivados.map((cartao) => (
             <DesarquivarCartao
               key={cartao.contaId}
               contaId={cartao.contaId}
               nome={cartao.conta.nome}
+              encerradoEm={cartao.conta.encerradaEm}
             />
           ))}
+          <p className="text-xs leading-relaxed text-slate-600">
+            Cartão encerrado some do seletor de lançamento, mas as faturas antigas continuam
+            inteiras. Enquanto sobrar fatura por pagar, ele continua aparecendo em Faturas — dívida
+            que sai da vista não é dívida resolvida.
+          </p>
         </section>
       )}
     </Pagina>
   );
 }
 
-function ArquivarCartao({ contaId }: { contaId: string }) {
-  const arquivar = usarArquivarCartao();
+function EncerrarCartao({ contaId }: { contaId: string }) {
+  const [aberto, setAberto] = useState(false);
   return (
-    <button
-      onClick={() => arquivar.mutate(contaId)}
-      disabled={arquivar.isPending}
-      className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
-    >
-      arquivar
-    </button>
+    <div className="shrink-0">
+      <button
+        onClick={() => setAberto((v) => !v)}
+        title="Encerrar — as faturas antigas são preservadas"
+        className="text-xs text-slate-500 hover:text-slate-300"
+      >
+        {aberto ? 'cancelar' : 'encerrar'}
+      </button>
+      {aberto && (
+        <PainelDeEncerramentoDoCartao contaId={contaId} aoTerminar={() => setAberto(false)} />
+      )}
+    </div>
   );
 }
 
-function DesarquivarCartao({ contaId, nome }: { contaId: string; nome: string }) {
+const TEXTO_DO_BLOQUEIO: Record<BloqueioDoCartao['motivo'], (q: number) => string> = {
+  fatura_cobravel: (q) =>
+    `Ainda há ${formatar(Math.abs(q))} em fatura vencida e não paga. Encerrado, o cartão sai do seletor de faturas e essa dívida some da tela — mas não some da cobrança do banco.`,
+  recorrencias: (q) =>
+    `${q} assinatura(s) são cobradas neste cartão. Se continuarem, vão gerar lançamento todo mês num cartão que não existe mais.`,
+};
+
+const TEXTO_DO_AVISO: Record<AvisoDoCartao['motivo'], (q: number) => string> = {
+  faturas_futuras: (q) =>
+    `${formatar(Math.abs(q))} em faturas que ainda vão vencer — em geral parcelamento em curso. Não impede: enquanto sobrar fatura por pagar, o cartão continua aparecendo na tela de Faturas mesmo encerrado.`,
+  modelos: (q) =>
+    `${q} atalho(s) de lançamento apontam para este cartão. Eles continuam existindo e vão preencher um cartão que saiu de circulação — vale reapontar ou apagar em Mais → Atalhos.`,
+};
+
+/**
+ * O que precisa ser resolvido antes de encerrar o cartão (§4.8).
+ *
+ * O risco aqui não é o mesmo das contas. Cartão não tem saldo, tem fatura — e
+ * um cartão fora de circulação some do seletor, levando junto o que ainda se
+ * deve. Por isso o que já venceu impede, e o que ainda vai vencer só avisa: a
+ * tela de Faturas continua mostrando cartão encerrado enquanto houver dívida.
+ */
+function PainelDeEncerramentoDoCartao({
+  contaId,
+  aoTerminar,
+}: {
+  contaId: string;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const encerrar = usarEncerrarCartao();
+  const excluir = usarExcluirCartao();
+  const [data, setData] = useState<DataISO>(hoje());
+
+  const situacao = useQuery({
+    queryKey: ['situacao-conta', contaId],
+    queryFn: () => situacaoDoCartao(contaId),
+  });
+
+  const desativar = useMutation({
+    mutationFn: () => arquivarRecorrenciasDaConta(contaId),
+    onSuccess: () => cliente.invalidateQueries(),
+  });
+
+  if (situacao.isPending) {
+    return <p className="mt-3 text-xs text-slate-500">Conferindo pendências…</p>;
+  }
+  if (situacao.isError) {
+    return <p className="mt-3 text-xs text-red-400">{(situacao.error as Error).message}</p>;
+  }
+
+  const conferencia = conferirEncerramentoDeCartao(situacao.data);
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      {conferencia.bloqueios.map((bloqueio) => (
+        <div key={bloqueio.motivo} className="space-y-2">
+          <p className="text-xs leading-relaxed text-amber-300">
+            {TEXTO_DO_BLOQUEIO[bloqueio.motivo](bloqueio.quantidade)}
+          </p>
+          {bloqueio.motivo === 'recorrencias' && (
+            <Botao
+              tipo="secundario"
+              aoClicar={() => desativar.mutate()}
+              desabilitado={desativar.isPending}
+            >
+              Desativar as {bloqueio.quantidade}
+            </Botao>
+          )}
+        </div>
+      ))}
+
+      {conferencia.avisos.map((aviso) => (
+        <p key={aviso.motivo} className="text-xs leading-relaxed text-slate-500">
+          {TEXTO_DO_AVISO[aviso.motivo](aviso.quantidade)}
+        </p>
+      ))}
+
+      <div className="space-y-2 border-t border-borda pt-3">
+        <label className="block text-xs text-slate-400">Encerrado em</label>
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className="w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+        />
+
+        <div className="flex flex-wrap gap-2">
+          <Botao
+            aoClicar={() => encerrar.mutate({ contaId, data }, { onSuccess: aoTerminar })}
+            desabilitado={!conferencia.pode || encerrar.isPending}
+          >
+            Encerrar cartão
+          </Botao>
+          {conferencia.podeExcluir && (
+            <Botao
+              tipo="secundario"
+              aoClicar={() => excluir.mutate(contaId, { onSuccess: aoTerminar })}
+              desabilitado={excluir.isPending}
+            >
+              Excluir de vez
+            </Botao>
+          )}
+        </div>
+
+        {conferencia.podeExcluir && (
+          <p className="text-xs leading-relaxed text-slate-600">
+            Este cartão nunca teve lançamento, então dá para apagar sem quebrar fatura de mês
+            fechado. As faturas vazias já geradas saem junto.
+          </p>
+        )}
+
+        {encerrar.isError && (
+          <p className="text-xs text-red-400">{(encerrar.error as Error).message}</p>
+        )}
+        {excluir.isError && (
+          <p className="text-xs text-red-400">{(excluir.error as Error).message}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function DesarquivarCartao({
+  contaId,
+  nome,
+  encerradoEm,
+}: {
+  contaId: string;
+  nome: string;
+  encerradoEm: DataISO | null;
+}) {
   const desarquivar = usarDesarquivarCartao();
   return (
-    <div className="flex items-center justify-between rounded-lg border border-borda px-4 py-2">
-      <span className="text-sm text-slate-500">{nome}</span>
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-borda px-4 py-2">
+      <span className="min-w-0 text-sm text-slate-500">
+        <span className="truncate">{nome}</span>
+        {encerradoEm !== null && (
+          <span className="block text-xs text-slate-600">
+            encerrado em {formatarBR(encerradoEm)}
+          </span>
+        )}
+      </span>
       <button
         onClick={() => desarquivar.mutate(contaId)}
-        className="text-xs text-slate-500 hover:text-slate-300"
+        className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
       >
-        reativar
+        {encerradoEm === null ? 'reativar' : 'reabrir'}
       </button>
     </div>
   );

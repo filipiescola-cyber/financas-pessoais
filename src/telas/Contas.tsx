@@ -199,6 +199,8 @@ const TEXTO_DO_AVISO: Record<Aviso['motivo'], (q: number) => string> = {
     `${q} meta(s) usam o saldo desta conta como "quanto já tem". Depois de encerrada elas vão ler zero — vale reapontar para a conta nova.`,
   cartoes: (q) =>
     `${q} cartão(ões) têm esta conta como pagadora. A tela de pagamento deixa de sugeri-la e volta a pedir a conta na hora.`,
+  modelos: (q) =>
+    `${q} atalho(s) de lançamento preenchem esta conta. Eles continuam existindo e vão apontar para uma conta fora de circulação — vale reapontar ou apagar em Mais → Atalhos.`,
 };
 
 /**

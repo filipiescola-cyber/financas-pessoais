@@ -8,6 +8,9 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { ehDiaValido } from '../dominio/fatura';
+import type { SituacaoDoCartao } from '../dominio/encerramento';
+import { contaTemTransacoes, desarquivarConta } from './contas';
+import { dividaDoCartao } from './faturas';
 import { supabase } from './supabase';
 import type { CartaoComConta, LinhaCartao, LinhaConta, TipoDeConta } from './tipos';
 import type { Database } from './tipos-gerados';
@@ -146,15 +149,66 @@ export async function atualizarCartao(
   }
 }
 
-/** Arquivar, nunca excluir (§4.8). Arquiva a conta; a linha de cartão fica. */
-export async function arquivarCartao(contaId: string): Promise<void> {
-  const { error } = await supabase.from('contas').update({ ativo: false }).eq('id', contaId);
+/**
+ * Levanta o que precisa ser resolvido antes de encerrar o cartão (§4.8).
+ *
+ * Não existe função de arquivar cartão solta, pelo mesmo motivo das contas:
+ * seria um atalho que pula esta conferência, e a conferência é o que impede
+ * dívida de sair da tela sem ter sido paga.
+ */
+export async function situacaoDoCartao(contaId: string): Promise<SituacaoDoCartao> {
+  const [divida, recorrencias, modelos, historico] = await Promise.all([
+    dividaDoCartao(contaId),
+    supabase
+      .from('recorrencias')
+      .select('id', { count: 'exact', head: true })
+      .eq('conta_id', contaId)
+      .eq('ativo', true),
+    supabase.from('modelos').select('id', { count: 'exact', head: true }).eq('conta_id', contaId),
+    contaTemTransacoes(contaId),
+  ]);
+
+  if (recorrencias.error) throw recorrencias.error;
+  if (modelos.error) throw modelos.error;
+
+  return {
+    faturaCobravel: divida.cobravel,
+    faturasFuturas: divida.futura,
+    recorrenciasAtivas: recorrencias.count ?? 0,
+    modelos: modelos.count ?? 0,
+    temHistorico: historico,
+  };
+}
+
+/**
+ * Apaga um cartão que nunca foi usado. A linha de `cartoes` sai primeiro: ela
+ * referencia a conta com ON DELETE RESTRICT, então na ordem inversa o banco
+ * recusaria e sobraria um cartão sem conta.
+ */
+export async function excluirCartaoSemHistorico(contaId: string): Promise<void> {
+  if (await contaTemTransacoes(contaId)) {
+    throw new Error(
+      'Este cartão já tem lançamentos. Encerre em vez de excluir — apagar quebraria as faturas dos meses fechados.',
+    );
+  }
+
+  const { error: erroFaturas } = await supabase.from('faturas').delete().eq('cartao_id', contaId);
+  if (erroFaturas) throw new Error(erroFaturas.message);
+
+  const { error: erroCartao } = await supabase.from('cartoes').delete().eq('conta_id', contaId);
+  if (erroCartao) throw new Error(erroCartao.message);
+
+  const { error } = await supabase.from('contas').delete().eq('id', contaId);
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Reabre o cartão. Delega para a conta porque cartão É conta (§4.2), e porque
+ * voltar a ativar sem limpar `encerrada_em` bateria na restrição do banco:
+ * conta encerrada está, por definição, fora de circulação.
+ */
 export async function desarquivarCartao(contaId: string): Promise<void> {
-  const { error } = await supabase.from('contas').update({ ativo: true }).eq('id', contaId);
-  if (error) throw new Error(error.message);
+  await desarquivarConta(contaId);
 }
 
 function validar(novo: NovoCartao) {

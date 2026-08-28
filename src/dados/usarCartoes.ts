@@ -2,13 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { chaves } from './chaves';
 import { usarInvalidarTransacoes } from './usarInvalidacao';
 import {
-  arquivarCartao,
   atualizarCartao,
   criarCartao,
   desarquivarCartao,
+  excluirCartaoSemHistorico,
   listarCartoes,
   type NovoCartao,
 } from './cartoes';
+import { encerrarConta } from './contas';
+import type { DataISO } from '../dominio/datas';
 
 export function usarCartoes(incluirArquivados = false) {
   return useQuery({
@@ -41,9 +43,22 @@ export function usarAtualizarCartao() {
   });
 }
 
-export function usarArquivarCartao() {
+/** Cartão é conta (§4.2), então encerrar é o mesmo caminho — com data (§4.8). */
+export function usarEncerrarCartao() {
   const invalidar = usarInvalidacao();
-  return useMutation({ mutationFn: (contaId: string) => arquivarCartao(contaId), onSuccess: invalidar });
+  return useMutation({
+    mutationFn: ({ contaId, data }: { contaId: string; data: DataISO }) =>
+      encerrarConta(contaId, data),
+    onSuccess: invalidar,
+  });
+}
+
+export function usarExcluirCartao() {
+  const invalidar = usarInvalidacao();
+  return useMutation({
+    mutationFn: (contaId: string) => excluirCartaoSemHistorico(contaId),
+    onSuccess: invalidar,
+  });
 }
 
 export function usarDesarquivarCartao() {

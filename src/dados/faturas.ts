@@ -142,6 +142,89 @@ export async function listarFaturas(cartaoId: string): Promise<Fatura[]> {
 }
 
 /** Total de uma fatura somando as transações. Não lê `valor_total` (§13.2). */
+/**
+ * Quanto ainda se deve num cartão, partido em duas metades (§2.1).
+ *
+ * `cobravel` é o que já venceu e não foi pago — dívida de agora. `futura` é o
+ * que ainda vai vencer, quase sempre parcelamento em curso. A divisão existe
+ * porque só a primeira metade impede encerrar o cartão: a segunda é dívida
+ * conhecida, e exigir quitá-la deixaria o cartão morto na lista por um ano.
+ *
+ * Valores vêm negativos, como as próprias transações de despesa.
+ */
+export async function dividaDoCartao(
+  cartaoId: string,
+): Promise<{ cobravel: Centavos; futura: Centavos }> {
+  const { data: faturas, error } = await supabase
+    .from('faturas')
+    .select('id, data_vencimento')
+    .eq('cartao_id', cartaoId)
+    .neq('status', 'paga');
+  if (error) throw error;
+  if (!faturas || faturas.length === 0) return { cobravel: 0, futura: 0 };
+
+  const { data: linhas, error: erroLinhas } = await supabase
+    .from('transacoes')
+    .select('valor, fatura_id')
+    .in(
+      'fatura_id',
+      faturas.map((f) => f.id),
+    )
+    // Filha de divisão não soma: o pai já está na fatura (§5.5).
+    .is('transacao_pai_id', null);
+  if (erroLinhas) throw erroLinhas;
+
+  const vencimento = new Map(faturas.map((f) => [f.id, f.data_vencimento]));
+  const referencia = hoje();
+
+  let cobravel = 0;
+  let futura = 0;
+  for (const linha of linhas ?? []) {
+    const venc = linha.fatura_id === null ? undefined : vencimento.get(linha.fatura_id);
+    if (venc === undefined) continue;
+    if (venc <= referencia) cobravel += paraCentavos(linha.valor);
+    else futura += paraCentavos(linha.valor);
+  }
+
+  return { cobravel, futura };
+}
+
+/**
+ * Cartões que ainda têm fatura por pagar, encerrados ou não.
+ *
+ * A tela de faturas usa isto para continuar mostrando um cartão encerrado
+ * enquanto sobrar dívida: some do seletor de lançamento, mas não da tela onde
+ * a dívida se paga. Dívida que sai da vista não é dívida resolvida.
+ */
+export async function cartoesComFaturaPendente(): Promise<string[]> {
+  const { data: faturas, error } = await supabase
+    .from('faturas')
+    .select('id, cartao_id')
+    .neq('status', 'paga');
+  if (error) throw error;
+  if (!faturas || faturas.length === 0) return [];
+
+  const { data: linhas, error: erroLinhas } = await supabase
+    .from('transacoes')
+    .select('valor, fatura_id')
+    .in(
+      'fatura_id',
+      faturas.map((f) => f.id),
+    )
+    .is('transacao_pai_id', null);
+  if (erroLinhas) throw erroLinhas;
+
+  const doCartao = new Map(faturas.map((f) => [f.id, f.cartao_id]));
+  const total = new Map<string, Centavos>();
+  for (const linha of linhas ?? []) {
+    const cartaoId = linha.fatura_id === null ? undefined : doCartao.get(linha.fatura_id);
+    if (cartaoId === undefined) continue;
+    total.set(cartaoId, (total.get(cartaoId) ?? 0) + paraCentavos(linha.valor));
+  }
+
+  return [...total.entries()].filter(([, valor]) => valor !== 0).map(([cartaoId]) => cartaoId);
+}
+
 export async function totalDaFatura(faturaId: string): Promise<Centavos> {
   const { data, error } = await supabase
     .from('transacoes')

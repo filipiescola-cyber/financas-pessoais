@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { conferirEncerramento, type SituacaoDaConta } from '../src/dominio/encerramento';
+import {
+  conferirEncerramento,
+  conferirEncerramentoDeCartao,
+  type SituacaoDaConta,
+  type SituacaoDoCartao,
+} from '../src/dominio/encerramento';
 
 const LIMPA: SituacaoDaConta = {
   saldo: 0,
@@ -7,6 +12,7 @@ const LIMPA: SituacaoDaConta = {
   lancamentosFuturos: 0,
   metasVinculadas: 0,
   cartoesQuePagam: 0,
+  modelos: 0,
   temHistorico: true,
 };
 
@@ -77,5 +83,55 @@ describe('excluir de vez', () => {
   it('sem histórico mas com meta apontando, não apaga', () => {
     const r = conferirEncerramento({ ...LIMPA, temHistorico: false, metasVinculadas: 1 });
     expect(r.podeExcluir).toBe(false);
+  });
+});
+
+const CARTAO_LIMPO: SituacaoDoCartao = {
+  faturaCobravel: 0,
+  faturasFuturas: 0,
+  recorrenciasAtivas: 0,
+  modelos: 0,
+  temHistorico: true,
+};
+
+describe('encerrar cartão', () => {
+  it('cartão sem dívida nenhuma pode ser encerrado', () => {
+    expect(conferirEncerramentoDeCartao(CARTAO_LIMPO).pode).toBe(true);
+  });
+
+  it('fatura já cobrável impede: a dívida sairia da tela e o banco continua cobrando', () => {
+    const r = conferirEncerramentoDeCartao({ ...CARTAO_LIMPO, faturaCobravel: -85000 });
+    expect(r.pode).toBe(false);
+    expect(r.bloqueios).toEqual([{ motivo: 'fatura_cobravel', quantidade: -85000 }]);
+  });
+
+  it('fatura futura só avisa: parcelamento em curso é dívida conhecida', () => {
+    // Exigir quitar as parcelas para encerrar deixaria o cartão morto na lista
+    // por um ano. A tela de faturas continua mostrando o cartão encerrado
+    // enquanto sobrar fatura por pagar.
+    const r = conferirEncerramentoDeCartao({ ...CARTAO_LIMPO, faturasFuturas: -240000 });
+    expect(r.pode).toBe(true);
+    expect(r.avisos).toEqual([{ motivo: 'faturas_futuras', quantidade: -240000 }]);
+  });
+
+  it('assinatura cobrada no cartão impede, igual à conta', () => {
+    const r = conferirEncerramentoDeCartao({ ...CARTAO_LIMPO, recorrenciasAtivas: 3 });
+    expect(r.pode).toBe(false);
+  });
+
+  it('modelo apontando para o cartão avisa: o atalho passa a preencher um cartão morto', () => {
+    const r = conferirEncerramentoDeCartao({ ...CARTAO_LIMPO, modelos: 2 });
+    expect(r.pode).toBe(true);
+    expect(r.avisos).toEqual([{ motivo: 'modelos', quantidade: 2 }]);
+  });
+
+  it('cartão sem histórico pode ser apagado de vez', () => {
+    expect(
+      conferirEncerramentoDeCartao({ ...CARTAO_LIMPO, temHistorico: false }).podeExcluir,
+    ).toBe(true);
+  });
+
+  it('com fatura paga no passado, nunca apaga', () => {
+    expect(conferirEncerramentoDeCartao(CARTAO_LIMPO).podeExcluir).toBe(false);
   });
 });

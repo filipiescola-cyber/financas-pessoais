@@ -8,7 +8,13 @@ import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
 import { podePagarFatura } from '../dominio/saldo';
 import { usarContas } from '../dados/usarContas';
-import { listarFaturas, pagarFatura, totalDaFatura, type Fatura } from '../dados/faturas';
+import {
+  cartoesComFaturaPendente,
+  listarFaturas,
+  pagarFatura,
+  totalDaFatura,
+  type Fatura,
+} from '../dados/faturas';
 import { listarTransacoesDaFatura } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { Chip, Pagina, Vazio } from '../ui/base';
@@ -28,24 +34,32 @@ const ROTULO_STATUS: Record<Fatura['status'], string> = {
  * dessincroniza na primeira edição de transação antiga (§13.2).
  */
 export function Faturas() {
-  const cartoes = usarCartoes();
+  const cartoes = usarCartoes(true);
   const [cartaoId, setCartaoId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (cartaoId === null && cartoes.data && cartoes.data.length > 0) {
-      setCartaoId(cartoes.data[0]?.contaId ?? null);
-    }
-  }, [cartoes.data, cartaoId]);
+  // Cartão encerrado com fatura por pagar continua aqui, e só aqui: ele já
+  // sumiu do seletor de lançamento, mas sumir também da tela onde a dívida se
+  // paga transformaria "encerrei o cartão" em "esqueci o que devia".
+  const pendentes = useQuery({
+    queryKey: ['cartoes-com-fatura-pendente'],
+    queryFn: cartoesComFaturaPendente,
+  });
 
-  if (cartoes.isPending) {
+  const lista = (cartoes.data ?? []).filter(
+    (c) => c.conta.ativo || (pendentes.data ?? []).includes(c.contaId),
+  );
+
+  useEffect(() => {
+    if (cartaoId === null && lista.length > 0) setCartaoId(lista[0]?.contaId ?? null);
+  }, [lista, cartaoId]);
+
+  if (cartoes.isPending || pendentes.isPending) {
     return (
       <Pagina titulo="Faturas">
         <p className="text-slate-400">Carregando…</p>
       </Pagina>
     );
   }
-
-  const lista = cartoes.data ?? [];
 
   if (lista.length === 0) {
     return (
@@ -71,6 +85,7 @@ export function Faturas() {
               aoClicar={() => setCartaoId(c.contaId)}
             >
               {c.conta.nome}
+              {!c.conta.ativo && ' · encerrado'}
             </Chip>
           ))}
         </div>
