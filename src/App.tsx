@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ProvedorAutenticacao } from './dados/autenticacao';
+import { AtualizacaoDisponivel } from './ui/AtualizacaoDisponivel';
 import { ProvedorAviso } from './ui/Aviso';
 import { ProvedorPrivacidade } from './ui/Privacidade';
 import { Layout } from './ui/Layout';
@@ -31,6 +32,7 @@ export function App() {
     <ProvedorAutenticacao>
       <ProvedorPrivacidade>
       <ProvedorAviso>
+        <AtualizacaoDisponivel />
         {/* O Pages serve o app numa subpasta; sem o basename toda rota
             apontaria para a raiz do domínio e nada resolveria. */}
         <BrowserRouter basename={import.meta.env.BASE_URL}>

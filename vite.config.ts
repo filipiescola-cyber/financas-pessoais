@@ -17,12 +17,16 @@ export default defineConfig({
     // Service worker ligado na Fase 8 (§12): o app abre sem rede e a fila de
     // sincronização sobe o que foi lançado offline.
     //
-    // autoUpdate: versão nova assume sozinha na próxima abertura. Sem isso o
-    // usuário fica preso a um bundle velho sem saber por quê — e num app de
-    // finanças isso significa cálculo desatualizado.
+    // `prompt` em vez de `autoUpdate`: com autoUpdate a versão nova só assumia
+    // no carregamento SEGUINTE, então o primeiro acesso depois de um deploy
+    // servia o código velho sem dizer nada — e a correção parecia não ter
+    // saído. Agora o app avisa e a troca é um clique.
+    //
+    // `injectRegister: null` porque o registro é feito no código, para poder
+    // reagir ao aviso de versão nova.
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      registerType: 'prompt',
+      injectRegister: null,
       workbox: {
         // Só os arquivos do próprio app entram no cache. As chamadas ao
         // Supabase ficam SEMPRE na rede: dado financeiro em cache é dado que
