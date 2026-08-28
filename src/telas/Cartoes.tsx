@@ -7,6 +7,7 @@ import {
   type BloqueioDoCartao,
 } from '../dominio/encerramento';
 import { situacaoDoCartao } from '../dados/cartoes';
+import { ListaDePendencias } from '../ui/ListaDePendencias';
 import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
@@ -145,19 +146,19 @@ function EncerrarCartao({ contaId }: { contaId: string }) {
   );
 }
 
-const TEXTO_DO_BLOQUEIO: Record<BloqueioDoCartao['motivo'], (q: number) => string> = {
-  fatura_cobravel: (q) =>
-    `Ainda há ${formatar(Math.abs(q))} em fatura vencida e não paga. Encerrado, o cartão sai do seletor de faturas e essa dívida some da tela — mas não some da cobrança do banco.`,
-  recorrencias: (q) =>
-    `${q} assinatura(s) são cobradas neste cartão. Se continuarem, vão gerar lançamento todo mês num cartão que não existe mais.`,
-};
+function textoDoBloqueio(bloqueio: BloqueioDoCartao): string {
+  if (bloqueio.motivo === 'fatura_cobravel') {
+    return `Ainda há ${formatar(Math.abs(bloqueio.valor))} em fatura vencida e não paga. Encerrado, o cartão sai do seletor de faturas e essa dívida some da tela — mas não some da cobrança do banco.`;
+  }
+  return 'Estas assinaturas são cobradas neste cartão. Se continuarem, vão gerar lançamento todo mês num cartão que não existe mais.';
+}
 
-const TEXTO_DO_AVISO: Record<AvisoDoCartao['motivo'], (q: number) => string> = {
-  faturas_futuras: (q) =>
-    `${formatar(Math.abs(q))} em faturas que ainda vão vencer — em geral parcelamento em curso. Não impede: enquanto sobrar fatura por pagar, o cartão continua aparecendo na tela de Faturas mesmo encerrado.`,
-  modelos: (q) =>
-    `${q} atalho(s) de lançamento apontam para este cartão. Eles continuam existindo e vão preencher um cartão que saiu de circulação — vale reapontar ou apagar em Mais → Atalhos.`,
-};
+function textoDoAviso(aviso: AvisoDoCartao): string {
+  if (aviso.motivo === 'faturas_futuras') {
+    return `${formatar(Math.abs(aviso.valor))} em faturas que ainda vão vencer — em geral parcelamento em curso. Não impede: enquanto sobrar fatura por pagar, o cartão continua aparecendo na tela de Faturas mesmo encerrado.`;
+  }
+  return 'Estes atalhos de lançamento apontam para este cartão. Eles continuam existindo e vão preencher um cartão que saiu de circulação — vale reapontar ou apagar em Mais → Atalhos.';
+}
 
 /**
  * O que precisa ser resolvido antes de encerrar o cartão (§4.8).
@@ -202,25 +203,27 @@ function PainelDeEncerramentoDoCartao({
     <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
       {conferencia.bloqueios.map((bloqueio) => (
         <div key={bloqueio.motivo} className="space-y-2">
-          <p className="text-xs leading-relaxed text-amber-300">
-            {TEXTO_DO_BLOQUEIO[bloqueio.motivo](bloqueio.quantidade)}
-          </p>
+          <p className="text-xs leading-relaxed text-amber-300">{textoDoBloqueio(bloqueio)}</p>
           {bloqueio.motivo === 'recorrencias' && (
-            <Botao
-              tipo="secundario"
-              aoClicar={() => desativar.mutate()}
-              desabilitado={desativar.isPending}
-            >
-              Desativar as {bloqueio.quantidade}
-            </Botao>
+            <>
+              <ListaDePendencias itens={bloqueio.itens} />
+              <Botao
+                tipo="secundario"
+                aoClicar={() => desativar.mutate()}
+                desabilitado={desativar.isPending}
+              >
+                Desativar
+              </Botao>
+            </>
           )}
         </div>
       ))}
 
       {conferencia.avisos.map((aviso) => (
-        <p key={aviso.motivo} className="text-xs leading-relaxed text-slate-500">
-          {TEXTO_DO_AVISO[aviso.motivo](aviso.quantidade)}
-        </p>
+        <div key={aviso.motivo} className="space-y-1.5">
+          <p className="text-xs leading-relaxed text-slate-500">{textoDoAviso(aviso)}</p>
+          {aviso.motivo === 'modelos' && <ListaDePendencias itens={aviso.itens} />}
+        </div>
       ))}
 
       <div className="space-y-2 border-t border-borda pt-3">

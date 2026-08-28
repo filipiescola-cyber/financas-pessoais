@@ -9,7 +9,7 @@
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { ehDiaValido } from '../dominio/fatura';
 import type { SituacaoDoCartao } from '../dominio/encerramento';
-import { contaTemTransacoes, desarquivarConta } from './contas';
+import { contaTemTransacoes, desarquivarConta, itemDaRecorrencia } from './contas';
 import { dividaDoCartao } from './faturas';
 import { supabase } from './supabase';
 import type { CartaoComConta, LinhaCartao, LinhaConta, TipoDeConta } from './tipos';
@@ -161,10 +161,11 @@ export async function situacaoDoCartao(contaId: string): Promise<SituacaoDoCarta
     dividaDoCartao(contaId),
     supabase
       .from('recorrencias')
-      .select('id', { count: 'exact', head: true })
+      .select('id, descricao, dia, valor_previsto')
       .eq('conta_id', contaId)
-      .eq('ativo', true),
-    supabase.from('modelos').select('id', { count: 'exact', head: true }).eq('conta_id', contaId),
+      .eq('ativo', true)
+      .order('dia'),
+    supabase.from('modelos').select('id, nome').eq('conta_id', contaId).order('ordem'),
     contaTemTransacoes(contaId),
   ]);
 
@@ -174,8 +175,8 @@ export async function situacaoDoCartao(contaId: string): Promise<SituacaoDoCarta
   return {
     faturaCobravel: divida.cobravel,
     faturasFuturas: divida.futura,
-    recorrenciasAtivas: recorrencias.count ?? 0,
-    modelos: modelos.count ?? 0,
+    recorrenciasAtivas: (recorrencias.data ?? []).map(itemDaRecorrencia),
+    modelos: (modelos.data ?? []).map((m) => ({ id: m.id, rotulo: m.nome })),
     temHistorico: historico,
   };
 }

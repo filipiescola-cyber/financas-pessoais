@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import { conferirEncerramento, type Aviso, type Bloqueio } from '../dominio/encerramento';
+import { ListaDePendencias } from '../ui/ListaDePendencias';
 import { situacaoDaConta } from '../dados/contas';
 import { criarTransferencia } from '../dados/transacoes';
 import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
@@ -185,23 +186,25 @@ function LinhaDeConta({
   );
 }
 
-const TEXTO_DO_BLOQUEIO: Record<Bloqueio['motivo'], (q: number) => string> = {
-  saldo: (q) =>
-    `Ainda tem ${formatar(Math.abs(q))} nesta conta. Dinheiro não some porque a conta fechou — ele foi para algum lugar, e esse lugar precisa estar lançado.`,
-  recorrencias: (q) =>
-    `${q} recorrência(s) ativa(s) apontam para cá. Se continuarem, geram lançamento todo mês numa conta que não existe mais — sozinhas, sem ninguém ver.`,
-};
+function textoDoBloqueio(bloqueio: Bloqueio): string {
+  if (bloqueio.motivo === 'saldo') {
+    return `Ainda tem ${formatar(Math.abs(bloqueio.valor))} nesta conta. Dinheiro não some porque a conta fechou — ele foi para algum lugar, e esse lugar precisa estar lançado.`;
+  }
+  return 'Estas recorrências ainda apontam para cá. Se continuarem, geram lançamento todo mês numa conta que não existe mais — sozinhas, sem ninguém ver.';
+}
 
-const TEXTO_DO_AVISO: Record<Aviso['motivo'], (q: number) => string> = {
-  lancamentos_futuros: (q) =>
-    `${q} lançamento(s) com data à frente continuam aqui. Está certo: parcela lançada é dívida que existe, e ela não deixa de existir porque a conta fechou.`,
-  metas: (q) =>
-    `${q} meta(s) usam o saldo desta conta como "quanto já tem". Depois de encerrada elas vão ler zero — vale reapontar para a conta nova.`,
-  cartoes: (q) =>
-    `${q} cartão(ões) têm esta conta como pagadora. A tela de pagamento deixa de sugeri-la e volta a pedir a conta na hora.`,
-  modelos: (q) =>
-    `${q} atalho(s) de lançamento preenchem esta conta. Eles continuam existindo e vão apontar para uma conta fora de circulação — vale reapontar ou apagar em Mais → Atalhos.`,
-};
+function textoDoAviso(aviso: Aviso): string {
+  switch (aviso.motivo) {
+    case 'lancamentos_futuros':
+      return 'Estes lançamentos com data à frente continuam aqui. Está certo: parcela lançada é dívida que existe, e ela não deixa de existir porque a conta fechou.';
+    case 'metas':
+      return 'Estas metas usam o saldo desta conta como "quanto já tem". Depois de encerrada elas vão ler zero — vale reapontar para a conta nova.';
+    case 'cartoes':
+      return 'Estes cartões têm esta conta como pagadora. A tela de pagamento deixa de sugeri-la e volta a pedir a conta na hora.';
+    case 'modelos':
+      return 'Estes atalhos de lançamento preenchem esta conta. Eles continuam existindo e vão apontar para uma conta fora de circulação — vale reapontar ou apagar em Mais → Atalhos.';
+  }
+}
 
 /**
  * O que precisa ser resolvido antes de encerrar (§4.8).
@@ -265,59 +268,67 @@ function PainelDeEncerramento({
     <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
       {conferencia.bloqueios.map((bloqueio) => (
         <div key={bloqueio.motivo} className="space-y-2">
-          <p className="text-xs leading-relaxed text-amber-300">
-            {TEXTO_DO_BLOQUEIO[bloqueio.motivo](bloqueio.quantidade)}
-          </p>
+          <p className="text-xs leading-relaxed text-amber-300">{textoDoBloqueio(bloqueio)}</p>
 
-          {bloqueio.motivo === 'saldo' && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] uppercase tracking-wider text-slate-600">
-                  {saldo > 0 ? 'transferir para' : 'cobrir com'}
-                </span>
-                {destinos.map((conta) => (
-                  <button
-                    key={conta.id}
-                    onClick={() => setDestinoId(conta.id)}
-                    className={`rounded-full px-2.5 py-1 text-xs transition ${
-                      destinoId === conta.id
-                        ? 'bg-sky-900/60 text-sky-200'
-                        : 'border border-borda text-slate-500 hover:border-borda-forte'
-                    }`}
-                  >
-                    {conta.nome}
-                  </button>
-                ))}
+          {bloqueio.motivo === 'saldo' &&
+            (destinos.length === 0 ? (
+              <p className="text-xs leading-relaxed text-slate-500">
+                Não há outra conta para receber esse dinheiro. Cadastre a conta para onde ele foi —
+                nem que seja a carteira — e o saldo tem para onde ir.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wider text-slate-600">
+                    {saldo > 0 ? 'transferir para' : 'cobrir com'}
+                  </span>
+                  {destinos.map((conta) => (
+                    <button
+                      key={conta.id}
+                      onClick={() => setDestinoId(conta.id)}
+                      className={`rounded-full px-2.5 py-1 text-xs transition ${
+                        destinoId === conta.id
+                          ? 'bg-sky-900/60 text-sky-200'
+                          : 'border border-borda text-slate-500 hover:border-borda-forte'
+                      }`}
+                    >
+                      {conta.nome}
+                    </button>
+                  ))}
+                </div>
+                <Botao
+                  tipo="secundario"
+                  aoClicar={() => transferir.mutate(saldo)}
+                  desabilitado={destinoId === null || transferir.isPending}
+                >
+                  Transferir {formatar(Math.abs(saldo))}
+                </Botao>
+                {transferir.isError && (
+                  <p className="text-xs text-red-400">{(transferir.error as Error).message}</p>
+                )}
               </div>
-              <Botao
-                tipo="secundario"
-                aoClicar={() => transferir.mutate(saldo)}
-                desabilitado={destinoId === null || transferir.isPending}
-              >
-                Transferir {formatar(Math.abs(saldo))}
-              </Botao>
-              {transferir.isError && (
-                <p className="text-xs text-red-400">{(transferir.error as Error).message}</p>
-              )}
-            </div>
-          )}
+            ))}
 
           {bloqueio.motivo === 'recorrencias' && (
-            <Botao
-              tipo="secundario"
-              aoClicar={() => desativar.mutate()}
-              desabilitado={desativar.isPending}
-            >
-              Desativar as {bloqueio.quantidade}
-            </Botao>
+            <>
+              <ListaDePendencias itens={bloqueio.itens} />
+              <Botao
+                tipo="secundario"
+                aoClicar={() => desativar.mutate()}
+                desabilitado={desativar.isPending}
+              >
+                Desativar
+              </Botao>
+            </>
           )}
         </div>
       ))}
 
       {conferencia.avisos.map((aviso) => (
-        <p key={aviso.motivo} className="text-xs leading-relaxed text-slate-500">
-          {TEXTO_DO_AVISO[aviso.motivo](aviso.quantidade)}
-        </p>
+        <div key={aviso.motivo} className="space-y-1.5">
+          <p className="text-xs leading-relaxed text-slate-500">{textoDoAviso(aviso)}</p>
+          <ListaDePendencias itens={aviso.itens} />
+        </div>
       ))}
 
       <div className="space-y-2 border-t border-borda pt-3">

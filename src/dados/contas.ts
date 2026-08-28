@@ -3,9 +3,9 @@
 // Esta é a fronteira: aqui o numeric do banco vira centavos inteiros e volta.
 // Nenhuma tela deve conversar com o Supabase direto.
 
-import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
+import { formatar, paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
-import type { SituacaoDaConta } from '../dominio/encerramento';
+import type { Item, SituacaoDaConta } from '../dominio/encerramento';
 import { saldoAte } from './transacoes';
 import { supabase } from './supabase';
 import type { Conta, ContaComSaldo, LinhaConta, LinhaSaldo, TipoDeConta } from './tipos';
@@ -135,20 +135,19 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
     saldoAte(hoje(), id),
     supabase
       .from('recorrencias')
-      .select('id', { count: 'exact', head: true })
+      .select('id, descricao, dia, valor_previsto')
       .eq('conta_id', id)
-      .eq('ativo', true),
+      .eq('ativo', true)
+      .order('dia'),
     supabase
       .from('transacoes')
-      .select('id', { count: 'exact', head: true })
+      .select('id, descricao, valor, data_caixa')
       .eq('conta_id', id)
-      .gt('data_caixa', hoje()),
-    supabase.from('metas').select('id', { count: 'exact', head: true }).eq('conta_id', id),
-    supabase.from('modelos').select('id', { count: 'exact', head: true }).eq('conta_id', id),
-    supabase
-      .from('cartoes')
-      .select('conta_id', { count: 'exact', head: true })
-      .eq('conta_pagamento_id', id),
+      .gt('data_caixa', hoje())
+      .order('data_caixa'),
+    supabase.from('metas').select('id, nome').eq('conta_id', id),
+    supabase.from('modelos').select('id, nome').eq('conta_id', id).order('ordem'),
+    supabase.from('cartoes').select('conta_id').eq('conta_pagamento_id', id),
     contaTemTransacoes(id),
   ]);
 
@@ -158,13 +157,39 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
 
   return {
     saldo,
-    recorrenciasAtivas: recorrencias.count ?? 0,
-    lancamentosFuturos: futuros.count ?? 0,
-    metasVinculadas: metas.count ?? 0,
-    cartoesQuePagam: cartoes.count ?? 0,
-    modelos: modelos.count ?? 0,
+    recorrenciasAtivas: (recorrencias.data ?? []).map(itemDaRecorrencia),
+    lancamentosFuturos: (futuros.data ?? []).map((t) => ({
+      id: t.id,
+      rotulo: t.descricao || 'Sem descrição',
+      detalhe: `${diaEMes(t.data_caixa)} · ${formatar(paraCentavos(t.valor))}`,
+    })),
+    metasVinculadas: (metas.data ?? []).map((m) => ({ id: m.id, rotulo: m.nome })),
+    cartoesQuePagam: await nomesDasContas((cartoes.data ?? []).map((c) => c.conta_id)),
+    modelos: (modelos.data ?? []).map((m) => ({ id: m.id, rotulo: m.nome })),
     temHistorico: historico,
   };
+}
+
+/** Recorrência do jeito que o painel de encerramento mostra: o que é e quando. */
+export function itemDaRecorrencia(linha: {
+  id: string;
+  descricao: string;
+  dia: number;
+  valor_previsto: number | null;
+}): Item {
+  const valor = linha.valor_previsto === null ? 'valor variável' : formatar(paraCentavos(linha.valor_previsto));
+  return { id: linha.id, rotulo: linha.descricao, detalhe: `dia ${linha.dia} · ${valor}` };
+}
+
+function diaEMes(data: DataISO): string {
+  return data.slice(8, 10) + '/' + data.slice(5, 7);
+}
+
+async function nomesDasContas(ids: readonly string[]): Promise<Item[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from('contas').select('id, nome').in('id', [...ids]);
+  if (error) throw error;
+  return (data ?? []).map((c) => ({ id: c.id, rotulo: c.nome }));
 }
 
 /**
