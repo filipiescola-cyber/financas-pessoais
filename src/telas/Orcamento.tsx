@@ -13,6 +13,7 @@ import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { Botao, Cartao, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -138,6 +139,8 @@ export function Orcamento() {
             <LinhaDoOrcamento
               key={categoria.id}
               nome={categoria.nome}
+              icone={categoria.icone}
+              corDaCategoria={categoria.cor}
               progresso={progressoDoOrcamento(
                 tetos.get(categoria.id) ?? 0,
                 realizadoPorCategoria.get(categoria.id) ?? 0,
@@ -164,10 +167,14 @@ export function Orcamento() {
 
 function LinhaDoOrcamento({
   nome,
+  icone,
+  corDaCategoria,
   progresso,
   aoDefinirTeto,
 }: {
   nome: string;
+  icone: string | null;
+  corDaCategoria: string | null;
   progresso: ProgressoDoOrcamento;
   aoDefinirTeto: (valor: Centavos) => Promise<void>;
 }) {
@@ -183,8 +190,11 @@ function LinhaDoOrcamento({
 
   return (
     <Cartao className="p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="truncate text-sm text-slate-100">{nome}</span>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2 text-sm text-slate-100">
+          <IconeDeCategoria chave={icone} cor={corDaCategoria} className="h-4 w-4" />
+          <span className="truncate">{nome}</span>
+        </span>
         <button
           onClick={() => setEditando((v) => !v)}
           className="shrink-0 text-xs text-slate-500 hover:text-slate-300"

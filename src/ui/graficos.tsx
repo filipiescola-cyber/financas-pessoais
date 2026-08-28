@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 
@@ -29,7 +30,8 @@ export function BarrasHorizontais({
   dados,
   cor = COR_SAIDA,
 }: {
-  dados: { rotulo: string; valor: Centavos }[];
+  /** `icone` é opcional: nem toda barra é uma categoria. */
+  dados: { rotulo: string; valor: Centavos; icone?: ReactNode }[];
   cor?: string;
 }) {
   if (dados.length === 0) return null;
@@ -42,8 +44,11 @@ export function BarrasHorizontais({
         const proporcao = item.valor / maior;
         return (
           <li key={item.rotulo}>
-            <div className="mb-1 flex items-baseline justify-between gap-3">
-              <span className="truncate text-sm text-slate-300">{item.rotulo}</span>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2 text-sm text-slate-300">
+                {item.icone}
+                <span className="truncate">{item.rotulo}</span>
+              </span>
               {/* Rótulo direto: o valor exato ao lado da barra evita o leitor
                   ter que estimar contra um eixo. */}
               <span className="numero dinheiro shrink-0 text-sm text-slate-400">

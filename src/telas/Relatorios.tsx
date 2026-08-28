@@ -14,6 +14,7 @@ import { naturezaEfetiva } from '../dominio/natureza';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { BarrasHorizontais, ColunasAgrupadas, COR_ENTRADA, COR_SAIDA } from '../ui/graficos';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const MESES = [
@@ -42,6 +43,7 @@ export function Relatorios() {
   const consulta = usarTransacoes({ de: inicioDaJanela, ate: ultimoDiaDoMes(mes) });
 
   const nomeCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.nome]));
+  const porId = new Map((categorias.data ?? []).map((c) => [c.id, c]));
   const naturezaCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.natureza]));
 
   // Quem tem filha cede o lugar a ela no relatório por categoria (§5.5). Isso é
@@ -195,12 +197,22 @@ export function Relatorios() {
             </p>
           ) : (
             <BarrasHorizontais
-              dados={porCategoria.map((fatia) => ({
-                rotulo: fatia.categoriaId
-                  ? (nomeCategoria.get(fatia.categoriaId) ?? 'Categoria removida')
-                  : 'Sem categoria',
-                valor: fatia.total,
-              }))}
+              dados={porCategoria.map((fatia) => {
+                const categoria = fatia.categoriaId ? porId.get(fatia.categoriaId) : undefined;
+                return {
+                  rotulo: fatia.categoriaId
+                    ? (nomeCategoria.get(fatia.categoriaId) ?? 'Categoria removida')
+                    : 'Sem categoria',
+                  valor: fatia.total,
+                  icone: categoria ? (
+                    <IconeDeCategoria
+                      chave={categoria.icone}
+                      cor={categoria.cor}
+                      className="h-4 w-4"
+                    />
+                  ) : null,
+                };
+              })}
             />
           )}
         </Cartao>
