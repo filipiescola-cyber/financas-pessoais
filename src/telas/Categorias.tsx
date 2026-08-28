@@ -6,6 +6,8 @@ import { chaves } from '../dados/chaves';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarAviso } from '../ui/Aviso';
 import { Botao, Pagina } from '../ui/base';
+import { EscolherIcone } from '../ui/EscolherIcone';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import type { TipoDeCategoria } from '../dados/tipos';
 
 const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
@@ -76,6 +78,7 @@ type CategoriaDaLista = {
   natureza: Natureza | null;
   sistema: boolean;
   cor: string | null;
+  icone: string | null;
 };
 
 function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
@@ -83,9 +86,19 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
   const { mostrar } = usarAviso();
   const invalidar = () => cliente.invalidateQueries({ queryKey: chaves.categorias.todas });
 
+  const [escolhendoIcone, setEscolhendoIcone] = useState(false);
+
   const atualizar = useMutation({
     mutationFn: (natureza: Natureza | null) => atualizarCategoria(categoria.id, { natureza }),
     onSuccess: invalidar,
+  });
+
+  const trocarIcone = useMutation({
+    mutationFn: (icone: string | null) => atualizarCategoria(categoria.id, { icone }),
+    onSuccess: async () => {
+      await invalidar();
+      setEscolhendoIcone(false);
+    },
   });
 
   const arquivar = useMutation({
@@ -97,14 +110,25 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
   return (
     <li className="rounded-lg border border-borda bg-superficie px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          {categoria.cor && (
-            <span
-              className="h-3 w-3 shrink-0 rounded-full"
-              style={{ backgroundColor: categoria.cor }}
-            />
-          )}
-          <span className="text-slate-100">{categoria.nome}</span>
+        <div className="flex min-w-0 items-center gap-2.5">
+          {/* O ícone é o próprio botão de trocá-lo: um "editar ícone" separado
+              seria um controle a mais para a mesma ação. Sem ícone, cai no
+              ponto colorido, que nunca deixa de funcionar. */}
+          <button
+            onClick={() => setEscolhendoIcone((v) => !v)}
+            title={escolhendoIcone ? 'fechar' : 'trocar o ícone'}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-borda text-slate-400 transition hover:border-borda-forte hover:text-slate-200"
+          >
+            {categoria.icone ? (
+              <IconeDeCategoria chave={categoria.icone} cor={categoria.cor} />
+            ) : (
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: categoria.cor ?? '#475569' }}
+              />
+            )}
+          </button>
+          <span className="truncate text-slate-100">{categoria.nome}</span>
           {categoria.sistema && (
             <span
               title="Categoria de sistema: usada pela conferência de saldo (§5.3)"
@@ -123,6 +147,16 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
           </button>
         )}
       </div>
+
+      {escolhendoIcone && (
+        <div className="mt-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+          <EscolherIcone
+            escolhido={categoria.icone}
+            cor={categoria.cor}
+            aoEscolher={(chave) => trocarIcone.mutate(chave)}
+          />
+        </div>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {NATUREZAS.map((natureza) => (
@@ -155,9 +189,10 @@ function FormularioCategoria({
   const [natureza, setNatureza] = useState<Natureza | null>(
     tipo === 'despesa' ? 'variavel' : 'variavel',
   );
+  const [icone, setIcone] = useState<string | null>(null);
 
   const criar = useMutation({
-    mutationFn: () => criarCategoria({ nome, tipo, natureza }),
+    mutationFn: () => criarCategoria({ nome, tipo, natureza, icone }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: chaves.categorias.todas });
       aoTerminar();
@@ -188,6 +223,10 @@ function FormularioCategoria({
           </button>
         ))}
       </div>
+      <div className="rounded-lg border border-borda bg-superficie-alta p-3">
+        <EscolherIcone escolhido={icone} aoEscolher={setIcone} />
+      </div>
+
       {criar.isError && <p className="text-sm text-red-400">{(criar.error as Error).message}</p>}
       <button
         onClick={() => criar.mutate()}

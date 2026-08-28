@@ -4,6 +4,7 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import { CampoValor } from '../ui/CampoValor';
 import { BottomSheet } from '../ui/BottomSheet';
 import { usarAviso } from '../ui/Aviso';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import { usarContas } from '../dados/usarContas';
 import { usarCartoes } from '../dados/usarCartoes';
 import {
@@ -191,7 +192,12 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
                     setCategoriaId(categoriaId === categoria.id ? null : categoria.id)
                   }
                 >
-                  {categoria.nome}
+                  {/* O ícone aqui é o que paga o cadastro: chip é escolha
+                      rápida, e forma se reconhece antes de palavra (§5.1). */}
+                  <span className="flex items-center gap-1.5">
+                    <IconeDeCategoria chave={categoria.icone} className="h-4 w-4" />
+                    {categoria.nome}
+                  </span>
                 </Chip>
               ))}
             </div>

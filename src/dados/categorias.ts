@@ -36,6 +36,8 @@ export async function criarCategoria(nova: {
   tipo: TipoDeCategoria;
   natureza: Natureza | null;
   cor?: string | null;
+  /** Chave do banco de ícones do front, não o desenho (§4.3). */
+  icone?: string | null;
 }): Promise<Categoria> {
   const { data, error } = await supabase
     .from('categorias')
@@ -44,6 +46,7 @@ export async function criarCategoria(nova: {
       tipo: nova.tipo,
       natureza: nova.natureza,
       cor: nova.cor ?? null,
+      icone: nova.icone ?? null,
     })
     .select()
     .single();
@@ -54,12 +57,18 @@ export async function criarCategoria(nova: {
 
 export async function atualizarCategoria(
   id: string,
-  campos: { nome?: string; natureza?: Natureza | null; cor?: string | null },
+  campos: {
+    nome?: string;
+    natureza?: Natureza | null;
+    cor?: string | null;
+    icone?: string | null;
+  },
 ): Promise<Categoria> {
   const atualizacao: AtualizacaoCategoria = {};
   if (campos.nome !== undefined) atualizacao.nome = campos.nome.trim();
   if (campos.natureza !== undefined) atualizacao.natureza = campos.natureza;
   if (campos.cor !== undefined) atualizacao.cor = campos.cor;
+  if (campos.icone !== undefined) atualizacao.icone = campos.icone;
 
   const { data, error } = await supabase
     .from('categorias')
