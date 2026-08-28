@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dev-dist/
+.vite/
 
 # Nenhuma chave no repositório, mesmo privado (§10.1).
 .env
