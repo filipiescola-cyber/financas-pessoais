@@ -23,6 +23,7 @@ import {
 } from '../dados/usarCartoes';
 import { usarContas } from '../dados/usarContas';
 import { podePagarFatura } from '../dominio/saldo';
+import { CampoInstituicao } from '../ui/CampoInstituicao';
 
 export function Cartoes() {
   const cartoes = usarCartoes(true);
@@ -74,7 +75,11 @@ export function Cartoes() {
               className="rounded-xl border border-borda bg-superficie p-4"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+                <span
+                  className="mt-0.5 h-8 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: cartao.conta.cor ?? 'var(--color-borda-forte)' }}
+                />
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-slate-100">{cartao.conta.nome}</p>
                   <p className="text-xs text-slate-500">
                     Fecha dia {cartao.diaFechamento} · vence dia {cartao.diaVencimento}
@@ -306,6 +311,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
   const criar = usarCriarCartao();
   const [nome, setNome] = useState('');
   const [instituicao, setInstituicao] = useState('');
+  const [cor, setCor] = useState<string | null>(null);
   const [limite, setLimite] = useState<Centavos>(0);
   const [diaFechamento, setDiaFechamento] = useState('');
   const [diaVencimento, setDiaVencimento] = useState('');
@@ -330,6 +336,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
     await criar.mutateAsync({
       nome,
       instituicao,
+      cor,
       limite: limite === 0 ? null : limite,
       diaFechamento: fechamento,
       diaVencimento: vencimento,
@@ -357,14 +364,14 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
         </p>
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm text-slate-400">Instituição (opcional)</label>
-        <input
-          value={instituicao}
-          onChange={(e) => setInstituicao(e.target.value)}
-          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
-        />
-      </div>
+      <CampoInstituicao
+        instituicao={instituicao}
+        cor={cor}
+        aoMudar={(nova, novaCor) => {
+          setInstituicao(nova);
+          setCor(novaCor);
+        }}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <CampoDia rotulo="Dia do fechamento" valor={diaFechamento} aoMudar={setDiaFechamento} />

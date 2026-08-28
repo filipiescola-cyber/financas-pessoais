@@ -34,6 +34,8 @@ export type Conta = {
    * apenas arquivada — encerrar e arquivar não são a mesma coisa.
    */
   encerradaEm: DataISO | null;
+  /** Cor da conta, sugerida pela instituição no cadastro (§4). */
+  cor: string | null;
 };
 
 /** Conta com o saldo calculado pela view (§13.2). */

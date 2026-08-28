@@ -24,6 +24,7 @@ function daLinha(linha: LinhaConta): Conta {
     dataConferencia: linha.data_conferencia as DataISO | null,
     ativo: linha.ativo,
     encerradaEm: linha.encerrada_em as DataISO | null,
+    cor: linha.cor,
   };
 }
 
@@ -32,6 +33,7 @@ export type NovaConta = {
   tipo: TipoDeConta;
   instituicao?: string | null;
   saldoInicial: Centavos;
+  cor?: string | null;
 };
 
 export async function listarContas(incluirArquivadas = false): Promise<Conta[]> {
@@ -75,6 +77,7 @@ export async function criarConta(nova: NovaConta): Promise<Conta> {
       tipo: nova.tipo,
       instituicao: nova.instituicao?.trim() || null,
       saldo_inicial: paraNumerico(nova.saldoInicial),
+      cor: nova.cor ?? null,
     })
     .select()
     .single();
@@ -85,7 +88,7 @@ export async function criarConta(nova: NovaConta): Promise<Conta> {
 
 export async function atualizarConta(
   id: string,
-  campos: Partial<Pick<NovaConta, 'nome' | 'instituicao' | 'saldoInicial'>>,
+  campos: Partial<Pick<NovaConta, 'nome' | 'instituicao' | 'saldoInicial' | 'cor'>>,
 ): Promise<Conta> {
   const atualizacao: AtualizacaoConta = {};
   if (campos.nome !== undefined) atualizacao.nome = campos.nome.trim();
@@ -93,6 +96,7 @@ export async function atualizarConta(
   if (campos.saldoInicial !== undefined) {
     atualizacao.saldo_inicial = paraNumerico(campos.saldoInicial);
   }
+  if (campos.cor !== undefined) atualizacao.cor = campos.cor;
 
   const { data, error } = await supabase
     .from('contas')

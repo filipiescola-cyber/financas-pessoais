@@ -4,6 +4,7 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import { conferirEncerramento, type Aviso, type Bloqueio } from '../dominio/encerramento';
 import { ListaDePendencias } from '../ui/ListaDePendencias';
+import { CampoInstituicao } from '../ui/CampoInstituicao';
 import { situacaoDaConta } from '../dados/contas';
 import { criarTransferencia } from '../dados/transacoes';
 import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
@@ -119,6 +120,7 @@ export function Contas() {
                         ? `${ROTULO_TIPO_CONTA[conta.tipo]} · ${conta.instituicao}`
                         : ROTULO_TIPO_CONTA[conta.tipo]
                     }
+                    cor={conta.cor}
                     valor={conta.saldoAtual}
                   />
                 ))}
@@ -146,12 +148,14 @@ function LinhaDeConta({
   id,
   nome,
   detalhe,
+  cor,
   valor,
   neutra = false,
 }: {
   id: string;
   nome: string;
   detalhe: string;
+  cor?: string | null;
   valor: Centavos;
   neutra?: boolean;
 }) {
@@ -160,9 +164,15 @@ function LinhaDeConta({
   return (
     <li className="px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-slate-100">{nome}</p>
-          <p className="truncate text-xs text-slate-500">{detalhe}</p>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="h-7 w-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: cor ?? 'var(--color-borda-forte)' }}
+          />
+          <div className="min-w-0">
+            <p className="truncate text-slate-100">{nome}</p>
+            <p className="truncate text-xs text-slate-500">{detalhe}</p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-4">
           <Dinheiro
@@ -428,12 +438,13 @@ function FormularioConta({ aoTerminar }: { aoTerminar: () => void }) {
   const [nome, setNome] = useState('');
   const [tipo, setTipo] = useState<TipoDeConta>('corrente');
   const [instituicao, setInstituicao] = useState('');
+  const [cor, setCor] = useState<string | null>(null);
   const [saldoInicial, setSaldoInicial] = useState<Centavos>(0);
 
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     if (nome.trim() === '') return;
-    await criar.mutateAsync({ nome, tipo, instituicao, saldoInicial });
+    await criar.mutateAsync({ nome, tipo, instituicao, cor, saldoInicial });
     aoTerminar();
   }
 
@@ -469,13 +480,14 @@ function FormularioConta({ aoTerminar }: { aoTerminar: () => void }) {
           </div>
         </Campo>
 
-        <Campo rotulo="Instituição (opcional)">
-          <input
-            value={instituicao}
-            onChange={(e) => setInstituicao(e.target.value)}
-            className={ENTRADA}
-          />
-        </Campo>
+        <CampoInstituicao
+          instituicao={instituicao}
+          cor={cor}
+          aoMudar={(nova, novaCor) => {
+            setInstituicao(nova);
+            setCor(novaCor);
+          }}
+        />
 
         <CampoValor valor={saldoInicial} aoMudar={setSaldoInicial} rotulo="Saldo inicial" />
         <p className="-mt-2 text-xs leading-relaxed text-slate-500">

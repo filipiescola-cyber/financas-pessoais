@@ -20,6 +20,7 @@ type AtualizacaoCartao = Database['public']['Tables']['cartoes']['Update'];
 export type NovoCartao = {
   nome: string;
   instituicao?: string | null;
+  cor?: string | null;
   limite: Centavos | null;
   diaFechamento: number;
   diaVencimento: number;
@@ -43,6 +44,7 @@ function montar(conta: LinhaConta, cartao: LinhaCartao): CartaoComConta {
       dataConferencia: conta.data_conferencia,
       ativo: conta.ativo,
       encerradaEm: conta.encerrada_em,
+      cor: conta.cor,
     },
   };
 }
@@ -83,6 +85,7 @@ export async function criarCartao(novo: NovoCartao): Promise<CartaoComConta> {
       nome: novo.nome.trim(),
       tipo: 'cartao_credito',
       instituicao: novo.instituicao?.trim() || null,
+      cor: novo.cor ?? null,
       // Cartão não tem saldo próprio: o que existe é fatura (§2.1).
       saldo_inicial: 0,
     })

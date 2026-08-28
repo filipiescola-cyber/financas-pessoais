@@ -175,6 +175,7 @@ export type Database = {
       contas: {
         Row: {
           ativo: boolean
+          cor: string | null
           created_at: string
           data_conferencia: string | null
           encerrada_em: string | null
@@ -188,6 +189,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          cor?: string | null
           created_at?: string
           data_conferencia?: string | null
           encerrada_em?: string | null
@@ -201,6 +203,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          cor?: string | null
           created_at?: string
           data_conferencia?: string | null
           encerrada_em?: string | null
