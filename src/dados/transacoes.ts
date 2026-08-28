@@ -13,7 +13,7 @@
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import type { DataISO } from '../dominio/datas';
 import { faturaDeReferencia, type ConfiguracaoDoCartao } from '../dominio/fatura';
-import { gerarParcelas } from '../dominio/parcelas';
+import { gerarParcelas, gerarParcelasRestantes } from '../dominio/parcelas';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -300,4 +300,54 @@ export async function excluirTransacao(transacao: Transacao): Promise<void> {
 export async function marcarRevisado(id: string, revisado: boolean): Promise<void> {
   const { error } = await supabase.from('transacoes').update({ revisado }).eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+export type ParcelamentoEmAndamento = {
+  contaId: string;
+  categoriaId: string | null;
+  descricao: string;
+  /** Valor de UMA parcela, informado pelo usuário. Aqui não se divide nada. */
+  valorDaParcela: Centavos;
+  jaPagas: number;
+  totalDeParcelas: number;
+  competenciaDaProxima: DataISO;
+  cartao?: ConfiguracaoDoCartao | null;
+};
+
+/**
+ * Parcelamento que já estava rolando quando o app começou (§4.1, passo 5).
+ *
+ * É o passo mais importante do onboarding: sem ele os próximos meses aparecem
+ * artificialmente baratos e a projeção do §8 não serve para nada. Só as parcelas
+ * RESTANTES são geradas — as já pagas aconteceram antes da data de corte.
+ */
+export async function criarParcelamentoEmAndamento(
+  dados: ParcelamentoEmAndamento,
+): Promise<string[]> {
+  const parcelas = gerarParcelasRestantes(
+    -Math.abs(dados.valorDaParcela),
+    dados.jaPagas,
+    dados.totalDeParcelas,
+    dados.competenciaDaProxima,
+  );
+
+  const grupo = crypto.randomUUID();
+  const linhas: InsercaoTransacao[] = parcelas.map((parcela) => ({
+    conta_id: dados.contaId,
+    categoria_id: dados.categoriaId,
+    descricao: dados.descricao.trim() || null,
+    valor: paraNumerico(parcela.valor),
+    tipo: 'despesa',
+    data_competencia: parcela.dataCompetencia,
+    data_caixa: dataDeCaixa(parcela.dataCompetencia, dados.cartao),
+    grupo_parcelamento_id: grupo,
+    parcela_num: parcela.numero,
+    parcela_total: parcela.total,
+    origem: 'parcelamento',
+    revisado: true,
+  }));
+
+  const { data, error } = await supabase.from('transacoes').insert(linhas).select('id');
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((linha) => linha.id);
 }

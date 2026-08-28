@@ -10,6 +10,7 @@ import { Dados } from './telas/Dados';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
 import { Mais } from './telas/Mais';
+import { Onboarding } from './telas/Onboarding';
 import { Transacoes } from './telas/Transacoes';
 
 export function App() {
@@ -19,6 +20,15 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/entrar" element={<Login />} />
+            {/* Fora do Layout: durante o wizard o FAB e as abas só distraem. */}
+            <Route
+              path="/comecar"
+              element={
+                <RotaProtegida>
+                  <Onboarding />
+                </RotaProtegida>
+              }
+            />
             <Route
               element={
                 <RotaProtegida>
