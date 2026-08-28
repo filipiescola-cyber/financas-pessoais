@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dev-dist/
+
+# Nenhuma chave no repositório, mesmo privado (§10.1).
+.env
+.env.local
+.env.*.local
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
+
+# Exports de backup (§10.2) não entram no versionamento.
+backups/
+
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Evita zoom involuntário no iOS ao focar o campo de valor (§5.1). */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Modo privado (§10.4): borra todos os valores da tela.
+   Entra em uso na Fase 1; a classe já existe para não espalhar CSS depois. */
+.valor-borrado {
+  filter: blur(7px);
+  user-select: none;
+}
