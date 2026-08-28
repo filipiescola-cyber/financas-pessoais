@@ -8,7 +8,7 @@ import {
   ultimoDiaDoMes,
   type DataISO,
 } from '../dominio/datas';
-import { formatar } from '../dominio/dinheiro';
+import { formatar, type Centavos } from '../dominio/dinheiro';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { entraNoConsolidado } from '../dominio/saldo';
@@ -34,6 +34,7 @@ import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/pr
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { IconeConfere, IconeRelogio } from '../ui/icones';
+import { RevisarELancar } from '../ui/RevisarELancar';
 import { EditarTransacao } from './EditarTransacao';
 
 const MESES = [
@@ -561,7 +562,8 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
   const { mostrar } = usarAviso();
 
   const lancar = useMutation({
-    mutationFn: () => gerarUmaOcorrencia(previsto.recorrenciaId, previsto.dataPrevista),
+    mutationFn: (valor: Centavos) =>
+      gerarUmaOcorrencia(previsto.recorrenciaId, previsto.dataPrevista, valor),
     onSuccess: async (resultado) => {
       await invalidar();
       mostrar(resultado === 'criada' ? 'Lançado.' : 'Esse já estava lançado.');
@@ -596,17 +598,21 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
               className="text-slate-500"
             />
           )}
-          {atrasado && (
-            <button
-              onClick={() => lancar.mutate()}
-              disabled={lancar.isPending}
-              className="text-xs text-emerald-400 transition hover:text-emerald-300"
-            >
-              lançar
-            </button>
-          )}
         </div>
       </div>
+
+      {/* Fora da coluna da direita: aberto, o painel precisa da linha inteira. */}
+      {atrasado && (
+        <div className="mt-1 pl-6">
+          <RevisarELancar
+            valorPrevisto={previsto.valor}
+            tipo={previsto.tipo}
+            lancando={lancar.isPending}
+            aoConfirmar={(valor) => lancar.mutate(valor)}
+            discreto
+          />
+        </div>
+      )}
     </li>
   );
 }

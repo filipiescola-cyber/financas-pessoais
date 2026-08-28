@@ -13,6 +13,7 @@
 // paralelo que possa dessincronizar.
 
 import { hoje, type DataISO } from '../dominio/datas';
+import { paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { vencimentosPendentes } from '../dominio/recorrencias';
 import { faturaDeReferencia } from '../dominio/fatura';
 import { idDaFatura } from './faturas';
@@ -112,10 +113,17 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
  * como pendência e decide lançar.
  *
  * Continua idempotente: se aquela ocorrência já existe, não cria a segunda.
+ *
+ * `valorReal` é o que o usuário conferiu na hora de lançar: salário com hora
+ * extra, luz mais cara, freela pela metade. Sem ele vale o previsto — que é
+ * expectativa, não fato. A recorrência NÃO é atualizada com esse número: um mês
+ * diferente é um mês diferente, e reescrever a expectativa a cada lançamento
+ * faria a previsão perseguir o passado em vez de prever o mês seguinte.
  */
 export async function gerarUmaOcorrencia(
   recorrenciaId: string,
   competencia: DataISO,
+  valorReal?: Centavos,
 ): Promise<'criada' | 'ja-existia'> {
   const { count, error: erroBusca } = await supabase
     .from('transacoes')
@@ -144,7 +152,13 @@ export async function gerarUmaOcorrencia(
 
   const ehReceita = recorrencia.tipo === 'receita';
   const valorPrevisto = recorrencia.valor_previsto;
-  const valor = valorPrevisto === null ? 0 : (ehReceita ? 1 : -1) * Math.abs(valorPrevisto);
+  const base =
+    valorReal !== undefined
+      ? paraNumerico(valorReal)
+      : valorPrevisto === null
+        ? 0
+        : valorPrevisto;
+  const valor = (ehReceita ? 1 : -1) * Math.abs(base);
 
   const linha: InsercaoTransacao = {
     conta_id: recorrencia.conta_id,
@@ -162,7 +176,9 @@ export async function gerarUmaOcorrencia(
     recorrencia_id: recorrencia.id,
     natureza: recorrencia.natureza,
     origem: 'recorrencia',
-    revisado: valorPrevisto !== null,
+    // Conferido pelo usuário na hora de lançar já nasce revisado, mesmo quando
+    // a recorrência é de valor variável — foi ele quem digitou o número.
+    revisado: valorReal !== undefined || valorPrevisto !== null,
   };
 
   const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);

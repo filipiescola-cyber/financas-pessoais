@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { formatar } from '../dominio/dinheiro';
+import { formatar, type Centavos } from '../dominio/dinheiro';
 import { hoje, primeiroDiaDoMes, ultimoDiaDoMes } from '../dominio/datas';
 import { entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { ADIAVEIS, lerStatusOnboarding, PASSOS } from '../dados/config';
@@ -15,6 +15,7 @@ import { formatarBR } from '../dominio/datas';
 import { useMutation } from '@tanstack/react-query';
 import { previstoDoMes, resumirPrevisto, type ItemPrevisto } from '../dominio/previsto';
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
+import { RevisarELancar } from '../ui/RevisarELancar';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { usarAviso } from '../ui/Aviso';
@@ -246,14 +247,6 @@ export function Inicio() {
           </Cartao>
         </Secao>
       )}
-
-      <Cartao className="p-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Em construção</p>
-        <p className="mt-2 text-xs leading-relaxed text-slate-500">
-          O fechamento mensal guiado e os alertas ainda não existem. Relatórios, fluxo de caixa e
-          simulador já estão em Mais.
-        </p>
-      </Cartao>
     </Pagina>
   );
 }
@@ -313,7 +306,8 @@ function PrevistoDoMes({ mes }: { mes: string }) {
   });
 
   const lancar = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: string }) => gerarUmaOcorrencia(id, data),
+    mutationFn: ({ id, data, valor }: { id: string; data: string; valor: Centavos }) =>
+      gerarUmaOcorrencia(id, data, valor),
     onSuccess: async (resultado) => {
       await invalidar();
       mostrar(
@@ -380,8 +374,8 @@ function PrevistoDoMes({ mes }: { mes: string }) {
                 key={`${item.recorrenciaId}-${item.dataPrevista}`}
                 item={item}
                 lancando={lancar.isPending}
-                aoLancar={() =>
-                  lancar.mutate({ id: item.recorrenciaId, data: item.dataPrevista })
+                aoLancar={(valor) =>
+                  lancar.mutate({ id: item.recorrenciaId, data: item.dataPrevista, valor })
                 }
               />
             ))}
@@ -399,33 +393,39 @@ function LinhaPrevista({
 }: {
   item: ItemPrevisto;
   lancando: boolean;
-  aoLancar: () => void;
+  aoLancar: (valorReal: Centavos) => void;
 }) {
   const atrasado = item.situacao === 'atrasado';
 
   return (
-    <li className="flex items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm text-slate-100">{item.descricao}</p>
-        <p className={`text-xs ${atrasado ? 'text-amber-400' : 'text-slate-500'}`}>
-          {atrasado ? 'era para ter acontecido em ' : 'previsto para '}
-          {formatarBR(item.dataPrevista)}
-          {item.valor === null && ' · valor varia'}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-3">
+    <li className="px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm text-slate-100">{item.descricao}</p>
+          <p className={`text-xs ${atrasado ? 'text-amber-400' : 'text-slate-500'}`}>
+            {atrasado ? 'era para ter acontecido em ' : 'previsto para '}
+            {formatarBR(item.dataPrevista)}
+            {item.valor === null && ' · valor varia'}
+          </p>
+        </div>
         {item.valor !== null && (
           <Dinheiro
             centavos={item.tipo === 'receita' ? item.valor : -item.valor}
-            className={`text-sm ${item.tipo === 'receita' ? 'text-emerald-400' : 'text-slate-300'}`}
+            className={`shrink-0 text-sm ${
+              item.tipo === 'receita' ? 'text-emerald-400' : 'text-slate-300'
+            }`}
           />
         )}
-        {atrasado && (
-          <Botao tipo="secundario" aoClicar={aoLancar} desabilitado={lancando} className="px-3 py-1.5">
-            lançar
-          </Botao>
-        )}
       </div>
+
+      {atrasado && (
+        <RevisarELancar
+          valorPrevisto={item.valor}
+          tipo={item.tipo}
+          lancando={lancando}
+          aoConfirmar={aoLancar}
+        />
+      )}
     </li>
   );
 }
