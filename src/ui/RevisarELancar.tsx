@@ -4,7 +4,7 @@ import { CampoValor } from './CampoValor';
 import { Botao } from './base';
 
 /**
- * Revisar antes de lançar uma recorrência prevista (§5.2).
+ * Revisar o valor antes de lançar uma recorrência prevista (§5.2).
  *
  * O valor previsto é uma expectativa, não um fato: salário vem com hora extra,
  * conta de luz vem mais cara, o freela veio pela metade. Lançar direto pelo
@@ -13,84 +13,69 @@ import { Botao } from './base';
  *
  * O previsto entra preenchido, então quando bate é um toque a mais e pronto.
  * Quando não bate, a diferença aparece escrita: é ela que o usuário confere,
- * não o valor absoluto.
+ * não o valor absoluto. E o botão diz o número que vai ser gravado, não um
+ * "confirmar" genérico.
  *
  * A recorrência NÃO é atualizada com o valor lançado. Um mês diferente é um
  * mês diferente; reescrever a expectativa a cada lançamento faria a previsão
  * perseguir o passado em vez de prever o mês seguinte.
+ *
+ * Só o painel mora aqui; o gatilho fica com a tela. As duas listas que usam
+ * isto têm formatos diferentes — na de Início o botão acompanha o valor, na de
+ * Lançamentos ele fica embaixo do ícone de relógio — e o painel aberto precisa
+ * da linha inteira nas duas. Espremer os dois casos num componente só custava
+ * mais do que a linha de estado que cada tela guarda.
  */
 export function RevisarELancar({
   valorPrevisto,
   tipo,
   lancando,
   aoConfirmar,
-  discreto = false,
+  aoCancelar,
 }: {
   valorPrevisto: Centavos | null;
   tipo: 'receita' | 'despesa';
   lancando: boolean;
   aoConfirmar: (valorReal: Centavos) => void;
-  /** Variante em texto, para linhas de lista mais apertadas. */
-  discreto?: boolean;
+  aoCancelar: () => void;
 }) {
-  const [aberto, setAberto] = useState(false);
   const [valor, setValor] = useState<Centavos>(valorPrevisto ?? 0);
-
-  if (!aberto) {
-    return discreto ? (
-      <button
-        onClick={() => setAberto(true)}
-        className="text-xs text-emerald-400 transition hover:text-emerald-300"
-      >
-        revisar e lançar
-      </button>
-    ) : (
-      <Botao tipo="secundario" aoClicar={() => setAberto(true)} className="px-3 py-1.5">
-        revisar e lançar
-      </Botao>
-    );
-  }
 
   const diferenca = valorPrevisto === null ? 0 : valor - valorPrevisto;
 
   return (
-    <div className="mt-2 w-full space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">
-      <CampoValor
-        valor={valor}
-        aoMudar={setValor}
-        autoFocus
-        rotulo={tipo === 'receita' ? 'Quanto entrou de verdade' : 'Quanto saiu de verdade'}
-      />
+    <div className="w-full space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      {/* A linha acima já diz o que é e quando era; repetir aqui seria ruído. */}
+      <p className="text-[11px] uppercase tracking-wider text-slate-500">
+        {tipo === 'receita' ? 'quanto entrou de verdade' : 'quanto saiu de verdade'}
+      </p>
+
+      <CampoValor valor={valor} aoMudar={setValor} autoFocus />
 
       {valorPrevisto === null ? (
-        <p className="text-xs text-slate-500">
-          Esta recorrência é de valor variável — não havia previsto para comparar.
+        <p className="text-xs leading-relaxed text-slate-500">
+          Recorrência de valor variável — não havia previsto para comparar.
         </p>
       ) : diferenca !== 0 ? (
-        <p className="text-xs text-amber-300">
+        <p className="text-xs leading-relaxed text-amber-300">
           {formatar(Math.abs(diferenca))} {diferenca > 0 ? 'a mais' : 'a menos'} que o previsto de{' '}
           {formatar(valorPrevisto)}.
         </p>
       ) : (
-        <p className="text-xs text-slate-600">Igual ao previsto.</p>
+        <p className="text-xs leading-relaxed text-slate-600">
+          Igual ao previsto de {formatar(valorPrevisto)}.
+        </p>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Botao
           aoClicar={() => aoConfirmar(valor)}
           desabilitado={valor <= 0 || lancando}
-          className="px-3 py-1.5"
+          className="px-3 py-1.5 text-sm"
         >
-          {lancando ? 'Lançando…' : 'Lançar'}
+          {lancando ? 'Lançando…' : `Lançar ${formatar(valor)}`}
         </Botao>
-        <Botao
-          tipo="secundario"
-          aoClicar={() => {
-            setValor(valorPrevisto ?? 0);
-            setAberto(false);
-          }}
-          className="px-3 py-1.5"
-        >
+        <Botao tipo="secundario" aoClicar={aoCancelar} className="px-3 py-1.5 text-sm">
           Cancelar
         </Botao>
       </div>

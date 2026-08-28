@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { formatar, type Centavos } from '../dominio/dinheiro';
@@ -395,12 +396,15 @@ function LinhaPrevista({
   lancando: boolean;
   aoLancar: (valorReal: Centavos) => void;
 }) {
+  const [revisando, setRevisando] = useState(false);
   const atrasado = item.situacao === 'atrasado';
 
   return (
     <li className="px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
+      {/* Envolve tudo: fechado, o gatilho fica na mesma linha do valor; aberto,
+          o painel é `w-full` e cai sozinho para a linha de baixo. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-slate-100">{item.descricao}</p>
           <p className={`text-xs ${atrasado ? 'text-amber-400' : 'text-slate-500'}`}>
             {atrasado ? 'era para ter acontecido em ' : 'previsto para '}
@@ -408,6 +412,7 @@ function LinhaPrevista({
             {item.valor === null && ' · valor varia'}
           </p>
         </div>
+
         {item.valor !== null && (
           <Dinheiro
             centavos={item.tipo === 'receita' ? item.valor : -item.valor}
@@ -416,16 +421,27 @@ function LinhaPrevista({
             }`}
           />
         )}
-      </div>
 
-      {atrasado && (
-        <RevisarELancar
-          valorPrevisto={item.valor}
-          tipo={item.tipo}
-          lancando={lancando}
-          aoConfirmar={aoLancar}
-        />
-      )}
+        {atrasado && !revisando && (
+          <Botao
+            tipo="secundario"
+            aoClicar={() => setRevisando(true)}
+            className="shrink-0 px-3 py-1 text-xs"
+          >
+            revisar e lançar
+          </Botao>
+        )}
+
+        {revisando && (
+          <RevisarELancar
+            valorPrevisto={item.valor}
+            tipo={item.tipo}
+            lancando={lancando}
+            aoConfirmar={aoLancar}
+            aoCancelar={() => setRevisando(false)}
+          />
+        )}
+      </div>
     </li>
   );
 }

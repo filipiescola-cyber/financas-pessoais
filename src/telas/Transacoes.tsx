@@ -570,12 +570,14 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
     },
   });
 
+  const [revisando, setRevisando] = useState(false);
   const atrasado = previsto.situacao === 'atrasado';
 
   return (
     <li className="px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-2.5">
+      {/* Aberto, o painel é `w-full` e cai sozinho para a linha de baixo. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3">
+        <div className="flex min-w-0 flex-1 gap-2.5">
           <span
             title="Previsto: recorrência cadastrada que ainda não virou lançamento"
             className={`mt-0.5 ${atrasado ? 'text-amber-400' : 'text-sky-400/60'}`}
@@ -598,21 +600,26 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
               className="text-slate-500"
             />
           )}
+          {atrasado && !revisando && (
+            <button
+              onClick={() => setRevisando(true)}
+              className="text-xs text-emerald-400 transition hover:text-emerald-300"
+            >
+              revisar e lançar
+            </button>
+          )}
         </div>
-      </div>
 
-      {/* Fora da coluna da direita: aberto, o painel precisa da linha inteira. */}
-      {atrasado && (
-        <div className="mt-1 pl-6">
+        {revisando && (
           <RevisarELancar
             valorPrevisto={previsto.valor}
             tipo={previsto.tipo}
             lancando={lancar.isPending}
             aoConfirmar={(valor) => lancar.mutate(valor)}
-            discreto
+            aoCancelar={() => setRevisando(false)}
           />
-        </div>
-      )}
+        )}
+      </div>
     </li>
   );
 }
