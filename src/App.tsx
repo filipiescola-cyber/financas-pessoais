@@ -7,6 +7,7 @@ import { RotaProtegida } from './ui/RotaProtegida';
 import { Cartoes } from './telas/Cartoes';
 import { Categorias } from './telas/Categorias';
 import { Contas } from './telas/Contas';
+import { Faturas } from './telas/Faturas';
 import { Dados } from './telas/Dados';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
@@ -42,6 +43,7 @@ export function App() {
               <Route path="/transacoes" element={<Transacoes />} />
               <Route path="/contas" element={<Contas />} />
               <Route path="/cartoes" element={<Cartoes />} />
+              <Route path="/faturas" element={<Faturas />} />
               <Route path="/categorias" element={<Categorias />} />
               <Route path="/dados" element={<Dados />} />
               <Route path="/mais" element={<Mais />} />

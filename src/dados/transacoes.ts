@@ -14,6 +14,7 @@ import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import type { DataISO } from '../dominio/datas';
 import { faturaDeReferencia, type ConfiguracaoDoCartao } from '../dominio/fatura';
 import { gerarParcelas, gerarParcelasRestantes } from '../dominio/parcelas';
+import { idsDasFaturas } from './faturas';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -87,6 +88,16 @@ export async function criarLancamento(novo: NovoLancamento): Promise<string[]> {
   const parcelas = gerarParcelas(total, quantidade, novo.data);
   const grupo = quantidade > 1 ? crypto.randomUUID() : null;
 
+  // Cada parcela pode cair numa fatura diferente (§2.2). As faturas são criadas
+  // sob demanda: parcelamento longo passa da janela de 12 meses.
+  const faturas = novo.cartao
+    ? await idsDasFaturas(
+        novo.contaId,
+        parcelas.map((p) => p.dataCompetencia),
+        novo.cartao,
+      )
+    : null;
+
   const linhas: InsercaoTransacao[] = parcelas.map((parcela) => ({
     conta_id: novo.contaId,
     categoria_id: novo.categoriaId,
@@ -95,6 +106,7 @@ export async function criarLancamento(novo: NovoLancamento): Promise<string[]> {
     tipo: novo.tipo,
     data_competencia: parcela.dataCompetencia,
     data_caixa: dataDeCaixa(parcela.dataCompetencia, novo.cartao),
+    fatura_id: faturas?.get(parcela.dataCompetencia) ?? null,
     grupo_parcelamento_id: grupo,
     parcela_num: quantidade > 1 ? parcela.numero : null,
     parcela_total: quantidade > 1 ? parcela.total : null,
@@ -332,6 +344,14 @@ export async function criarParcelamentoEmAndamento(
   );
 
   const grupo = crypto.randomUUID();
+  const faturas = dados.cartao
+    ? await idsDasFaturas(
+        dados.contaId,
+        parcelas.map((p) => p.dataCompetencia),
+        dados.cartao,
+      )
+    : null;
+
   const linhas: InsercaoTransacao[] = parcelas.map((parcela) => ({
     conta_id: dados.contaId,
     categoria_id: dados.categoriaId,
@@ -340,6 +360,7 @@ export async function criarParcelamentoEmAndamento(
     tipo: 'despesa',
     data_competencia: parcela.dataCompetencia,
     data_caixa: dataDeCaixa(parcela.dataCompetencia, dados.cartao),
+    fatura_id: faturas?.get(parcela.dataCompetencia) ?? null,
     grupo_parcelamento_id: grupo,
     parcela_num: parcela.numero,
     parcela_total: parcela.total,
@@ -436,4 +457,15 @@ export async function atualizarParcelamento(
 
   const { error } = await consulta;
   if (error) throw new Error(error.message);
+}
+
+/** Transações de uma fatura, inclusive as futuras (§13.2). */
+export async function listarTransacoesDaFatura(faturaId: string): Promise<Transacao[]> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('*')
+    .eq('fatura_id', faturaId)
+    .order('data_competencia', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(daLinha);
 }

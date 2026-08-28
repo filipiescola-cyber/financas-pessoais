@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { LancamentoRapido } from '../telas/LancamentoRapido';
 import { usarPrivacidade } from './Privacidade';
+import { usarRotinasDeAbertura } from '../dados/usarRotinas';
 
 const ABAS = [
   { para: '/', rotulo: 'Início' },
@@ -18,6 +19,8 @@ const ABAS = [
  */
 export function Layout() {
   const { privado, alternar } = usarPrivacidade();
+  // Nada roda sozinho neste app: quem dispara é a abertura (§13.3).
+  usarRotinasDeAbertura();
   const [lancando, setLancando] = useState(false);
 
   return (

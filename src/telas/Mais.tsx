@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 
 const ITENS = [
+  { para: '/faturas', titulo: 'Faturas', descricao: 'Fatura por mês, compras e pagamento' },
   { para: '/cartoes', titulo: 'Cartões', descricao: 'Fechamento, vencimento e limite' },
   { para: '/categorias', titulo: 'Categorias', descricao: 'Natureza fixa, variável e eventual' },
   { para: '/dados', titulo: 'Dados', descricao: 'Backup e exportação em JSON e CSV' },
