@@ -3,15 +3,20 @@
 App pessoal de gestão financeira. Especificação completa em [CLAUDE.md](CLAUDE.md);
 plano das duas primeiras fases em [PLANO-FASE-0-1.md](PLANO-FASE-0-1.md).
 
-**Estado atual: Fase 0 — fundação.** Existe schema, RLS, login e deploy. Não existe
-nenhuma funcionalidade de negócio ainda: isso é a Fase 1.
+**Estado atual: Fase 0 concluída.** Schema, RLS, login e deploy em produção estão de pé.
+Não existe nenhuma funcionalidade de negócio ainda: isso é a Fase 1.
+
+| | |
+|---|---|
+| Produção | https://gleeful-cannoli-d2872a.netlify.app |
+| Supabase | projeto `dfybnjgwlsnshzufmobm`, região São Paulo |
+| Repositório | github.com/filipiescola-cyber/financas-pessoais (privado) |
 
 ---
 
 ## Passos manuais da Fase 0
 
-O código está pronto. Estes cinco passos dependem de contas suas e não podem ser
-automatizados daqui.
+Já executados. Ficam registrados para reconstruir o ambiente do zero se preciso.
 
 ### 1. Tirar `node_modules` da sincronização do OneDrive
 
@@ -100,12 +105,12 @@ testes/        só função pura, sem teste de interface
 fixtures/      extratos anonimizados (Fase 4)
 ```
 
-## Critério de aceite da Fase 0
+## Critério de aceite da Fase 0 — cumprido
 
-- [ ] `npx supabase db push` aplica as 13 migrations sem erro
-- [ ] URL de produção abre a tela de login
-- [ ] Login funciona; logout volta para o login
-- [ ] Logado, a tela inicial mostra **0 contas** e **25 categorias**
-- [ ] Deslogado, a mesma consulta retorna zero linhas
-- [ ] Signup público desligado, confirmado tentando criar uma conta
-- [ ] `npm run teste` roda
+- [x] `npx supabase db push` aplica as 13 migrations sem erro
+- [x] URL de produção abre a tela de login
+- [x] Login funciona; logout volta para o login
+- [x] Logado, a tela inicial mostra **0 contas** e **25 categorias**
+- [x] Deslogado, a mesma consulta retorna zero linhas
+- [x] Signup público desligado, confirmado tentando criar uma conta
+- [x] `npm run teste` roda
