@@ -234,8 +234,8 @@ function CartaoDeFatura({
 
           {fatura.status === 'paga' ? (
             <p className="rounded-md border border-borda-forte px-3 py-2 text-xs text-slate-400">
-              Fatura paga. O pagamento é uma transferência, não uma despesa — a despesa já foi
-              contabilizada em cada compra.
+              Fatura paga. O pagamento quitou uma dívida; ele não é despesa, porque a despesa já
+              foi contada em cada compra.
             </p>
           ) : (
             <PagamentoDeFatura
@@ -295,7 +295,7 @@ function PagamentoDeFatura({
     onSuccess: async () => {
       await invalidar();
       setAberto(false);
-      mostrar('Fatura paga. Registrado como transferência, não como despesa.');
+      mostrar('Fatura paga. Registrado como quitação da dívida, não como despesa.');
     },
   });
 
@@ -313,9 +313,10 @@ function PagamentoDeFatura({
 
   return (
     <div className="space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
-      <p className="text-xs text-slate-400">
-        Pagamento de fatura é <strong>transferência</strong>, nunca despesa. A despesa já foi
-        contabilizada em cada compra — contar as duas coisas dobraria o gasto do mês.
+      <p className="text-xs leading-relaxed text-slate-400">
+        Isto <strong>quita uma dívida</strong>, não é uma despesa nova. O gasto já foi contado em
+        cada compra: contar de novo aqui dobraria o mês e jogaria tudo numa categoria só, em vez de
+        Mercado, Transporte e o resto.
       </p>
 
       <CampoValor valor={valor} aoMudar={setValor} rotulo={`Valor pago para ${nomeDoCartao}`} />

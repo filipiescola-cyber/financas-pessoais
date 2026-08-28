@@ -199,6 +199,65 @@ export async function dividaDoCartao(
  * enquanto sobrar dívida: some do seletor de lançamento, mas não da tela onde
  * a dívida se paga. Dívida que sai da vista não é dívida resolvida.
  */
+export type DividaDoCartao = {
+  /** O que ainda não foi pago, sempre positivo: é dívida, não saldo. */
+  total: Centavos;
+  /** Vencimento da fatura não paga mais próxima. */
+  proximoVencimento: DataISO | null;
+};
+
+/**
+ * Quanto se deve em cada cartão (§2.1).
+ *
+ * Positivo de propósito. As transações estão gravadas negativas, porque são
+ * despesa — mas na tela isto responde "quanto você deve", e dívida com sinal
+ * de menos é a mesma armadilha do §2.6: o número lido ao contrário do que
+ * significa.
+ *
+ * Uma consulta para todos os cartões em vez de uma por cartão: são poucas
+ * faturas em aberto, e a tela de contas precisa de todas de uma vez.
+ */
+export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> {
+  const { data: faturas, error } = await supabase
+    .from('faturas')
+    .select('id, cartao_id, data_vencimento')
+    .neq('status', 'paga');
+  if (error) throw error;
+  if (!faturas || faturas.length === 0) return new Map();
+
+  const { data: linhas, error: erroLinhas } = await supabase
+    .from('transacoes')
+    .select('valor, fatura_id')
+    .in(
+      'fatura_id',
+      faturas.map((f) => f.id),
+    )
+    // Filha de divisão não soma: o pai já está na fatura (§5.5).
+    .is('transacao_pai_id', null);
+  if (erroLinhas) throw erroLinhas;
+
+  const daFatura = new Map(faturas.map((f) => [f.id, f]));
+  const porCartao = new Map<string, { total: Centavos; vencimentos: DataISO[] }>();
+
+  for (const linha of linhas ?? []) {
+    const fatura = linha.fatura_id === null ? undefined : daFatura.get(linha.fatura_id);
+    if (fatura === undefined) continue;
+    const atual = porCartao.get(fatura.cartao_id) ?? { total: 0, vencimentos: [] };
+    atual.total += Math.abs(paraCentavos(linha.valor));
+    atual.vencimentos.push(fatura.data_vencimento);
+    porCartao.set(fatura.cartao_id, atual);
+  }
+
+  return new Map(
+    [...porCartao.entries()]
+      .filter(([, v]) => v.total !== 0)
+      .map(([cartaoId, v]) => [
+        cartaoId,
+        { total: v.total, proximoVencimento: v.vencimentos.sort()[0] ?? null },
+      ]),
+  );
+}
+
 export async function cartoesComFaturaPendente(): Promise<string[]> {
   const { data: faturas, error } = await supabase
     .from('faturas')

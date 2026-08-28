@@ -6,6 +6,8 @@ import { conferirEncerramento, type Aviso, type Bloqueio } from '../dominio/ence
 import { ListaDePendencias } from '../ui/ListaDePendencias';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
 import { situacaoDaConta } from '../dados/contas';
+import { dividasDosCartoes } from '../dados/faturas';
+import { usarCartoes } from '../dados/usarCartoes';
 import { criarTransferencia } from '../dados/transacoes';
 import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { empresaComSaldoSuspeito, entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
@@ -20,7 +22,12 @@ import {
   usarEncerrarConta,
   usarExcluirConta,
 } from '../dados/usarContas';
-import { ROTULO_TIPO_CONTA, TIPOS_DE_CONTA_CADASTRAVEIS, type TipoDeConta } from '../dados/tipos';
+import {
+  ROTULO_TIPO_CONTA,
+  TIPOS_DE_CONTA_CADASTRAVEIS,
+  type ContaComSaldo,
+  type TipoDeConta,
+} from '../dados/tipos';
 
 export function Contas() {
   const contas = usarContasComSaldo();
@@ -48,6 +55,7 @@ export function Contas() {
   const empresa = lista.find((c) => c.tipo === 'empresa');
   const consolidado = disponiveis.reduce((total, c) => total + c.saldoAtual, 0);
   const inativas = (todas.data ?? []).filter((c) => !c.ativo);
+  const dividasDeConta = lista.filter((c) => c.tipo === 'divida');
 
   return (
     <Pagina
@@ -130,6 +138,8 @@ export function Contas() {
           </Secao>
         </>
       )}
+
+      <BlocoDoQueDeve contas={dividasDeConta} />
 
       {inativas.length > 0 && <BlocoArquivadas contas={inativas} />}
     </Pagina>
@@ -601,5 +611,78 @@ function PainelDeEdicao({
         </Botao>
       </div>
     </div>
+  );
+}
+
+/**
+ * O que você deve (§2.1, §4.7).
+ *
+ * Fica em bloco separado de propósito. Cartão e dívida não são lugar onde o
+ * dinheiro está — são compromisso, e listá-los junto com corrente e carteira
+ * faz o cartão parecer uma subconta sua. São a outra metade da pergunta: uma
+ * lista diz onde o dinheiro está, esta diz para onde ele já está prometido.
+ *
+ * O valor vem positivo. Dívida com sinal de menos é a armadilha do §2.6 — o
+ * número lido ao contrário do que significa.
+ */
+function BlocoDoQueDeve({ contas }: { contas: ContaComSaldo[] }) {
+  const dividas = useQuery({ queryKey: ['dividas-cartoes'], queryFn: dividasDosCartoes });
+  const cartoes = usarCartoes();
+
+  const doCartao = [...(dividas.data ?? []).entries()].map(([contaId, divida]) => ({
+    id: contaId,
+    nome: cartoes.data?.find((c) => c.contaId === contaId)?.conta.nome ?? 'Cartão',
+    cor: cartoes.data?.find((c) => c.contaId === contaId)?.conta.cor ?? null,
+    detalhe: divida.proximoVencimento
+      ? `Cartão de crédito · próxima vence ${formatarBR(divida.proximoVencimento)}`
+      : 'Cartão de crédito',
+    valor: divida.total,
+  }));
+
+  const deEmprestimo = contas.map((conta) => ({
+    id: conta.id,
+    nome: conta.nome,
+    cor: conta.cor,
+    detalhe: 'Dívida',
+    valor: Math.abs(conta.saldoAtual),
+  }));
+
+  const linhas = [...doCartao, ...deEmprestimo];
+  if (linhas.length === 0) return null;
+
+  const total = linhas.reduce((soma, l) => soma + l.valor, 0);
+
+  return (
+    <Secao titulo="O que você deve">
+      <Cartao>
+        <ul className="divide-y divide-borda">
+          {linhas.map((linha) => (
+            <li key={linha.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className="h-7 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: linha.cor ?? 'var(--color-borda-forte)' }}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-slate-100">{linha.nome}</span>
+                  <span className="block truncate text-xs text-slate-500">{linha.detalhe}</span>
+                </span>
+              </span>
+              <Dinheiro centavos={linha.valor} className="shrink-0 text-slate-200" />
+            </li>
+          ))}
+          {linhas.length > 1 && (
+            <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <span className="text-xs uppercase tracking-wider text-slate-500">Total</span>
+              <Dinheiro centavos={total} className="text-sm text-slate-300" />
+            </li>
+          )}
+        </ul>
+      </Cartao>
+      <p className="text-xs leading-relaxed text-slate-600">
+        Isto não é saldo negativo: é o que já foi gasto e ainda vai sair. Pagar a fatura quita esta
+        dívida e não conta como despesa nova — o gasto já foi contado em cada compra.
+      </p>
+    </Secao>
   );
 }

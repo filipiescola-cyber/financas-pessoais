@@ -7,12 +7,13 @@ import {
   type BloqueioDoCartao,
 } from '../dominio/encerramento';
 import { situacaoDoCartao } from '../dados/cartoes';
+import { dividasDosCartoes } from '../dados/faturas';
 import { ListaDePendencias } from '../ui/ListaDePendencias';
 import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
-import { ALVO_DE_TOQUE, Botao, Pagina } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Dinheiro, Pagina } from '../ui/base';
 import {
   usarAtualizarCartao,
   usarCartoes,
@@ -27,6 +28,7 @@ import { CampoInstituicao } from '../ui/CampoInstituicao';
 
 export function Cartoes() {
   const cartoes = usarCartoes(true);
+  const dividas = useQuery({ queryKey: ['dividas-cartoes'], queryFn: dividasDosCartoes });
   const contas = usarContas();
   const atualizar = usarAtualizarCartao();
   const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
@@ -88,7 +90,27 @@ export function Cartoes() {
                 </div>
                 <EncerrarCartao contaId={cartao.contaId} />
               </div>
-              <p className="mt-3 rounded-md bg-superficie-alta px-3 py-2 text-xs text-slate-300">
+              {/* Cartão não tem saldo, tem dívida — e ela é mostrada positiva,
+                  do jeito que a fatura do banco mostra. Um número negativo
+                  chamado de saldo seria lido ao contrário (§2.6). */}
+              <div className="mt-3 flex items-baseline justify-between gap-3 rounded-md bg-superficie-alta px-3 py-2">
+                <span className="text-[11px] uppercase tracking-wider text-slate-500">
+                  Você deve
+                </span>
+                <span className="text-right">
+                  <Dinheiro
+                    centavos={dividas.data?.get(cartao.contaId)?.total ?? 0}
+                    className="text-slate-100"
+                  />
+                  {dividas.data?.get(cartao.contaId)?.proximoVencimento && (
+                    <span className="block text-[11px] text-slate-500">
+                      próxima vence {formatarBR(dividas.data.get(cartao.contaId)!.proximoVencimento!)}
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">
                 {descreverFatura(fatura)}
               </p>
               <div className="mt-3">
