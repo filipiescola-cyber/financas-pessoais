@@ -217,6 +217,28 @@ export type DividaDoCartao = {
  * Uma consulta para todos os cartões em vez de uma por cartão: são poucas
  * faturas em aberto, e a tela de contas precisa de todas de uma vez.
  */
+/**
+ * O status de um punhado de faturas, pelo id.
+ *
+ * A lista de lançamentos precisa saber quais faturas ainda não foram pagas:
+ * uma fatura em aberto é saída de caixa que vai acontecer, e o saldo previsto
+ * do dia tem que contar com ela. A paga não — nessa o dinheiro já saiu pela
+ * transferência da quitação, e somar de novo tiraria o valor duas vezes.
+ */
+export async function statusDasFaturas(
+  ids: readonly string[],
+): Promise<Map<string, StatusFatura>> {
+  if (ids.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from('faturas')
+    .select('id, status')
+    .in('id', [...ids]);
+  if (error) throw error;
+
+  return new Map((data ?? []).map((f) => [f.id, f.status as StatusFatura]));
+}
+
 export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> {
   const { data: faturas, error } = await supabase
     .from('faturas')

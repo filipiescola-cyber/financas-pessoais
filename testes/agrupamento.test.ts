@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { agruparPorCaixa, type TransacaoAgrupavel } from '../src/dominio/agrupamento';
+import {
+  agruparPorCaixa,
+  faturasQueAindaVaoSair,
+  type BlocoDeFatura,
+  type TransacaoAgrupavel,
+} from '../src/dominio/agrupamento';
 
 function t(p: Partial<TransacaoAgrupavel> & { id: string }): TransacaoAgrupavel {
   return {
@@ -93,5 +98,39 @@ describe('agrupar por caixa', () => {
 
   it('lista vazia não vira dia nenhum', () => {
     expect(agruparPorCaixa([])).toEqual([]);
+  });
+});
+
+describe('fatura no saldo previsto', () => {
+  function blocos(): BlocoDeFatura<TransacaoAgrupavel>[] {
+    const dias = agruparPorCaixa([
+      t({ id: 'a', faturaId: 'aberta', dataCaixa: '2026-10-09', valor: -1275 }),
+      t({ id: 'b', faturaId: 'quitada', dataCaixa: '2026-10-20', valor: -50000 }),
+    ]);
+    return dias.flatMap((d) => d.linhas.flatMap((l) => (l.tipo === 'fatura' ? [l] : [])));
+  }
+
+  it('fatura em aberto vira saída no dia do vencimento', () => {
+    // O defeito que isto fecha: a lista mostrava a fatura de R$ 12,75 no dia 9
+    // e o saldo do dia continuava o mesmo, como se ela não fosse sair.
+    const saidas = faturasQueAindaVaoSair(blocos(), new Set(['quitada']));
+    expect(saidas).toEqual([
+      { valor: -1275, dataCaixa: '2026-10-09', transacaoPaiId: null },
+    ]);
+  });
+
+  it('fatura paga fica de fora: o dinheiro já saiu pela quitação', () => {
+    // Contar as duas tiraria o valor duas vezes do saldo.
+    const saidas = faturasQueAindaVaoSair(blocos(), new Set(['aberta', 'quitada']));
+    expect(saidas).toEqual([]);
+  });
+
+  it('sem nenhuma paga, todas entram', () => {
+    expect(faturasQueAindaVaoSair(blocos(), new Set())).toHaveLength(2);
+  });
+
+  it('o sinal é o da própria fatura: saída é negativa', () => {
+    const [saida] = faturasQueAindaVaoSair(blocos(), new Set(['quitada']));
+    expect(saida!.valor).toBeLessThan(0);
   });
 });

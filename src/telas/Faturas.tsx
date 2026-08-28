@@ -8,6 +8,7 @@ import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
 import { podePagarFatura } from '../dominio/saldo';
 import { usarContas } from '../dados/usarContas';
+import { usarCategorias } from '../dados/usarTransacoes';
 import {
   cartoesComFaturaPendente,
   desfazerPagamentoDeFatura,
@@ -183,7 +184,11 @@ function CartaoDeFatura({
 
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
+  const categorias = usarCategorias(true);
   const [editando, setEditando] = useState<Transacao | null>(null);
+
+  const nomeDaCategoria = (id: string | null) =>
+    id === null ? null : (categorias.data?.find((c) => c.id === id)?.nome ?? null);
 
   const desfazer = useMutation({
     mutationFn: () => desfazerPagamentoDeFatura(fatura.id),
@@ -237,7 +242,11 @@ function CartaoDeFatura({
                   className="flex w-full justify-between gap-3 rounded-md px-1 py-1 text-left text-sm transition hover:bg-superficie-alta"
                 >
                   <span className="truncate text-slate-300">
-                    {transacao.descricao || 'Sem descrição'}
+                    {/* Sem descrição, cai na categoria — igual à lista de
+                        lançamentos. "Sem descrição 2/2" não identifica nada. */}
+                    {transacao.descricao ||
+                      nomeDaCategoria(transacao.categoriaId) ||
+                      'Sem descrição'}
                     {transacao.parcelaNum && (
                       <span className="text-slate-500">
                         {' '}

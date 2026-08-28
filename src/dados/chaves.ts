@@ -55,6 +55,7 @@ export const DERIVADO_DE_TRANSACAO: readonly (readonly string[])[] = [
   ['situacao-conta'],
   ['cartoes-com-fatura-pendente'],
   ['dividas-cartoes'],
+  ['status-faturas'],
   ['recorrencias'],
   ['investimentos'],
 ];

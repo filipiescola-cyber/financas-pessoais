@@ -109,3 +109,25 @@ export function agruparPorCaixa<T extends TransacaoAgrupavel>(
     })
     .sort((a, b) => b.dia.localeCompare(a.dia));
 }
+
+/**
+ * As faturas que ainda vão sair do caixa (§2.1, §13.2).
+ *
+ * Uma fatura em aberto é saída de caixa que vai acontecer no vencimento — a
+ * mesma natureza da recorrência prevista, e entra no saldo do dia pelo mesmo
+ * motivo: sem ela a lista mostra a fatura inteira num dia em que o saldo ao
+ * lado não se mexe, que é a contradição que a visão por caixa existe para
+ * desfazer.
+ *
+ * A fatura PAGA fica de fora. Nela o dinheiro já saiu pela transferência da
+ * quitação, que está entre os movimentos reais — contar as duas tiraria o
+ * valor duas vezes do saldo.
+ */
+export function faturasQueAindaVaoSair<T extends TransacaoAgrupavel>(
+  blocos: readonly BlocoDeFatura<T>[],
+  faturasPagas: ReadonlySet<string>,
+): { valor: Centavos; dataCaixa: DataISO; transacaoPaiId: null }[] {
+  return blocos
+    .filter((bloco) => !faturasPagas.has(bloco.faturaId))
+    .map((bloco) => ({ valor: bloco.total, dataCaixa: bloco.vencimento, transacaoPaiId: null }));
+}

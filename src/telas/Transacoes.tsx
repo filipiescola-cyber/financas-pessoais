@@ -32,8 +32,13 @@ import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
 import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
-import { agruparPorCaixa, type BlocoDeFatura } from '../dominio/agrupamento';
+import {
+  agruparPorCaixa,
+  faturasQueAindaVaoSair,
+  type BlocoDeFatura,
+} from '../dominio/agrupamento';
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
+import { statusDasFaturas } from '../dados/faturas';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
 import { RevisarELancar } from '../ui/RevisarELancar';
@@ -55,6 +60,7 @@ export function Transacoes() {
   const [editando, setEditando] = useState<Transacao | null>(null);
 
   const contas = usarContas();
+  const cartoes = usarCartoes();
   const categorias = usarCategorias(true);
   const transacoes = usarTransacoes({
     de: mes,
@@ -142,6 +148,20 @@ export function Transacoes() {
       ? previstoAteOMes(recorrenciasPrevistas, geradasDaPonte.data, mesCorrente, mes, hoje())
       : null;
 
+  // Quais faturas do mês ainda não foram pagas. Sem isto o saldo previsto do
+  // dia do vencimento ignora a fatura inteira — a lista mostra -R$ 1.000 e o
+  // saldo ao lado não se mexe, que é a contradição que esta tela existe para
+  // não ter.
+  const faturasDoMes = porDia.flatMap(([, linhas]) =>
+    linhas.flatMap((linha) => (linha.tipo === 'fatura' ? [linha.bloco] : [])),
+  );
+
+  const statusDeFatura = useQuery({
+    queryKey: ['status-faturas', faturasDoMes.map((f) => f.faturaId).sort().join(',')],
+    queryFn: () => statusDasFaturas(faturasDoMes.map((f) => f.faturaId)),
+    enabled: faturasDoMes.length > 0,
+  });
+
   const movimentos = useQuery({
     queryKey: ['movimentos-caixa', inicio, fim, contaId, elegiveis.length],
     queryFn: () => movimentosDeCaixa({ de: inicio, ate: fim, contaId, contasElegiveis: elegiveis }),
@@ -160,11 +180,33 @@ export function Transacoes() {
       transacaoPaiId: null,
     }));
 
+  /**
+   * A fatura em aberto é saída de caixa que ainda vai acontecer — mesma
+   * natureza da recorrência prevista, e entra no saldo do mesmo jeito.
+   *
+   * A paga fica de fora: nela o dinheiro já saiu pela transferência da
+   * quitação, que está nos movimentos reais. Contar as duas tiraria o valor
+   * duas vezes.
+   */
+  const movimentosDeFatura = faturasQueAindaVaoSair(
+    // Filtrando por uma conta, a fatura só pesa nela se for quem paga.
+    faturasDoMes.filter(
+      (bloco) =>
+        contaId === null ||
+        cartoes.data?.find((c) => c.contaId === bloco.contaId)?.contaPagamentoId === contaId,
+    ),
+    new Set(
+      [...(statusDeFatura.data ?? new Map()).entries()]
+        .filter(([, status]) => status === 'paga')
+        .map(([id]) => id),
+    ),
+  );
+
   const saldosDoDia =
     abertura.data !== undefined && movimentos.data && previstoDaPonte !== null
       ? saldosAoFimDoDia(
           abertura.data + previstoDaPonte,
-          [...movimentos.data, ...movimentosPrevistos],
+          [...movimentos.data, ...movimentosPrevistos, ...movimentosDeFatura],
           porDia.map(([dia]) => dia),
         )
       : null;
@@ -290,6 +332,7 @@ export function Transacoes() {
                   <BlocoDaFatura
                     key={linha.bloco.faturaId}
                     bloco={linha.bloco}
+                    paga={statusDeFatura.data?.get(linha.bloco.faturaId) === 'paga'}
                     nomeCartao={nomeConta.get(linha.bloco.contaId) ?? 'Cartão'}
                     nomeDaCategoria={(id) => (id ? (nomeCategoria.get(id) ?? null) : null)}
                     aoEditar={setEditando}
@@ -693,11 +736,13 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
  */
 function BlocoDaFatura({
   bloco,
+  paga,
   nomeCartao,
   nomeDaCategoria,
   aoEditar,
 }: {
   bloco: BlocoDeFatura<Transacao>;
+  paga: boolean;
   nomeCartao: string;
   nomeDaCategoria: (id: string | null) => string | null;
   aoEditar: (transacao: Transacao) => void;
@@ -711,11 +756,14 @@ function BlocoDaFatura({
         className="flex w-full items-start justify-between gap-3 text-left"
       >
         <span className="flex min-w-0 gap-2.5">
-          <IconeFaturas className="mt-0.5 shrink-0 text-slate-500" />
+          <IconeFaturas
+            className={`mt-0.5 shrink-0 ${paga ? 'text-emerald-500/70' : 'text-amber-400/80'}`}
+          />
           <span className="min-w-0">
             <span className="block truncate text-slate-100">Fatura · {nomeCartao}</span>
             <span className="block truncate text-xs text-slate-500">
-              {bloco.compras.length} lançamento(s) · vence {formatarBR(bloco.vencimento)}
+              {bloco.compras.length} lançamento(s) ·{' '}
+              {paga ? `paga · venceu ${formatarBR(bloco.vencimento)}` : `vence ${formatarBR(bloco.vencimento)}`}
             </span>
           </span>
         </span>
