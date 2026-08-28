@@ -7,7 +7,7 @@ const ABAS = [
   { para: '/', rotulo: 'Início' },
   { para: '/transacoes', rotulo: 'Lançamentos' },
   { para: '/contas', rotulo: 'Contas' },
-  { para: '/cartoes', rotulo: 'Cartões' },
+  { para: '/mais', rotulo: 'Mais' },
 ];
 
 /**
