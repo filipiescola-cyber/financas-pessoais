@@ -8,11 +8,23 @@ export default defineConfig({
   plugins: [
     react(),
     tailwind(),
-    // Manifest agora, service worker só na Fase 8 (§12).
-    // injectRegister: null impede o registro do SW — cache offline mal
-    // configurado durante o desenvolvimento serve versão velha e faz perder horas.
+    // Service worker ligado na Fase 8 (§12): o app abre sem rede e a fila de
+    // sincronização sobe o que foi lançado offline.
+    //
+    // autoUpdate: versão nova assume sozinha na próxima abertura. Sem isso o
+    // usuário fica preso a um bundle velho sem saber por quê — e num app de
+    // finanças isso significa cálculo desatualizado.
     VitePWA({
-      injectRegister: null,
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      workbox: {
+        // Só os arquivos do próprio app entram no cache. As chamadas ao
+        // Supabase ficam SEMPRE na rede: dado financeiro em cache é dado que
+        // mente, e a fila já cobre o caso de estar sem conexão.
+        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        navigateFallback: '/index.html',
+        cleanupOutdatedCaches: true,
+      },
       manifest: {
         name: 'Finanças Pessoais',
         short_name: 'Finanças',

@@ -22,6 +22,8 @@ import {
 import { usarCartoes } from '../dados/usarCartoes';
 import { chaves } from '../dados/chaves';
 import { usarAviso } from '../ui/Aviso';
+import { listarPendentes } from '../dados/fila';
+import { usarFila } from '../dados/usarFila';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
 import { EditarTransacao } from './EditarTransacao';
 
@@ -43,6 +45,7 @@ export function Transacoes() {
   const contas = usarContas();
   const categorias = usarCategorias(true);
   const transacoes = usarTransacoes({ de: mes, ate: ultimoDiaDoMes(mes), contaId });
+  const fila = usarFila();
 
   const nomeConta = new Map((contas.data ?? []).map((c) => [c.id, c.nome]));
   const nomeCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.nome]));
@@ -94,6 +97,33 @@ export function Transacoes() {
           </FiltroChip>
         ))}
       </div>
+
+      {fila.pendentes > 0 && (
+        <Secao titulo="Esperando conexão">
+          <Cartao>
+            <ul className="divide-y divide-borda">
+              {listarPendentes().map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-slate-300">{item.descricao}</p>
+                    <p className="text-xs text-slate-500">
+                      {item.linhas.length} linha(s) · ainda não subiu
+                    </p>
+                  </div>
+                  <Dinheiro
+                    centavos={Math.round(Number(item.linhas[0]?.valor ?? 0) * 100)}
+                    className="shrink-0 text-sm text-slate-400"
+                  />
+                </li>
+              ))}
+            </ul>
+          </Cartao>
+          <p className="text-xs leading-relaxed text-slate-600">
+            Estes lançamentos foram feitos sem conexão e ainda não estão no banco. Eles aparecem
+            aqui para você não lançar de novo — e sobem sozinhos quando a rede voltar.
+          </p>
+        </Secao>
+      )}
 
       {transacoes.isPending && <p className="text-slate-400">Carregando…</p>}
       {transacoes.isError && (

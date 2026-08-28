@@ -503,3 +503,71 @@ export async function duplicarTransacao(
   if (error) throw new Error(error.message);
   return (criadas ?? []).map((l) => l.id);
 }
+
+// ---------------------------------------------------------------- offline --
+//
+// Montagem das linhas SEM rede, para a fila de sincronização (Fase 8).
+//
+// Diferenças propositais em relação ao caminho online:
+//   os ids saem daqui, o que torna o reenvio idempotente;
+//   `fatura_id` fica nulo, porque descobrir a fatura exige consultar o banco —
+//   o backfill da abertura resolve depois, de forma determinística (§13.3).
+
+export function montarLinhasOffline(novo: NovoLancamento): InsercaoTransacao[] {
+  const sinal = novo.tipo === 'despesa' ? -1 : 1;
+  const quantidade = Math.max(1, Math.trunc(novo.parcelas ?? 1));
+  const parcelas = gerarParcelas(sinal * Math.abs(novo.valor), quantidade, novo.data);
+  const grupo = quantidade > 1 ? crypto.randomUUID() : null;
+
+  return parcelas.map((parcela) => ({
+    id: crypto.randomUUID(),
+    conta_id: novo.contaId,
+    categoria_id: novo.categoriaId,
+    descricao: novo.descricao?.trim() || null,
+    valor: paraNumerico(parcela.valor),
+    tipo: novo.tipo,
+    data_competencia: parcela.dataCompetencia,
+    data_caixa: dataDeCaixa(parcela.dataCompetencia, novo.cartao),
+    fatura_id: null,
+    grupo_parcelamento_id: grupo,
+    parcela_num: quantidade > 1 ? parcela.numero : null,
+    parcela_total: quantidade > 1 ? parcela.total : null,
+    origem: quantidade > 1 ? 'parcelamento' : 'manual',
+    revisado: true,
+  }));
+}
+
+export function montarLinhasDeTransferenciaOffline(nova: NovaTransferencia): InsercaoTransacao[] {
+  const valor = Math.abs(nova.valor);
+  // As duas pontas já nascem ligadas: offline não há um segundo passo para
+  // amarrar o par, e transferência com uma ponta solta desequilibra dois saldos.
+  const idSaida = crypto.randomUUID();
+  const idEntrada = crypto.randomUUID();
+
+  const comum = {
+    tipo: 'transferencia' as const,
+    data_competencia: nova.data,
+    data_caixa: nova.data,
+    descricao: nova.descricao?.trim() || null,
+    motivo_empresa: nova.motivoEmpresa ?? null,
+    origem: 'manual' as const,
+    revisado: true,
+  };
+
+  return [
+    {
+      ...comum,
+      id: idSaida,
+      conta_id: nova.contaOrigemId,
+      valor: paraNumerico(-valor),
+      transferencia_par_id: idEntrada,
+    },
+    {
+      ...comum,
+      id: idEntrada,
+      conta_id: nova.contaDestinoId,
+      valor: paraNumerico(valor),
+      transferencia_par_id: idSaida,
+    },
+  ];
+}

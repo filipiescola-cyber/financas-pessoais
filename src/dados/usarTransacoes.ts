@@ -8,11 +8,14 @@ import {
   criarTransferencia,
   excluirTransacoes,
   listarTransacoes,
+  montarLinhasDeTransferenciaOffline,
+  montarLinhasOffline,
   registrarDescricao,
   type NovaTransferencia,
   type NovoLancamento,
   type TipoDeLancamento,
 } from './transacoes';
+import { enfileirar, estaOnline, removerLinhasDaFila } from './fila';
 
 const CHAVE_TRANSACOES = ['transacoes'] as const;
 
@@ -79,6 +82,14 @@ export function usarCriarLancamento() {
   const invalidar = usarInvalidacao();
   return useMutation({
     mutationFn: async (novo: NovoLancamento) => {
+      // Sem rede o lançamento não falha: entra na fila com ids já gerados e
+      // sobe quando a conexão voltar (Fase 8).
+      if (!estaOnline()) {
+        const linhas = montarLinhasOffline(novo);
+        enfileirar(novo.descricao?.trim() || 'Lançamento', linhas);
+        return linhas.map((linha) => linha.id!).filter(Boolean);
+      }
+
       const ids = await criarLancamento(novo);
       // A memória de autocomplete não pode derrubar o lançamento se falhar.
       void registrarDescricao(novo.descricao, novo.categoriaId, novo.contaId).catch(() => {});
@@ -91,7 +102,16 @@ export function usarCriarLancamento() {
 export function usarCriarTransferencia() {
   const invalidar = usarInvalidacao();
   return useMutation({
-    mutationFn: (nova: NovaTransferencia) => criarTransferencia(nova),
+    mutationFn: async (nova: NovaTransferencia) => {
+      if (!estaOnline()) {
+        // As duas pontas já saem ligadas: offline não há um segundo passo para
+        // amarrar o par (§2.3).
+        const linhas = montarLinhasDeTransferenciaOffline(nova);
+        enfileirar('Transferência', linhas);
+        return linhas.map((linha) => linha.id!).filter(Boolean);
+      }
+      return criarTransferencia(nova);
+    },
     onSuccess: invalidar,
   });
 }
@@ -99,7 +119,14 @@ export function usarCriarTransferencia() {
 export function usarDesfazer() {
   const invalidar = usarInvalidacao();
   return useMutation({
-    mutationFn: (ids: string[]) => excluirTransacoes(ids),
+    mutationFn: async (ids: string[]) => {
+      // O que ainda está na fila é desfeito removendo da fila: no banco esses
+      // ids não existem, e deixá-los passar faria o item subir depois,
+      // ressuscitando o que o usuário mandou apagar.
+      const removidos = removerLinhasDaFila(ids);
+      if (removidos > 0) return;
+      await excluirTransacoes(ids);
+    },
     onSuccess: invalidar,
   });
 }

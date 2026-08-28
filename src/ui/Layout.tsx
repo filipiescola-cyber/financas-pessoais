@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { LancamentoRapido } from '../telas/LancamentoRapido';
 import { usarPrivacidade } from './Privacidade';
 import { usarRotinasDeAbertura } from '../dados/usarRotinas';
+import { usarFila } from '../dados/usarFila';
 import {
   IconeCategorias,
   IconeConferencia,
@@ -62,6 +63,7 @@ export function Layout() {
 
   // Nada roda sozinho neste app: quem dispara é a abertura (§13.3).
   usarRotinasDeAbertura();
+  const fila = usarFila();
 
   return (
     <div className="min-h-screen md:flex">
@@ -69,6 +71,12 @@ export function Layout() {
 
       <div className="min-w-0 flex-1">
         <CabecalhoCelular privado={privado} aoAlternarPrivacidade={alternar} />
+        <AvisoDeConexao
+          online={fila.online}
+          pendentes={fila.pendentes}
+          sincronizando={fila.sincronizando}
+          aoSincronizar={() => void fila.sincronizarAgora()}
+        />
         <main>
           <Outlet />
         </main>
@@ -208,5 +216,51 @@ function BarraInferior() {
         ))}
       </div>
     </nav>
+  );
+}
+
+/**
+ * Estado da conexão e da fila (Fase 8).
+ *
+ * Só aparece quando há algo a dizer. Uma faixa permanente de "você está online"
+ * é ruído: o normal não precisa ser anunciado.
+ */
+function AvisoDeConexao({
+  online,
+  pendentes,
+  sincronizando,
+  aoSincronizar,
+}: {
+  online: boolean;
+  pendentes: number;
+  sincronizando: boolean;
+  aoSincronizar: () => void;
+}) {
+  if (online && pendentes === 0) return null;
+
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 px-4 py-2 text-xs ${
+        online
+          ? 'border-b border-sky-900/50 bg-sky-950/40 text-sky-200'
+          : 'border-b border-amber-900/50 bg-amber-950/40 text-amber-200'
+      }`}
+    >
+      <span>
+        {!online && 'Sem conexão. '}
+        {pendentes > 0
+          ? `${pendentes} lançamento(s) esperando para subir.`
+          : 'Os lançamentos continuam funcionando e sobem quando a conexão voltar.'}
+      </span>
+      {online && pendentes > 0 && (
+        <button
+          onClick={aoSincronizar}
+          disabled={sincronizando}
+          className="shrink-0 font-medium underline disabled:opacity-50"
+        >
+          {sincronizando ? 'enviando…' : 'enviar agora'}
+        </button>
+      )}
+    </div>
   );
 }
