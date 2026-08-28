@@ -1,16 +1,35 @@
 @import "tailwindcss";
 
+/* Paleta e tokens.
+   O escuro azulado com verde esmeralda é o do app desde a Fase 0; o que muda
+   aqui é a estrutura — superfícies, sombra, hierarquia — não a cor. */
+@theme {
+  --color-fundo: #0b1120;
+  --color-superficie: #111a2e;
+  --color-superficie-alta: #16213a;
+  --color-borda: #1e2a44;
+  --color-borda-forte: #2b3b5c;
+}
+
 :root {
   color-scheme: dark;
 }
 
 body {
   margin: 0;
-  background-color: #0f172a;
+  background-color: var(--color-fundo);
   color: #e2e8f0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   /* Evita zoom involuntário no iOS ao focar o campo de valor (§5.1). */
   -webkit-text-size-adjust: 100%;
+}
+
+/* Número é para ser lido em coluna e comparado. Monoespaçado com dígitos de
+   largura fixa faz R$ 1.234,56 e R$ 987,00 alinharem pela vírgula. */
+.numero {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 /* Modo privado (§10.4): borra todos os valores da tela.
@@ -19,4 +38,25 @@ body {
 [data-privado='true'] .dinheiro {
   filter: blur(8px);
   user-select: none;
+}
+
+@keyframes subir {
+  from {
+    transform: translateY(12px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.subindo {
+  animation: subir 0.16s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subindo {
+    animation: none;
+  }
 }

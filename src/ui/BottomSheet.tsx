@@ -40,7 +40,7 @@ export function BottomSheet({ aberto, aoFechar, children }: Props) {
         className="absolute inset-0 bg-black/60"
         tabIndex={-1}
       />
-      <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-slate-800 bg-slate-900 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
+      <div className="subindo relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-borda bg-superficie p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black/60 md:mb-8 md:rounded-2xl">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-700" />
         {children}
       </div>

@@ -31,8 +31,16 @@ export function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
-      <form onSubmit={aoEnviar} className="w-full max-w-sm space-y-4">
-        <h1 className="text-2xl font-semibold text-slate-100">Finanças Pessoais</h1>
+      <form onSubmit={aoEnviar} className="w-full max-w-sm space-y-4 rounded-2xl border border-borda bg-superficie p-6 shadow-2xl shadow-black/40">
+        <div className="mb-2 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-lg font-semibold text-white">
+            F
+          </div>
+          <div className="leading-tight">
+            <h1 className="text-xl font-semibold text-slate-100">Finanças</h1>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Pessoais</p>
+          </div>
+        </div>
 
         <label className="block">
           <span className="text-sm text-slate-400">E-mail</span>
@@ -42,7 +50,7 @@ export function Login() {
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </label>
 
@@ -54,7 +62,7 @@ export function Login() {
             autoComplete="current-password"
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </label>
 

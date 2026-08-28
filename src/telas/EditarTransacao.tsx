@@ -105,7 +105,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
                   className={`rounded-full px-3 py-1.5 text-sm ${
                     categoriaId === categoria.id
                       ? 'bg-emerald-600 text-white'
-                      : 'border border-slate-700 text-slate-300'
+                      : 'border border-borda-forte text-slate-300'
                   }`}
                 >
                   {categoria.nome}
@@ -122,7 +122,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
               type="date"
               value={data}
               onChange={(e) => e.target.value && setData(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-200 outline-none focus:border-slate-500"
+              className="rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-200 outline-none focus:border-slate-500"
             />
           </div>
         )}
@@ -132,7 +132,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
           <input
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </div>
 
@@ -153,7 +153,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
                   className={`rounded-full px-3 py-1.5 text-sm ${
                     escopo === valorEscopo
                       ? 'bg-slate-700 text-slate-100'
-                      : 'border border-slate-700 text-slate-300'
+                      : 'border border-borda-forte text-slate-300'
                   }`}
                 >
                   {rotulo}
@@ -170,7 +170,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
         )}
 
         {ehTransferencia && (
-          <p className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-400">
+          <p className="rounded-md border border-borda-forte px-3 py-2 text-xs text-slate-400">
             Transferência tem duas pontas ligadas. Valor, data e descrição são alterados nas duas ao
             mesmo tempo, senão os dois saldos ficam errados.
           </p>
@@ -188,7 +188,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
           </button>
           <button
             onClick={aoFechar}
-            className="rounded-lg border border-slate-700 px-4 py-3 text-sm text-slate-300"
+            className="rounded-lg border border-borda-forte px-4 py-3 text-sm text-slate-300"
           >
             Cancelar
           </button>

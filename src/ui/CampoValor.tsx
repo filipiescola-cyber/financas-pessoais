@@ -50,7 +50,7 @@ export function CampoValor({ valor, aoMudar, rotulo, autoFocus, className }: Pro
           {rotulo}
         </label>
       )}
-      <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 focus-within:border-slate-500">
+      <div className="flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 focus-within:border-slate-500">
         <span className="text-slate-400">R$</span>
         <input
           id={id}

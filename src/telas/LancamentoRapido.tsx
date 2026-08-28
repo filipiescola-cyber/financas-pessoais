@@ -240,7 +240,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
               type="date"
               value={data}
               onChange={(e) => e.target.value && setData(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 outline-none focus:border-slate-500"
+              className="rounded-lg border border-borda-forte bg-superficie-alta px-3 py-1.5 text-sm text-slate-200 outline-none focus:border-slate-500"
             />
             {data !== hoje() && data !== ontem() && (
               <span className="text-xs text-slate-500">{formatarBR(data)}</span>
@@ -272,7 +272,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
           <input
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </div>
 
@@ -290,7 +290,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
             onClick={() => void salvar(true)}
             disabled={!podeSalvar || salvando}
             title="Salva e reabre a folha limpa, mantendo conta e data"
-            className="rounded-lg border border-slate-700 px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
+            className="rounded-lg border border-borda-forte px-4 py-3 text-sm text-slate-200 disabled:opacity-40"
           >
             Salvar e novo
           </button>
@@ -310,7 +310,7 @@ function SeletorDeModo({ modo, aoMudar }: { modo: Modo; aoMudar: (m: Modo) => vo
   ];
 
   return (
-    <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+    <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
       {opcoes.map((opcao) => (
         <button
           key={opcao.valor}
@@ -342,7 +342,7 @@ function Chip({
       className={`rounded-full px-3 py-1.5 text-sm ${
         ativo
           ? 'bg-emerald-600 text-white'
-          : 'border border-slate-700 text-slate-300 hover:border-slate-500'
+          : 'border border-borda-forte text-slate-300 hover:border-slate-500'
       }`}
     >
       {children}

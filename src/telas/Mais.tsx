@@ -23,7 +23,7 @@ export function Mais() {
           <Link
             key={item.para}
             to={item.para}
-            className="block rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 hover:border-slate-700"
+            className="block rounded-lg border border-borda bg-superficie px-4 py-3 hover:border-borda-forte"
           >
             <p className="text-slate-100">{item.titulo}</p>
             <p className="text-xs text-slate-500">{item.descricao}</p>
@@ -33,7 +33,7 @@ export function Mais() {
 
       <button
         onClick={() => void sair()}
-        className="w-full rounded-lg border border-slate-800 px-4 py-3 text-sm text-slate-400 hover:border-slate-700"
+        className="w-full rounded-lg border border-borda px-4 py-3 text-sm text-slate-400 hover:border-borda-forte"
       >
         Sair
       </button>

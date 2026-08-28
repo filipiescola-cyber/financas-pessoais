@@ -45,7 +45,7 @@ export function ProvedorAviso({ children }: { children: ReactNode }) {
       {children}
       {aviso && (
         <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex justify-center px-4">
-          <div className="pointer-events-auto flex max-w-lg items-center gap-4 rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 shadow-xl">
+          <div className="pointer-events-auto flex max-w-lg items-center gap-4 rounded-lg border border-borda-forte bg-superficie-alta px-4 py-3 shadow-xl">
             <span className="text-sm text-slate-200">{aviso.texto}</span>
             {aviso.acao && (
               <button

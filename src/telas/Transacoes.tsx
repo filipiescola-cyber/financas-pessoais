@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   formatarBR,
   hoje,
@@ -10,7 +11,6 @@ import {
 import { formatar } from '../dominio/dinheiro';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   excluirParcelamento,
   excluirTransacao,
@@ -19,6 +19,7 @@ import {
 } from '../dados/transacoes';
 import { chaves } from '../dados/chaves';
 import { usarAviso } from '../ui/Aviso';
+import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
 import { EditarTransacao } from './EditarTransacao';
 
 const MESES = [
@@ -38,48 +39,42 @@ export function Transacoes() {
 
   const contas = usarContas();
   const categorias = usarCategorias(true);
-  const transacoes = usarTransacoes({
-    de: mes,
-    ate: ultimoDiaDoMes(mes),
-    contaId,
-  });
+  const transacoes = usarTransacoes({ de: mes, ate: ultimoDiaDoMes(mes), contaId });
 
   const nomeConta = new Map((contas.data ?? []).map((c) => [c.id, c.nome]));
   const nomeCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.nome]));
   const lista = transacoes.data ?? [];
 
-  // Fixa, variável e eventual nunca viram um total único (§14). Aqui, no
-  // mínimo, receita e despesa ficam separadas — e transferência fora das duas.
+  // Receita e despesa nunca viram um total único (§14). Transferência fica fora
+  // das duas: ela só move saldo.
   const receitas = lista.filter((t) => t.tipo === 'receita').reduce((s, t) => s + t.valor, 0);
   const despesas = lista.filter((t) => t.tipo === 'despesa').reduce((s, t) => s + t.valor, 0);
 
-  return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
-      <header className="flex items-center justify-between">
-        <button
-          onClick={() => setMes(somarMeses(mes, -1))}
-          className="rounded-lg border border-slate-700 px-3 py-1 text-slate-300"
-        >
-          ‹
-        </button>
-        <h1 className="text-lg font-medium text-slate-100">{nomeDoMes(mes)}</h1>
-        <button
-          onClick={() => setMes(somarMeses(mes, 1))}
-          className="rounded-lg border border-slate-700 px-3 py-1 text-slate-300"
-        >
-          ›
-        </button>
-      </header>
+  const porDia = agruparPorDia(lista);
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-          <p className="text-xs text-slate-500">Entrou</p>
-          <p className="dinheiro text-lg text-slate-100">{formatar(receitas)}</p>
+  return (
+    <Pagina
+      titulo="Lançamentos"
+      subtitulo={nomeDoMes(mes)}
+      acao={
+        <div className="flex items-center gap-1">
+          <Botao tipo="secundario" aoClicar={() => setMes(somarMeses(mes, -1))} className="px-3">
+            ‹
+          </Botao>
+          <Botao tipo="secundario" aoClicar={() => setMes(somarMeses(mes, 1))} className="px-3">
+            ›
+          </Botao>
         </div>
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-          <p className="text-xs text-slate-500">Saiu</p>
-          <p className="dinheiro text-lg text-slate-100">{formatar(Math.abs(despesas))}</p>
-        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <CartaoIndicador rotulo="Entrou no mês" sotaque="azul" tamanho="medio" valor={formatar(receitas)} />
+        <CartaoIndicador
+          rotulo="Saiu no mês"
+          sotaque="ambar"
+          tamanho="medio"
+          valor={formatar(Math.abs(despesas))}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -103,31 +98,45 @@ export function Transacoes() {
       )}
 
       {transacoes.isSuccess && lista.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-700 p-8 text-center">
-          <p className="text-slate-300">Nenhum lançamento em {nomeDoMes(mes)}.</p>
-          <p className="mt-2 text-sm text-slate-500">
-            Use o botão + para lançar. Ele está visível em todas as telas.
-          </p>
-        </div>
+        <Vazio
+          titulo={`Nenhum lançamento em ${nomeDoMes(mes)}`}
+          descricao="Use o botão + para lançar. Ele fica visível em todas as telas."
+        />
       )}
 
-      <ul className="space-y-2">
-        {lista.map((transacao) => (
-          <ItemDeTransacao
-            key={transacao.id}
-            transacao={transacao}
-            nomeConta={nomeConta.get(transacao.contaId) ?? '—'}
-            nomeCategoria={
-              transacao.categoriaId ? (nomeCategoria.get(transacao.categoriaId) ?? null) : null
-            }
-            aoEditar={() => setEditando(transacao)}
-          />
-        ))}
-      </ul>
+      {porDia.map(([dia, doDia]) => (
+        <Secao key={dia} titulo={formatarBR(dia)}>
+          <Cartao>
+            <ul className="divide-y divide-borda">
+              {doDia.map((transacao) => (
+                <ItemDeTransacao
+                  key={transacao.id}
+                  transacao={transacao}
+                  nomeConta={nomeConta.get(transacao.contaId) ?? '—'}
+                  nomeCategoria={
+                    transacao.categoriaId ? (nomeCategoria.get(transacao.categoriaId) ?? null) : null
+                  }
+                  aoEditar={() => setEditando(transacao)}
+                />
+              ))}
+            </ul>
+          </Cartao>
+        </Secao>
+      ))}
 
       <EditarTransacao transacao={editando} aoFechar={() => setEditando(null)} />
-    </div>
+    </Pagina>
   );
+}
+
+function agruparPorDia(lista: Transacao[]): [DataISO, Transacao[]][] {
+  const mapa = new Map<DataISO, Transacao[]>();
+  for (const transacao of lista) {
+    const atual = mapa.get(transacao.dataCompetencia) ?? [];
+    atual.push(transacao);
+    mapa.set(transacao.dataCompetencia, atual);
+  }
+  return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
 
 function FiltroChip({
@@ -142,8 +151,10 @@ function FiltroChip({
   return (
     <button
       onClick={aoClicar}
-      className={`rounded-full px-3 py-1 text-xs ${
-        ativo ? 'bg-slate-700 text-slate-100' : 'border border-slate-800 text-slate-400'
+      className={`rounded-full px-3 py-1.5 text-xs transition ${
+        ativo
+          ? 'bg-superficie-alta text-slate-100'
+          : 'border border-borda text-slate-400 hover:border-borda-forte'
       }`}
     >
       {children}
@@ -169,6 +180,7 @@ function ItemDeTransacao({
   const invalidar = async () => {
     await cliente.invalidateQueries({ queryKey: ['transacoes'] });
     await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
+    await cliente.invalidateQueries({ queryKey: ['faturas'] });
   };
 
   const excluir = useMutation({
@@ -194,50 +206,51 @@ function ItemDeTransacao({
   const futura = transacao.dataCompetencia > hoje();
 
   return (
-    <li className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+    <li className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-slate-100">
-            {transacao.descricao || nomeCategoria || (ehTransferencia ? 'Transferência' : 'Sem descrição')}
+            {transacao.descricao ||
+              nomeCategoria ||
+              (ehTransferencia ? 'Transferência' : 'Sem descrição')}
           </p>
           <p className="truncate text-xs text-slate-500">
-            {formatarBR(transacao.dataCompetencia)} · {nomeConta}
+            {nomeConta}
             {nomeCategoria && ` · ${nomeCategoria}`}
-            {ehParcelado && ` · ${transacao.parcelaNum}/${transacao.parcelaTotal}`}
+            {ehParcelado && ` · parcela ${transacao.parcelaNum}/${transacao.parcelaTotal}`}
           </p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {ehTransferencia && (
-              <Etiqueta titulo="Não conta como receita nem como despesa (§2.3)">
-                transferência
-              </Etiqueta>
-            )}
-            {transacao.motivoEmpresa && <Etiqueta>{transacao.motivoEmpresa}</Etiqueta>}
-            {futura && <Etiqueta titulo="Já está no banco, mas ainda não entrou no saldo">futura</Etiqueta>}
-          </div>
+          {(ehTransferencia || transacao.motivoEmpresa || futura) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {ehTransferencia && (
+                <Etiqueta titulo="Não conta como receita nem como despesa">transferência</Etiqueta>
+              )}
+              {transacao.motivoEmpresa && <Etiqueta>{transacao.motivoEmpresa}</Etiqueta>}
+              {futura && (
+                <Etiqueta titulo="Já está no banco, mas ainda não entrou no saldo">futura</Etiqueta>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span
-            className={`dinheiro ${
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Dinheiro
+            centavos={transacao.valor}
+            className={
               ehTransferencia
                 ? 'text-slate-400'
                 : transacao.valor < 0
                   ? 'text-slate-100'
                   : 'text-emerald-400'
-            }`}
-          >
-            {formatar(transacao.valor)}
-          </span>
+            }
+          />
           <div className="flex gap-3">
-            <button onClick={aoEditar} className="text-xs text-slate-500 hover:text-slate-300">
+            <button onClick={aoEditar} className="text-xs text-slate-600 transition hover:text-slate-300">
               editar
             </button>
             <button
-              onClick={() =>
-                ehParcelado ? setConfirmandoParcelamento(true) : excluir.mutate()
-              }
+              onClick={() => (ehParcelado ? setConfirmandoParcelamento(true) : excluir.mutate())}
               disabled={excluir.isPending}
-              className="text-xs text-slate-500 hover:text-red-400"
+              className="text-xs text-slate-600 transition hover:text-red-400"
             >
               excluir
             </button>
@@ -246,7 +259,7 @@ function ItemDeTransacao({
       </div>
 
       {confirmandoParcelamento && (
-        <div className="mt-3 space-y-2 rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+        <div className="mt-3 space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">
           <p className="text-xs text-slate-300">
             Esta é a parcela {transacao.parcelaNum} de {transacao.parcelaTotal}. O que excluir?
           </p>
@@ -269,22 +282,11 @@ function ItemDeTransacao({
   );
 }
 
-function Etiqueta({ children, titulo }: { children: React.ReactNode; titulo?: string }) {
-  return (
-    <span
-      title={titulo}
-      className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500"
-    >
-      {children}
-    </span>
-  );
-}
-
 function BotaoEscopo({ children, aoClicar }: { children: React.ReactNode; aoClicar: () => void }) {
   return (
     <button
       onClick={aoClicar}
-      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-400"
+      className="rounded-lg border border-borda-forte px-3 py-1.5 text-xs text-slate-200 transition hover:border-slate-400"
     >
       {children}
     </button>

@@ -103,7 +103,7 @@ export function Onboarding() {
             continuar depois
           </button>
         </div>
-        <div className="h-1 w-full overflow-hidden rounded-full bg-slate-800">
+        <div className="h-1 w-full overflow-hidden rounded-full bg-superficie-alta">
           <div
             className="h-full bg-emerald-600 transition-all"
             style={{ width: `${((indice + 1) / PASSOS.length) * 100}%` }}
@@ -196,7 +196,7 @@ function PassoCarteira({ aoAvancar }: { aoAvancar: () => void }) {
 
       {jaExiste ? (
         <>
-          <p className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">
+          <p className="rounded-lg border border-borda bg-superficie p-4 text-sm text-slate-300">
             Você já tem uma carteira cadastrada.
           </p>
           <Avancar aoClicar={aoAvancar} />
@@ -249,7 +249,7 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
         Contas bancárias
       </Titulo>
 
-      <p className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs text-slate-400">
         Começar no dia 1º entrega um mês fechado de verdade já na primeira virada. Começar hoje
         produz um primeiro relatório pela metade, que parece quebrado justo quando o hábito ainda é
         frágil.
@@ -260,7 +260,7 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
           {bancarias.map((conta) => (
             <li
               key={conta.id}
-              className="flex justify-between rounded-lg border border-slate-800 px-3 py-2 text-sm"
+              className="flex justify-between rounded-lg border border-borda px-3 py-2 text-sm"
             >
               <span className="text-slate-200">{conta.nome}</span>
               <span className="text-slate-400">{formatar(conta.saldoInicial)}</span>
@@ -269,18 +269,18 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
         </ul>
       )}
 
-      <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
         <input
           value={nome}
           onChange={(e) => setNome(e.target.value)}
           placeholder="Nome da conta"
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <CampoValor valor={saldo} aoMudar={setSaldo} rotulo={`Saldo em ${formatarBR(dataDeCorte)}`} />
         <button
           onClick={() => criar.mutate()}
           disabled={nome.trim() === '' || criar.isPending}
-          className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
+          className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
         >
           Adicionar conta
         </button>
@@ -326,7 +326,7 @@ function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
       {(cartoes.data ?? []).length > 0 && (
         <ul className="space-y-1">
           {cartoes.data?.map((cartao) => (
-            <li key={cartao.contaId} className="rounded-lg border border-slate-800 px-3 py-2 text-sm">
+            <li key={cartao.contaId} className="rounded-lg border border-borda px-3 py-2 text-sm">
               <span className="text-slate-200">{cartao.conta.nome}</span>
               <span className="text-slate-500">
                 {' '}
@@ -337,12 +337,12 @@ function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
         </ul>
       )}
 
-      <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
         <input
           value={nome}
           onChange={(e) => setNome(e.target.value)}
           placeholder="Apelido do cartão"
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <div className="grid grid-cols-2 gap-3">
           <input
@@ -350,14 +350,14 @@ function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
             value={fechamento}
             onChange={(e) => setFechamento(e.target.value.replace(/\D/g, '').slice(0, 2))}
             placeholder="Dia do fechamento"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
           <input
             inputMode="numeric"
             value={vencimento}
             onChange={(e) => setVencimento(e.target.value.replace(/\D/g, '').slice(0, 2))}
             placeholder="Dia do vencimento"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </div>
         {diasOk && (
@@ -369,7 +369,7 @@ function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
         <button
           onClick={() => criar.mutate()}
           disabled={nome.trim() === '' || !diasOk || criar.isPending}
-          className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
+          className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
         >
           Adicionar cartão
         </button>
@@ -432,14 +432,14 @@ function PassoFaturaAberta({
         Fatura aberta
       </Titulo>
 
-      <p className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs text-slate-400">
         Sem isso o app acha que o mês está barato e o dashboard mente. O valor entra como um único
         lançamento, que você pode detalhar depois.
       </p>
 
       <div className="space-y-3">
         {lista.map((cartao) => (
-          <div key={cartao.contaId} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div key={cartao.contaId} className="rounded-xl border border-borda bg-superficie p-4">
             <CampoValor
               valor={porCartao[cartao.contaId] ?? 0}
               aoMudar={(v) => setPorCartao((atual) => ({ ...atual, [cartao.contaId]: v }))}
@@ -537,19 +537,19 @@ function PassoParcelamentos({
       {adicionados.length > 0 && (
         <ul className="space-y-1 text-sm text-slate-300">
           {adicionados.map((item, i) => (
-            <li key={i} className="rounded-lg border border-slate-800 px-3 py-2">
+            <li key={i} className="rounded-lg border border-borda px-3 py-2">
               {item}
             </li>
           ))}
         </ul>
       )}
 
-      <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
         <input
           value={descricao}
           onChange={(e) => setDescricao(e.target.value)}
           placeholder="O que foi (ex.: Notebook)"
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <CampoValor valor={valorParcela} aoMudar={setValorParcela} rotulo="Valor de cada parcela" />
         <div className="grid grid-cols-2 gap-3">
@@ -558,14 +558,14 @@ function PassoParcelamentos({
             value={jaPagas}
             onChange={(e) => setJaPagas(e.target.value.replace(/\D/g, '').slice(0, 2))}
             placeholder="Já paguei"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
           <input
             inputMode="numeric"
             value={total}
             onChange={(e) => setTotal(e.target.value.replace(/\D/g, '').slice(0, 2))}
             placeholder="De um total de"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </div>
 
@@ -577,7 +577,7 @@ function PassoParcelamentos({
               className={`rounded-full px-3 py-1.5 text-sm ${
                 contaId === conta.id
                   ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-700 text-slate-300'
+                  : 'border border-borda-forte text-slate-300'
               }`}
             >
               {conta.nome}
@@ -596,7 +596,7 @@ function PassoParcelamentos({
         <button
           onClick={() => adicionar.mutate()}
           disabled={!valido || adicionar.isPending}
-          className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
+          className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
         >
           Adicionar parcelamento
         </button>
@@ -656,7 +656,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
         Despesas fixas
       </Titulo>
 
-      <p className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs text-slate-400">
         A soma das fixas é o seu custo de vida mínimo: quanto precisa entrar todo mês para nada
         atrasar. Nesta fase elas ficam cadastradas; a geração automática do lançamento no dia certo
         é da Fase 3.
@@ -665,19 +665,19 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
       {adicionadas.length > 0 && (
         <ul className="space-y-1 text-sm text-slate-300">
           {adicionadas.map((item, i) => (
-            <li key={i} className="rounded-lg border border-slate-800 px-3 py-2">
+            <li key={i} className="rounded-lg border border-borda px-3 py-2">
               {item}
             </li>
           ))}
         </ul>
       )}
 
-      <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
         <input
           value={descricao}
           onChange={(e) => setDescricao(e.target.value)}
           placeholder="Aluguel, Internet, Netflix…"
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <CampoValor valor={valor} aoMudar={setValor} rotulo="Valor mensal" />
         <input
@@ -685,7 +685,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
           value={dia}
           onChange={(e) => setDia(e.target.value.replace(/\D/g, '').slice(0, 2))}
           placeholder="Dia do vencimento"
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <div className="flex flex-wrap gap-2">
           {fixas.map((categoria) => (
@@ -695,7 +695,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
               className={`rounded-full px-3 py-1.5 text-sm ${
                 categoriaId === categoria.id
                   ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-700 text-slate-300'
+                  : 'border border-borda-forte text-slate-300'
               }`}
             >
               {categoria.nome}
@@ -705,7 +705,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
         <button
           onClick={() => adicionar.mutate()}
           disabled={!valido || adicionar.isPending}
-          className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
+          className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
         >
           Adicionar despesa fixa
         </button>
@@ -765,13 +765,13 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
         Fontes de renda
       </Titulo>
 
-      <p className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs text-slate-400">
         Se você tem MEI: sua renda pessoal é o que você <strong>retira</strong> — pró-labore ou
         distribuição de lucro. Venda do negócio é receita da empresa, não sua, e cadastrá-la aqui
         infla a sua renda sem trazer as despesas correspondentes.
       </p>
 
-      <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+      <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
         {(['fixa', 'variavel'] as const).map((t) => (
           <button
             key={t}
@@ -786,9 +786,9 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
       </div>
 
       {tipoDeFonte === 'fixa' ? (
-        <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
           {adicionadas.map((item, i) => (
-            <p key={i} className="rounded-lg border border-slate-800 px-3 py-2 text-sm text-slate-300">
+            <p key={i} className="rounded-lg border border-borda px-3 py-2 text-sm text-slate-300">
               {item}
             </p>
           ))}
@@ -796,7 +796,7 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
             placeholder="Salário, Pró-labore…"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
           <CampoValor valor={valor} aoMudar={setValor} rotulo="Valor líquido" />
           <input
@@ -804,20 +804,20 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
             value={dia}
             onChange={(e) => setDia(e.target.value.replace(/\D/g, '').slice(0, 2))}
             placeholder="Dia do recebimento"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
           <button
             onClick={() => adicionarFixa.mutate()}
             disabled={
               descricao.trim() === '' || valor <= 0 || !contaPadrao || adicionarFixa.isPending
             }
-            className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
+            className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
           >
             Adicionar fonte
           </button>
         </div>
       ) : (
-        <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
           <p className="text-xs text-slate-400">
             Renda que oscila não tem valor fixo para cadastrar, e no primeiro mês não existe
             histórico. Estas duas estimativas são sementes: a partir de 3 meses o app troca pela
@@ -865,7 +865,7 @@ function PassoEmpresa({ aoAvancar }: { aoAvancar: () => void }) {
         Conta Empresa
       </Titulo>
 
-      <p className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs text-slate-400">
         Comprar insumo com o cartão pessoal não é despesa sua: é dinheiro atravessando a fronteira
         entre os bolsos. Vira transferência para esta conta, e o saldo dela responde quanto do seu
         dinheiro está parado dentro do negócio.
@@ -873,7 +873,7 @@ function PassoEmpresa({ aoAvancar }: { aoAvancar: () => void }) {
 
       {jaExiste ? (
         <>
-          <p className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">
+          <p className="rounded-lg border border-borda bg-superficie p-4 text-sm text-slate-300">
             Você já tem uma conta Empresa.
           </p>
           <Avancar aoClicar={aoAvancar} />
@@ -909,7 +909,7 @@ function PassoCategorias({ aoConcluir }: { aoConcluir: () => void }) {
         Categorias
       </Titulo>
 
-      <p className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">
+      <p className="rounded-lg border border-borda bg-superficie p-4 text-sm text-slate-300">
         {total} categorias cadastradas, separadas em fixa, variável e eventual. É essa separação que
         permite ver o custo de vida mínimo e o que dá para cortar — um total único de despesa
         esconderia justamente isso.

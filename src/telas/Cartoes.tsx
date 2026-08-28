@@ -37,7 +37,7 @@ export function Cartoes() {
       {mostrandoFormulario && <FormularioCartao aoTerminar={() => setMostrandoFormulario(false)} />}
 
       {ativos.length === 0 && !mostrandoFormulario && (
-        <div className="rounded-xl border border-dashed border-slate-700 p-8 text-center">
+        <div className="rounded-xl border border-dashed border-borda-forte p-8 text-center">
           <p className="text-slate-300">Nenhum cartão cadastrado.</p>
           <p className="mt-2 text-sm text-slate-500">
             Cartão adicional ou virtual do mesmo cartão não entra aqui de novo — é o mesmo cartão.
@@ -51,7 +51,7 @@ export function Cartoes() {
           return (
             <article
               key={cartao.contaId}
-              className="rounded-xl border border-slate-800 bg-slate-900 p-4"
+              className="rounded-xl border border-borda bg-superficie p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -63,7 +63,7 @@ export function Cartoes() {
                 </div>
                 <ArquivarCartao contaId={cartao.contaId} />
               </div>
-              <p className="mt-3 rounded-md bg-slate-800/60 px-3 py-2 text-xs text-slate-300">
+              <p className="mt-3 rounded-md bg-superficie-alta px-3 py-2 text-xs text-slate-300">
                 {descreverFatura(fatura)}
               </p>
             </article>
@@ -71,7 +71,7 @@ export function Cartoes() {
         })}
       </section>
 
-      <p className="rounded-lg border border-slate-800/60 px-4 py-3 text-xs text-slate-500">
+      <p className="rounded-lg border border-borda px-4 py-3 text-xs text-slate-500">
         As faturas ainda não são geradas: agrupamento, fechamento e pagamento são a Fase 2. Até lá,
         uma compra no cartão é lançada e aparece normalmente na lista, só não fica agrupada em
         fatura.
@@ -109,7 +109,7 @@ function ArquivarCartao({ contaId }: { contaId: string }) {
 function DesarquivarCartao({ contaId, nome }: { contaId: string; nome: string }) {
   const desarquivar = usarDesarquivarCartao();
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-800/60 px-4 py-2">
+    <div className="flex items-center justify-between rounded-lg border border-borda px-4 py-2">
       <span className="text-sm text-slate-500">{nome}</span>
       <button
         onClick={() => desarquivar.mutate(contaId)}
@@ -157,7 +157,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
   return (
     <form
       onSubmit={aoEnviar}
-      className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4"
+      className="space-y-4 rounded-xl border border-borda bg-superficie p-4"
     >
       <div>
         <label className="mb-1 block text-sm text-slate-400">Nome</label>
@@ -166,7 +166,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
           onChange={(e) => setNome(e.target.value)}
           placeholder="Apelido do cartão"
           autoFocus
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <p className="mt-1 text-xs text-slate-500">
           Apelido basta. O app não guarda número de cartão (§10.1).
@@ -178,7 +178,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
         <input
           value={instituicao}
           onChange={(e) => setInstituicao(e.target.value)}
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
       </div>
 
@@ -192,7 +192,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
           {previa}
         </p>
       ) : (
-        <p className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-500">
+        <p className="rounded-md border border-borda-forte px-3 py-2 text-sm text-slate-500">
           Informe os dois dias para ver como as faturas vão cair. Eles são obrigatórios: sem eles a
           fatura não fecha.
         </p>
@@ -213,7 +213,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
         <button
           type="button"
           onClick={aoTerminar}
-          className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300"
+          className="rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-300"
         >
           Cancelar
         </button>
@@ -239,7 +239,7 @@ function CampoDia({
         value={valor}
         onChange={(e) => aoMudar(e.target.value.replace(/\D/g, '').slice(0, 2))}
         placeholder="1 a 31"
-        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+        className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
       />
     </div>
   );

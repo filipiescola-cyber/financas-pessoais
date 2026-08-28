@@ -35,7 +35,7 @@ export function Categorias() {
         </button>
       </header>
 
-      <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+      <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
         {(['despesa', 'receita'] as const).map((t) => (
           <button
             key={t}
@@ -52,7 +52,7 @@ export function Categorias() {
       {criando && <FormularioCategoria tipo={tipo} aoTerminar={() => setCriando(false)} />}
 
       {tipo === 'receita' && (
-        <p className="rounded-lg border border-slate-800 px-4 py-3 text-xs text-slate-500">
+        <p className="rounded-lg border border-borda px-4 py-3 text-xs text-slate-500">
           Só receita <strong>fixa</strong> e <strong>variável</strong> entram na projeção de renda.
           Eventual — venda de bem, reembolso, restituição — entra no caixa e fica de fora, para não
           distorcer a mediana (§2.7).
@@ -95,7 +95,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
   });
 
   return (
-    <li className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+    <li className="rounded-lg border border-borda bg-superficie px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {categoria.cor && (
@@ -108,7 +108,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
           {categoria.sistema && (
             <span
               title="Categoria de sistema: usada pela conferência de saldo (§5.3)"
-              className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] uppercase text-slate-500"
+              className="rounded border border-borda-forte px-1.5 py-0.5 text-[10px] uppercase text-slate-500"
             >
               sistema
             </span>
@@ -132,7 +132,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
             className={`rounded-full px-2.5 py-1 text-xs ${
               categoria.natureza === natureza
                 ? 'bg-slate-700 text-slate-100'
-                : 'border border-slate-800 text-slate-500 hover:border-slate-600'
+                : 'border border-borda text-slate-500 hover:border-borda-forte'
             }`}
           >
             {natureza ? ROTULOS[natureza] : 'sem natureza'}
@@ -165,13 +165,13 @@ function FormularioCategoria({
   });
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
       <input
         value={nome}
         onChange={(e) => setNome(e.target.value)}
         placeholder="Nome da categoria"
         autoFocus
-        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+        className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
       />
       <div className="flex flex-wrap gap-1.5">
         {NATUREZAS.map((n) => (
@@ -181,7 +181,7 @@ function FormularioCategoria({
             className={`rounded-full px-2.5 py-1 text-xs ${
               natureza === n
                 ? 'bg-slate-700 text-slate-100'
-                : 'border border-slate-800 text-slate-500'
+                : 'border border-borda text-slate-500'
             }`}
           >
             {n ? ROTULOS[n] : 'sem natureza'}

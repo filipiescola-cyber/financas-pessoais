@@ -42,7 +42,7 @@ export function Faturas() {
     return (
       <div className="mx-auto max-w-2xl p-4">
         <h1 className="text-xl font-semibold text-slate-100">Faturas</h1>
-        <p className="mt-4 rounded-xl border border-dashed border-slate-700 p-8 text-center text-slate-400">
+        <p className="mt-4 rounded-xl border border-dashed border-borda-forte p-8 text-center text-slate-400">
           Nenhum cartão cadastrado ainda.
         </p>
       </div>
@@ -64,7 +64,7 @@ export function Faturas() {
               className={`rounded-full px-3 py-1.5 text-sm ${
                 cartao.contaId === c.contaId
                   ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-700 text-slate-300'
+                  : 'border border-borda-forte text-slate-300'
               }`}
             >
               {c.conta.nome}
@@ -102,7 +102,7 @@ function ListaDeFaturas({ cartaoId, nomeDoCartao }: { cartaoId: string; nomeDoCa
 
   if (lista.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400">
+      <p className="rounded-xl border border-dashed border-borda-forte p-6 text-center text-sm text-slate-400">
         As faturas são geradas na abertura do app. Recarregue a página se esta lista continuar
         vazia.
       </p>
@@ -164,7 +164,7 @@ function CartaoDeFatura({
   const vencida = fatura.status !== 'paga' && fatura.dataVencimento < hoje();
 
   return (
-    <article className="rounded-xl border border-slate-800 bg-slate-900">
+    <article className="rounded-xl border border-borda bg-superficie">
       <button onClick={aoAlternar} className="flex w-full items-start justify-between gap-3 p-4 text-left">
         <div>
           <p className="text-slate-100">
@@ -179,7 +179,7 @@ function CartaoDeFatura({
       </button>
 
       {expandida && (
-        <div className="space-y-3 border-t border-slate-800 p-4">
+        <div className="space-y-3 border-t border-borda p-4">
           <p className="text-xs text-slate-500">
             {descreverFatura(
               faturaDoMes(fatura.mesReferencia, {
@@ -215,7 +215,7 @@ function CartaoDeFatura({
           </ul>
 
           {fatura.status === 'paga' ? (
-            <p className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-400">
+            <p className="rounded-md border border-borda-forte px-3 py-2 text-xs text-slate-400">
               Fatura paga. O pagamento é uma transferência, não uma despesa — a despesa já foi
               contabilizada em cada compra.
             </p>
@@ -283,7 +283,7 @@ function PagamentoDeFatura({
       <button
         onClick={() => setAberto(true)}
         disabled={total === 0}
-        className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
+        className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
       >
         Registrar pagamento
       </button>
@@ -291,7 +291,7 @@ function PagamentoDeFatura({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-800/40 p-3">
+    <div className="space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
       <p className="text-xs text-slate-400">
         Pagamento de fatura é <strong>transferência</strong>, nunca despesa. A despesa já foi
         contabilizada em cada compra — contar as duas coisas dobraria o gasto do mês.
@@ -309,7 +309,7 @@ function PagamentoDeFatura({
               className={`rounded-full px-3 py-1.5 text-sm ${
                 contaOrigemId === conta.id
                   ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-700 text-slate-300'
+                  : 'border border-borda-forte text-slate-300'
               }`}
             >
               {conta.nome}
@@ -323,11 +323,11 @@ function PagamentoDeFatura({
           type="date"
           value={data}
           onChange={(e) => e.target.value && setData(e.target.value)}
-          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none focus:border-slate-500"
+          className="rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-sm text-slate-200 outline-none focus:border-slate-500"
         />
         <button
           onClick={() => setData(vencimento)}
-          className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+          className="rounded-full border border-borda-forte px-3 py-1.5 text-xs text-slate-300"
         >
           no vencimento
         </button>
@@ -351,7 +351,7 @@ function PagamentoDeFatura({
         </button>
         <button
           onClick={() => setAberto(false)}
-          className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300"
+          className="rounded-lg border border-borda-forte px-3 py-2 text-sm text-slate-300"
         >
           Cancelar
         </button>
