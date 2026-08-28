@@ -9,6 +9,13 @@ import {
   paraNumerico,
 } from '../src/dominio/dinheiro';
 
+/**
+ * O separador entre "R$" e o número muda conforme a versão do ICU: umas usam
+ * espaço fixo (U+00A0), outras o estreito (U+202F). O teste não deve depender
+ * de qual delas o sistema traz — só de que o valor está certo.
+ */
+const semEspacoEspecial = (texto: string) => texto.replace(/\s/g, ' ');
+
 describe('conversão com o banco', () => {
   it('converte numeric para centavos inteiros', () => {
     expect(paraCentavos(12.5)).toBe(1250);
@@ -40,8 +47,8 @@ describe('conversão com o banco', () => {
 describe('formatação', () => {
   it('formata em real brasileiro', () => {
     // O Intl usa espaço não separável depois do R$; normalizamos para comparar.
-    expect(formatar(1250).replace(/ /g, ' ')).toBe('R$ 12,50');
-    expect(formatar(0).replace(/ /g, ' ')).toBe('R$ 0,00');
+    expect(semEspacoEspecial(formatar(1250))).toBe('R$ 12,50');
+    expect(semEspacoEspecial(formatar(0))).toBe('R$ 0,00');
   });
 
   it('formata sem símbolo para campo de entrada', () => {
@@ -54,11 +61,11 @@ describe('digitação estilo caixa registradora (§5.1)', () => {
     let valor = 0;
     for (const digito of '1250') valor = aplicarDigito(valor, digito);
     expect(valor).toBe(1250);
-    expect(formatar(valor).replace(/ /g, ' ')).toBe('R$ 12,50');
+    expect(semEspacoEspecial(formatar(valor))).toBe('R$ 12,50');
   });
 
   it('o primeiro dígito são centavos', () => {
-    expect(formatar(aplicarDigito(0, '5')).replace(/ /g, ' ')).toBe('R$ 0,05');
+    expect(semEspacoEspecial(formatar(aplicarDigito(0, '5')))).toBe('R$ 0,05');
   });
 
   it('ignora o que não é dígito', () => {
