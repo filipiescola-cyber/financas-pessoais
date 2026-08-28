@@ -76,7 +76,7 @@ export function Contas() {
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             <CartaoIndicador
-              rotulo="Disponível para gastar"
+              rotulo="Saldo"
               sotaque="verde"
               valor={formatar(consolidado)}
               detalhe="Soma de conta corrente, poupança, carteira e investimento. Não inclui Empresa, dívidas nem faturas."

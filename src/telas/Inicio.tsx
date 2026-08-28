@@ -157,7 +157,7 @@ export function Inicio() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <CartaoIndicador
-            rotulo="Disponível para gastar"
+            rotulo="Saldo"
             sotaque="verde"
             valor={formatar(consolidado)}
             detalhe="Não inclui a conta Empresa, dívidas nem faturas de cartão."
