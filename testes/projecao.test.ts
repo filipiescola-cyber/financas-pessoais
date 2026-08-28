@@ -69,6 +69,34 @@ describe('renda projetada (§8.3)', () => {
     expect(renda.provavel).toBe(0);
   });
 
+  it('usa a fonte fixa cadastrada quando ainda não há histórico (§4.5)', () => {
+    // O §4.5 promete que a fonte fixa "já entra na projeção desde o primeiro
+    // dia". Sem isto, cadastrar o salário no onboarding não mudava nada na tela.
+    const renda = projetarRenda([], null, 600000);
+    expect(renda.origem).toBe('recorrencia');
+    expect(renda.provavel).toBe(600000);
+  });
+
+  it('renda fixa entra igual nos três cenários', () => {
+    // Os cenários existem para a parte que varia. Salário não varia.
+    const renda = projetarRenda([], null, 600000);
+    expect(renda.pessimista).toBe(renda.otimista);
+  });
+
+  it('soma a fixa às sementes da renda variável', () => {
+    const renda = projetarRenda([], sementes, 600000);
+    expect(renda.provavel).toBe(600000 + 400000);
+    expect(renda.pessimista).toBe(600000 + 250000);
+  });
+
+  it('NÃO soma a fixa quando já há histórico, para não dobrar', () => {
+    // A recorrência gera lançamento todo mês, então o salário já está dentro do
+    // histórico. Somar de novo contaria duas vezes.
+    const renda = projetarRenda([300000, 500000, 400000], sementes, 600000);
+    expect(renda.origem).toBe('historico');
+    expect(renda.provavel).toBe(400000);
+  });
+
   it('a mediana olha 6 meses; os extremos olham 12', () => {
     // 13 meses: o primeiro fica fora dos dois recortes.
     const historico = [

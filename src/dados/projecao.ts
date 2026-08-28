@@ -122,6 +122,13 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     .filter((r) => r.tipo === 'despesa')
     .reduce((total, r) => total + Math.abs(paraCentavos(r.valor_previsto ?? 0)), 0);
 
+  // Fonte de renda fixa vira recorrência de receita (§4.5), e o §4.5 promete que
+  // ela entra na projeção desde o primeiro dia. Só vale enquanto não há
+  // histórico: depois, a própria recorrência já gerou os lançamentos.
+  const rendaFixaMensal = (recorrencias.data ?? [])
+    .filter((r) => r.tipo === 'receita')
+    .reduce((total, r) => total + Math.abs(paraCentavos(r.valor_previsto ?? 0)), 0);
+
   // Provisão de eventual: o gasto eventual dos últimos 12 meses dividido por 12
   // (§2.5). Sem isso o IPVA de janeiro sempre parece um desastre.
   const eventualNoPeriodo = linhas
@@ -157,6 +164,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     renda: projetarRenda(
       historicoDeRenda,
       sementes ? { mesTipico: sementes.mesTipico, mesRuim: sementes.mesRuim } : null,
+      rendaFixaMensal,
     ),
     fixasMensais,
     provisaoEventualMensal,

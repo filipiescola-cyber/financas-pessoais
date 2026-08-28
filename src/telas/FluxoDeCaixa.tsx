@@ -203,10 +203,20 @@ function OrigemDaRenda({
   meses,
   valor,
 }: {
-  origem: 'historico' | 'semente' | 'ausente';
+  origem: 'historico' | 'recorrencia' | 'semente' | 'ausente';
   meses: number;
   valor: number;
 }) {
+  if (origem === 'recorrencia') {
+    return (
+      <Nota>
+        Renda projetada em {formatar(valor)}, a partir das <strong>fontes fixas cadastradas</strong>.
+        Como ainda não há histórico e você não informou estimativa de renda variável, os três
+        cenários são iguais — não há o que variar.
+      </Nota>
+    );
+  }
+
   if (origem === 'historico') {
     return (
       <Nota>

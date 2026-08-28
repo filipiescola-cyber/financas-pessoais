@@ -6,7 +6,8 @@ import { usarAviso } from '../ui/Aviso';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarCriarModelo, usarExcluirModelo, usarModelos, usarRecorrencias } from '../dados/usarModelos';
-import { arquivarRecorrencia } from '../dados/recorrencias';
+import { arquivarRecorrencia, criarRecorrencia } from '../dados/recorrencias';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
 /**
@@ -18,6 +19,7 @@ import { Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vaz
  */
 export function Atalhos() {
   const [criando, setCriando] = useState(false);
+  const [criandoRecorrencia, setCriandoRecorrencia] = useState(false);
 
   return (
     <Pagina
@@ -34,7 +36,11 @@ export function Atalhos() {
     >
       {criando && <FormularioModelo aoTerminar={() => setCriando(false)} />}
       <ListaDeModelos aoCriar={() => setCriando(true)} />
-      <ListaDeRecorrencias />
+
+      {criandoRecorrencia && (
+        <FormularioRecorrencia aoTerminar={() => setCriandoRecorrencia(false)} />
+      )}
+      <ListaDeRecorrencias aoCriar={() => setCriandoRecorrencia((v) => !v)} criando={criandoRecorrencia} />
 
       <Nota>
         O autocomplete não tem tela: ele aprende sozinho a cada lançamento com descrição, e sugere
@@ -97,7 +103,13 @@ function ListaDeModelos({ aoCriar }: { aoCriar: () => void }) {
   );
 }
 
-function ListaDeRecorrencias() {
+function ListaDeRecorrencias({
+  aoCriar,
+  criando,
+}: {
+  aoCriar: () => void;
+  criando: boolean;
+}) {
   const recorrencias = usarRecorrencias();
   const contas = usarContas();
   const cliente = useQueryClient();
@@ -115,11 +127,19 @@ function ListaDeRecorrencias() {
   const lista = recorrencias.data ?? [];
 
   return (
-    <Secao titulo="Recorrências">
+    <Secao
+      titulo="Recorrências"
+      acao={
+        <button onClick={aoCriar} className="text-xs text-emerald-400 hover:text-emerald-300">
+          {criando ? 'cancelar' : '+ nova recorrência'}
+        </button>
+      }
+    >
       {lista.length === 0 ? (
         <Vazio
           titulo="Nenhuma recorrência cadastrada"
-          descricao="Aluguel, internet, assinaturas e salário. Elas são cadastradas no onboarding e geram o lançamento sozinhas no dia certo."
+          descricao="Aluguel, internet, assinaturas e salário. Elas geram o lançamento sozinhas no dia certo — e a fonte de renda fixa é o que faz a projeção funcionar antes de existir histórico."
+          acao={<Botao aoClicar={aoCriar}>Cadastrar a primeira</Botao>}
         />
       ) : (
         <>
@@ -280,6 +300,136 @@ function FormularioModelo({ aoTerminar }: { aoTerminar: () => void }) {
           Um toque no chip já lança {formatar(valorPadrao)}.
         </p>
       )}
+    </Cartao>
+  );
+}
+
+/**
+ * Cadastro de recorrência fora do onboarding.
+ *
+ * Antes só existia lá dentro: quem trocasse de emprego ou assinasse um serviço
+ * novo depois não tinha como registrar, e a projeção ficava desatualizada sem
+ * que houvesse onde consertar.
+ */
+function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
+  const cliente = useQueryClient();
+  const invalidarTransacoes = usarInvalidarTransacoes();
+  const contas = usarContas();
+  const categorias = usarCategorias();
+
+  const [tipo, setTipo] = useState<'despesa' | 'receita'>('despesa');
+  const [descricao, setDescricao] = useState('');
+  const [valor, setValor] = useState<Centavos>(0);
+  const [dia, setDia] = useState('');
+  const [contaId, setContaId] = useState<string | null>(null);
+  const [categoriaId, setCategoriaId] = useState<string | null>(null);
+
+  const disponiveis = (contas.data ?? []).filter((c) => c.tipo !== 'divida');
+  const doTipo = (categorias.data ?? []).filter((c) => c.tipo === tipo);
+  const diaNumero = Number(dia);
+  const valido =
+    descricao.trim() !== '' && valor > 0 && diaNumero >= 1 && diaNumero <= 31 && contaId !== null;
+
+  const criar = useMutation({
+    mutationFn: () =>
+      criarRecorrencia({
+        descricao,
+        valorPrevisto: valor,
+        categoriaId,
+        contaId: contaId!,
+        tipo,
+        natureza: 'fixa',
+        dia: diaNumero,
+      }),
+    onSuccess: async () => {
+      await cliente.invalidateQueries({ queryKey: ['recorrencias'] });
+      // A projeção lê as recorrências: sem isso o número novo só apareceria
+      // depois de recarregar.
+      await invalidarTransacoes();
+      aoTerminar();
+    },
+  });
+
+  return (
+    <Cartao className="space-y-4 p-4">
+      <Campo rotulo="Tipo">
+        <div className="flex gap-2">
+          <Chip ativo={tipo === 'despesa'} aoClicar={() => setTipo('despesa')}>
+            Despesa fixa
+          </Chip>
+          <Chip ativo={tipo === 'receita'} aoClicar={() => setTipo('receita')}>
+            Fonte de renda
+          </Chip>
+        </div>
+      </Campo>
+
+      <Campo rotulo="Descrição">
+        <input
+          value={descricao}
+          onChange={(e) => setDescricao(e.target.value)}
+          placeholder={tipo === 'despesa' ? 'Aluguel, internet, plano de saúde…' : 'Salário, pró-labore…'}
+          autoFocus
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <CampoValor
+        valor={valor}
+        aoMudar={setValor}
+        rotulo={tipo === 'despesa' ? 'Valor mensal' : 'Valor líquido'}
+      />
+      {tipo === 'receita' && (
+        <p className="-mt-2 text-xs leading-relaxed text-slate-500">
+          Líquido, nunca bruto: é o que cai na conta. Salário bruto não serve para fluxo de caixa.
+          Se você tem MEI, sua renda pessoal é a retirada — pró-labore ou distribuição de lucro —
+          e não a venda do negócio.
+        </p>
+      )}
+
+      <Campo rotulo={tipo === 'despesa' ? 'Dia do vencimento' : 'Dia do recebimento'}>
+        <input
+          inputMode="numeric"
+          value={dia}
+          onChange={(e) => setDia(e.target.value.replace(/\D/g, '').slice(0, 2))}
+          placeholder="1 a 31"
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <Campo rotulo="Conta">
+        <div className="flex flex-wrap gap-2">
+          {disponiveis.map((conta) => (
+            <Chip key={conta.id} ativo={contaId === conta.id} aoClicar={() => setContaId(conta.id)}>
+              {conta.nome}
+            </Chip>
+          ))}
+        </div>
+      </Campo>
+
+      <Campo rotulo="Categoria (opcional)">
+        <div className="flex flex-wrap gap-2">
+          {doTipo.map((categoria) => (
+            <Chip
+              key={categoria.id}
+              ativo={categoriaId === categoria.id}
+              aoClicar={() => setCategoriaId(categoriaId === categoria.id ? null : categoria.id)}
+            >
+              {categoria.nome}
+            </Chip>
+          ))}
+        </div>
+      </Campo>
+
+      {criar.isError && <p className="text-sm text-red-400">{(criar.error as Error).message}</p>}
+
+      <div className="flex gap-2">
+        <Botao aoClicar={() => criar.mutate()} desabilitado={!valido || criar.isPending}>
+          {criar.isPending ? 'Salvando…' : 'Salvar recorrência'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
     </Cartao>
   );
 }

@@ -34,7 +34,7 @@ export function mediana(valores: readonly number[]): number | null {
     : Math.round((ordenados[meio - 1]! + ordenados[meio]!) / 2);
 }
 
-export type OrigemDaRenda = 'historico' | 'semente' | 'ausente';
+export type OrigemDaRenda = 'historico' | 'recorrencia' | 'semente' | 'ausente';
 
 export type RendaProjetada = {
   pessimista: Centavos;
@@ -58,6 +58,18 @@ export const MESES_PARA_CONFIAR_NO_HISTORICO = 3;
 export function projetarRenda(
   historicoMensal: readonly Centavos[],
   sementes: { mesTipico: Centavos; mesRuim: Centavos } | null,
+  /**
+   * Soma das recorrências de receita cadastradas (§4.5).
+   *
+   * Fonte fixa vira recorrência, e o §4.5 promete que ela "já entra na projeção
+   * desde o primeiro dia". Sem isso, cadastrar o salário no onboarding não
+   * mudava nada na tela até três meses de histórico existirem — que é
+   * exatamente quando a projeção deixa de precisar dela.
+   *
+   * Ela NÃO é somada quando há histórico: a recorrência gera lançamento todo
+   * mês, então o salário já está dentro do histórico e somar de novo dobraria.
+   */
+  rendaFixaCadastrada: Centavos = 0,
 ): RendaProjetada {
   const meses = historicoMensal.length;
 
@@ -75,14 +87,26 @@ export function projetarRenda(
     };
   }
 
+  // Renda fixa é certeza; a variável é estimativa. Os cenários existem para a
+  // segunda, então a primeira entra igual nos três.
   if (sementes) {
     return {
-      pessimista: sementes.mesRuim,
-      provavel: sementes.mesTipico,
+      pessimista: rendaFixaCadastrada + sementes.mesRuim,
+      provavel: rendaFixaCadastrada + sementes.mesTipico,
       // Sem histórico não há como estimar um mês bom sem inventar. O otimista
       // fica igual ao típico em vez de virar um número imaginado.
-      otimista: sementes.mesTipico,
+      otimista: rendaFixaCadastrada + sementes.mesTipico,
       origem: 'semente',
+      mesesDeHistorico: meses,
+    };
+  }
+
+  if (rendaFixaCadastrada > 0) {
+    return {
+      pessimista: rendaFixaCadastrada,
+      provavel: rendaFixaCadastrada,
+      otimista: rendaFixaCadastrada,
+      origem: 'recorrencia',
       mesesDeHistorico: meses,
     };
   }
