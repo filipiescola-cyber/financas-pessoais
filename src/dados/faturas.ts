@@ -337,6 +337,63 @@ export async function fecharFaturasVencidas(referencia: DataISO = hoje()): Promi
  * "A despesa já foi contabilizada nas compras. Contar as duas coisas = despesa
  * dobrada. Este é o erro mais comum em apps de finanças."
  */
+/**
+ * Desfaz o pagamento de uma fatura (§2.1).
+ *
+ * Existe porque pagamento errado acontece — conta trocada, valor digitado a
+ * mais, data do mês anterior — e sem volta o jeito de consertar seria apagar
+ * lançamento na mão, que é justamente o que este app não pede de ninguém.
+ *
+ * A ordem importa: a fatura aponta para a transação do pagamento e a transação
+ * aponta de volta para o par. Apagar antes de soltar o vínculo esbarra na
+ * restrição do banco.
+ *
+ * O status volta a `fechada` ou `aberta` conforme a data de fechamento já
+ * tenha passado — e não sempre para `aberta`, senão uma fatura de três meses
+ * atrás reabriria como se ainda aceitasse compra.
+ */
+export async function desfazerPagamentoDeFatura(faturaId: string): Promise<void> {
+  const { data: fatura, error } = await supabase
+    .from('faturas')
+    .select('transacao_pagamento_id, data_fechamento')
+    .eq('id', faturaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!fatura.transacao_pagamento_id) throw new Error('Esta fatura não tem pagamento registrado.');
+
+  const { data: saida, error: erroSaida } = await supabase
+    .from('transacoes')
+    .select('id, transferencia_par_id')
+    .eq('id', fatura.transacao_pagamento_id)
+    .maybeSingle();
+  if (erroSaida) throw new Error(erroSaida.message);
+
+  // Solta o vínculo antes de apagar: a fatura referencia a transação.
+  const { error: erroSolta } = await supabase
+    .from('faturas')
+    .update({
+      status: fatura.data_fechamento <= hoje() ? 'fechada' : 'aberta',
+      transacao_pagamento_id: null,
+    })
+    .eq('id', faturaId);
+  if (erroSolta) throw new Error(erroSolta.message);
+
+  const paraApagar = [saida?.id, saida?.transferencia_par_id].filter(
+    (id): id is string => typeof id === 'string',
+  );
+  if (paraApagar.length === 0) return;
+
+  // O par também aponta de volta: desfaz os dois lados antes de excluir.
+  const { error: erroPar } = await supabase
+    .from('transacoes')
+    .update({ transferencia_par_id: null })
+    .in('id', paraApagar);
+  if (erroPar) throw new Error(erroPar.message);
+
+  const { error: erroApagar } = await supabase.from('transacoes').delete().in('id', paraApagar);
+  if (erroApagar) throw new Error(erroApagar.message);
+}
+
 export async function pagarFatura(dados: {
   faturaId: string;
   cartaoId: string;

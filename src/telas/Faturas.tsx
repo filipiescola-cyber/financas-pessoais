@@ -10,14 +10,16 @@ import { podePagarFatura } from '../dominio/saldo';
 import { usarContas } from '../dados/usarContas';
 import {
   cartoesComFaturaPendente,
+  desfazerPagamentoDeFatura,
   listarFaturas,
   pagarFatura,
   totalDaFatura,
   type Fatura,
 } from '../dados/faturas';
-import { listarTransacoesDaFatura } from '../dados/transacoes';
+import { listarTransacoesDaFatura, type Transacao } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
-import { Chip, Pagina, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Chip, Pagina, Vazio } from '../ui/base';
+import { EditarTransacao } from './EditarTransacao';
 
 const ROTULO_STATUS: Record<Fatura['status'], string> = {
   aberta: 'Aberta',
@@ -179,6 +181,18 @@ function CartaoDeFatura({
     enabled: expandida,
   });
 
+  const invalidar = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+  const [editando, setEditando] = useState<Transacao | null>(null);
+
+  const desfazer = useMutation({
+    mutationFn: () => desfazerPagamentoDeFatura(fatura.id),
+    onSuccess: async () => {
+      await invalidar();
+      mostrar('Pagamento desfeito. A fatura voltou a ficar em aberto.');
+    },
+  });
+
   const vencida = fatura.status !== 'paga' && fatura.dataVencimento < hoje();
 
   return (
@@ -213,30 +227,49 @@ function CartaoDeFatura({
             <p className="text-sm text-slate-500">Nenhuma compra nesta fatura.</p>
           )}
 
+          {/* A compra abre para edição daqui também: era preciso sair para
+              Lançamentos e procurar de novo o que já estava na tela. */}
           <ul className="space-y-1">
             {(transacoes.data ?? []).map((transacao) => (
-              <li key={transacao.id} className="flex justify-between gap-3 text-sm">
-                <span className="truncate text-slate-300">
-                  {transacao.descricao || 'Sem descrição'}
-                  {transacao.parcelaNum && (
-                    <span className="text-slate-500">
-                      {' '}
-                      {transacao.parcelaNum}/{transacao.parcelaTotal}
-                    </span>
-                  )}
-                </span>
-                <span className="dinheiro shrink-0 text-slate-400">
-                  {formatar(Math.abs(transacao.valor))}
-                </span>
+              <li key={transacao.id}>
+                <button
+                  onClick={() => setEditando(transacao)}
+                  className="flex w-full justify-between gap-3 rounded-md px-1 py-1 text-left text-sm transition hover:bg-superficie-alta"
+                >
+                  <span className="truncate text-slate-300">
+                    {transacao.descricao || 'Sem descrição'}
+                    {transacao.parcelaNum && (
+                      <span className="text-slate-500">
+                        {' '}
+                        {transacao.parcelaNum}/{transacao.parcelaTotal}
+                      </span>
+                    )}
+                  </span>
+                  <span className="dinheiro shrink-0 text-slate-400">
+                    {formatar(Math.abs(transacao.valor))}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
 
           {fatura.status === 'paga' ? (
-            <p className="rounded-md border border-borda-forte px-3 py-2 text-xs text-slate-400">
-              Fatura paga. O pagamento quitou uma dívida; ele não é despesa, porque a despesa já
-              foi contada em cada compra.
-            </p>
+            <div className="space-y-2 rounded-md border border-borda-forte px-3 py-2">
+              <p className="text-xs leading-relaxed text-slate-400">
+                Fatura paga. O pagamento quitou uma dívida; ele não é despesa, porque a despesa já
+                foi contada em cada compra.
+              </p>
+              <button
+                onClick={() => desfazer.mutate()}
+                disabled={desfazer.isPending}
+                className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+              >
+                {desfazer.isPending ? 'Desfazendo…' : 'Desfazer pagamento'}
+              </button>
+              {desfazer.isError && (
+                <p className="text-xs text-red-400">{(desfazer.error as Error).message}</p>
+              )}
+            </div>
           ) : (
             <PagamentoDeFatura
               faturaId={fatura.id}
@@ -248,6 +281,8 @@ function CartaoDeFatura({
           )}
         </div>
       )}
+
+      <EditarTransacao transacao={editando} aoFechar={() => setEditando(null)} />
     </article>
   );
 }

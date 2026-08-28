@@ -13,7 +13,7 @@ import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
-import { ALVO_DE_TOQUE, Botao, Dinheiro, Pagina } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Campo, Dinheiro, ENTRADA, Pagina } from '../ui/base';
 import {
   usarAtualizarCartao,
   usarCartoes,
@@ -24,6 +24,7 @@ import {
 } from '../dados/usarCartoes';
 import { usarContas } from '../dados/usarContas';
 import { podePagarFatura } from '../dominio/saldo';
+import type { CartaoComConta } from '../dados/tipos';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
 
 export function Cartoes() {
@@ -88,7 +89,10 @@ export function Cartoes() {
                     {cartao.limite !== null && ` · limite ${formatar(cartao.limite)}`}
                   </p>
                 </div>
-                <EncerrarCartao contaId={cartao.contaId} />
+                <div className="flex shrink-0 gap-3">
+                  <EditarCartao cartao={cartao} />
+                  <EncerrarCartao contaId={cartao.contaId} />
+                </div>
               </div>
               {/* Cartão não tem saldo, tem dívida — e ela é mostrada positiva,
                   do jeito que a fatura do banco mostra. Um número negativo
@@ -512,6 +516,120 @@ function ContaQuePaga({
           {conta.nome}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Corrigir o cadastro do cartão (§4.2).
+ *
+ * O dia de fechamento é o que decide em qual fatura cada compra cai. Cadastrado
+ * errado, ele erra todas as faturas — e não havia por onde arrumar sem apagar o
+ * cartão e perder o histórico junto.
+ *
+ * A ressalva é honesta e fica na tela: mudar os dias vale para as faturas que
+ * ainda vão ser criadas. As que já existem mantêm as datas, porque mover
+ * compras entre faturas fechadas reescreveria meses já conferidos.
+ */
+function EditarCartao({ cartao }: { cartao: CartaoComConta }) {
+  const atualizar = usarAtualizarCartao();
+  const [aberto, setAberto] = useState(false);
+  const [nome, setNome] = useState(cartao.conta.nome);
+  const [instituicao, setInstituicao] = useState(cartao.conta.instituicao ?? '');
+  const [cor, setCor] = useState(cartao.conta.cor);
+  const [limite, setLimite] = useState<Centavos>(cartao.limite ?? 0);
+  const [diaFechamento, setDiaFechamento] = useState(String(cartao.diaFechamento));
+  const [diaVencimento, setDiaVencimento] = useState(String(cartao.diaVencimento));
+
+  const fechamento = Number(diaFechamento);
+  const vencimento = Number(diaVencimento);
+  const diasOk = ehDiaValido(fechamento) && ehDiaValido(vencimento);
+  const mudouOsDias =
+    fechamento !== cartao.diaFechamento || vencimento !== cartao.diaVencimento;
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+      >
+        Editar
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 w-full space-y-4 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <Campo rotulo="Nome">
+        <input
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          autoFocus
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <CampoInstituicao
+        instituicao={instituicao}
+        cor={cor}
+        aoMudar={(nova, corNova) => {
+          setInstituicao(nova);
+          setCor(corNova);
+        }}
+      />
+
+      <div className="grid grid-cols-2 gap-3">
+        <CampoDia rotulo="Dia do fechamento" valor={diaFechamento} aoMudar={setDiaFechamento} />
+        <CampoDia rotulo="Dia do vencimento" valor={diaVencimento} aoMudar={setDiaVencimento} />
+      </div>
+
+      {diasOk && (
+        <p className="rounded-md border border-borda px-3 py-2 text-xs leading-relaxed text-slate-400">
+          {descreverFatura(
+            faturaDeReferencia(hoje(), { diaFechamento: fechamento, diaVencimento: vencimento }),
+          )}
+        </p>
+      )}
+
+      {mudouOsDias && (
+        <p className="text-xs leading-relaxed text-amber-400/80">
+          Os dias novos valem para as faturas que ainda vão ser criadas. As que já existem mantêm
+          as datas — mover compras entre faturas fechadas reescreveria meses já conferidos.
+        </p>
+      )}
+
+      <CampoValor valor={limite} aoMudar={setLimite} rotulo="Limite (opcional)" />
+
+      {atualizar.isError && (
+        <p className="text-sm text-red-400">{(atualizar.error as Error).message}</p>
+      )}
+
+      <div className="flex gap-2">
+        <Botao
+          aoClicar={() =>
+            atualizar.mutate(
+              {
+                contaId: cartao.contaId,
+                campos: {
+                  nome,
+                  instituicao,
+                  cor,
+                  limite: limite === 0 ? null : limite,
+                  diaFechamento: fechamento,
+                  diaVencimento: vencimento,
+                },
+              },
+              { onSuccess: () => setAberto(false) },
+            )
+          }
+          desabilitado={nome.trim() === '' || !diasOk || atualizar.isPending}
+        >
+          Salvar
+        </Botao>
+        <Botao tipo="secundario" aoClicar={() => setAberto(false)}>
+          Cancelar
+        </Botao>
+      </div>
     </div>
   );
 }

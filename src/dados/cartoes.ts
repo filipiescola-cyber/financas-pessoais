@@ -123,7 +123,14 @@ export async function atualizarCartao(
     if (dia !== undefined && !ehDiaValido(dia)) throw erroDeDia();
   }
 
-  if (campos.nome !== undefined || campos.instituicao !== undefined) {
+  // `cor` mora em `contas`, junto de nome e instituição — o tipo já a aceitava
+  // e ela vinha sendo descartada em silêncio, que é o pior jeito de falhar:
+  // a tela salvava sem erro e a cor não mudava.
+  if (
+    campos.nome !== undefined ||
+    campos.instituicao !== undefined ||
+    campos.cor !== undefined
+  ) {
     const { error } = await supabase
       .from('contas')
       .update({
@@ -131,6 +138,7 @@ export async function atualizarCartao(
         ...(campos.instituicao !== undefined
           ? { instituicao: campos.instituicao?.trim() || null }
           : {}),
+        ...(campos.cor !== undefined ? { cor: campos.cor } : {}),
       })
       .eq('id', contaId);
     if (error) throw new Error(error.message);
