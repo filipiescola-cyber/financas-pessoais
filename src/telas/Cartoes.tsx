@@ -3,6 +3,7 @@ import { hoje } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
+import { Botao, Pagina } from '../ui/base';
 import {
   usarArquivarCartao,
   usarCartoes,
@@ -23,16 +24,18 @@ export function Cartoes() {
   const arquivados = cartoes.data.filter((c) => !c.conta.ativo);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-4 pb-24">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold text-slate-100">Cartões</h1>
-        <button
-          onClick={() => setMostrandoFormulario((v) => !v)}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white"
+    <Pagina
+      titulo="Cartões"
+      subtitulo="Fechamento, vencimento e limite"
+      acao={
+        <Botao
+          aoClicar={() => setMostrandoFormulario((v) => !v)}
+          tipo={mostrandoFormulario ? 'secundario' : 'primario'}
         >
           {mostrandoFormulario ? 'Cancelar' : 'Novo cartão'}
-        </button>
-      </header>
+        </Botao>
+      }
+    >
 
       {mostrandoFormulario && <FormularioCartao aoTerminar={() => setMostrandoFormulario(false)} />}
 
@@ -89,7 +92,7 @@ export function Cartoes() {
           ))}
         </section>
       )}
-    </div>
+    </Pagina>
   );
 }
 

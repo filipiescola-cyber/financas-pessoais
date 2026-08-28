@@ -8,6 +8,7 @@ import {
   type Exportacao,
 } from '../dados/exportar';
 import { usarAviso } from '../ui/Aviso';
+import { Pagina } from '../ui/base';
 
 /**
  * Backup e export (§10.2). Um botão, baixa tudo.
@@ -63,11 +64,7 @@ export function Dados() {
     : null;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-4 pb-24">
-      <header>
-        <h1 className="text-xl font-semibold text-slate-100">Dados</h1>
-        <p className="text-sm text-slate-500">Backup e exportação</p>
-      </header>
+    <Pagina titulo="Dados" subtitulo="Backup e exportação">
 
       <section className="space-y-3 rounded-xl border border-borda bg-superficie p-4">
         <div>
@@ -139,6 +136,6 @@ export function Dados() {
           suba o JSON. Testar depois de um ano de histórico é tarde para descobrir que faltava algo.
         </p>
       </section>
-    </div>
+    </Pagina>
   );
 }

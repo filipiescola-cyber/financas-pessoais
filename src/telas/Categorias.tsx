@@ -5,6 +5,7 @@ import { arquivarCategoria, atualizarCategoria, criarCategoria } from '../dados/
 import { chaves } from '../dados/chaves';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarAviso } from '../ui/Aviso';
+import { Botao, Pagina } from '../ui/base';
 import type { TipoDeCategoria } from '../dados/tipos';
 
 const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
@@ -24,16 +25,15 @@ export function Categorias() {
   const lista = (categorias.data ?? []).filter((c) => c.tipo === tipo);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold text-slate-100">Categorias</h1>
-        <button
-          onClick={() => setCriando((v) => !v)}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white"
-        >
+    <Pagina
+      titulo="Categorias"
+      subtitulo="A natureza decide em que bloco cada gasto aparece"
+      acao={
+        <Botao aoClicar={() => setCriando((v) => !v)} tipo={criando ? 'secundario' : 'primario'}>
           {criando ? 'Cancelar' : 'Nova'}
-        </button>
-      </header>
+        </Botao>
+      }
+    >
 
       <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
         {(['despesa', 'receita'] as const).map((t) => (
@@ -66,7 +66,7 @@ export function Categorias() {
           <LinhaCategoria key={categoria.id} categoria={categoria} />
         ))}
       </ul>
-    </div>
+    </Pagina>
   );
 }
 

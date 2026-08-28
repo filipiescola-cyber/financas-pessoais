@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
+import { Pagina } from '../ui/base';
 
 const ITENS = [
   { para: '/fechamento', titulo: 'Fechamento mensal', descricao: 'O ritual de 10 minutos, uma vez por mês' },
@@ -23,11 +24,7 @@ export function Mais() {
   const { sessao, sair } = useAutenticacao();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
-      <header>
-        <h1 className="text-xl font-semibold text-slate-100">Mais</h1>
-        <p className="text-sm text-slate-500">{sessao?.user.email}</p>
-      </header>
+    <Pagina titulo="Mais" subtitulo={sessao?.user.email}>
 
       <nav className="space-y-2">
         {ITENS.map((item) => (
@@ -48,6 +45,6 @@ export function Mais() {
       >
         Sair
       </button>
-    </div>
+    </Pagina>
   );
 }

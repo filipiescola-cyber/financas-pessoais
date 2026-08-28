@@ -5,7 +5,8 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import { ROTULO_CENARIO, simularCompra, type Cenario } from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { CampoValor } from '../ui/CampoValor';
-import { Cartao, CartaoIndicador, Chip, Nota, Pagina, Secao } from '../ui/base';
+import { Link } from 'react-router-dom';
+import { Botao, Cartao, CartaoIndicador, Chip, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
 const HORIZONTE = 12;
 
@@ -44,6 +45,27 @@ export function Simulador() {
     return (
       <Pagina titulo="Simulador">
         <p className="text-red-400">Erro: {(dados.error as Error).message}</p>
+      </Pagina>
+    );
+  }
+
+  // Mesma guarda do fluxo de caixa: sem renda e sem fixas não há projeção, e
+  // "seu mês mais apertado: R$ 0,00" seria um número inventado com cara de
+  // resposta (§13.5).
+  const semBase = dados.data.renda.origem === 'ausente' && dados.data.fixasMensais === 0;
+
+  if (semBase) {
+    return (
+      <Pagina titulo="Simulador" subtitulo="O que esta compra faz com os próximos meses">
+        <Vazio
+          titulo="Ainda não dá para simular"
+          descricao="O simulador compara a projeção com e sem a compra — e a projeção precisa saber de onde vem o dinheiro e o que sai todo mês. Sem isso, qualquer número aqui seria inventado."
+          acao={
+            <Link to="/comecar">
+              <Botao>Completar configuração</Botao>
+            </Link>
+          }
+        />
       </Pagina>
     );
   }

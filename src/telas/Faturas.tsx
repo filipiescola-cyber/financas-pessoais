@@ -9,6 +9,7 @@ import { usarCartoes } from '../dados/usarCartoes';
 import { usarContas } from '../dados/usarContas';
 import { listarFaturas, pagarFatura, totalDaFatura, type Fatura } from '../dados/faturas';
 import { listarTransacoesDaFatura } from '../dados/transacoes';
+import { Chip, Pagina, Vazio } from '../ui/base';
 
 const ROTULO_STATUS: Record<Fatura['status'], string> = {
   aberta: 'Aberta',
@@ -34,47 +35,47 @@ export function Faturas() {
     }
   }, [cartoes.data, cartaoId]);
 
-  if (cartoes.isPending) return <p className="p-6 text-slate-400">Carregando…</p>;
+  if (cartoes.isPending) {
+    return (
+      <Pagina titulo="Faturas">
+        <p className="text-slate-400">Carregando…</p>
+      </Pagina>
+    );
+  }
 
   const lista = cartoes.data ?? [];
 
   if (lista.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl p-4">
-        <h1 className="text-xl font-semibold text-slate-100">Faturas</h1>
-        <p className="mt-4 rounded-xl border border-dashed border-borda-forte p-8 text-center text-slate-400">
-          Nenhum cartão cadastrado ainda.
-        </p>
-      </div>
+      <Pagina titulo="Faturas">
+        <Vazio
+          titulo="Nenhum cartão cadastrado"
+          descricao="A fatura só existe a partir do cartão: é o dia de fechamento dele que decide em qual fatura cada compra cai."
+        />
+      </Pagina>
     );
   }
 
   const cartao = lista.find((c) => c.contaId === cartaoId) ?? lista[0]!;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
-      <h1 className="text-xl font-semibold text-slate-100">Faturas</h1>
-
+    <Pagina titulo="Faturas" subtitulo="Compra no cartão não é saída de caixa no dia">
       {lista.length > 1 && (
         <div className="flex flex-wrap gap-2">
           {lista.map((c) => (
-            <button
+            <Chip
               key={c.contaId}
-              onClick={() => setCartaoId(c.contaId)}
-              className={`rounded-full px-3 py-1.5 text-sm ${
-                cartao.contaId === c.contaId
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-borda-forte text-slate-300'
-              }`}
+              ativo={cartao.contaId === c.contaId}
+              aoClicar={() => setCartaoId(c.contaId)}
             >
               {c.conta.nome}
-            </button>
+            </Chip>
           ))}
         </div>
       )}
 
       <ListaDeFaturas cartaoId={cartao.contaId} nomeDoCartao={cartao.conta.nome} />
-    </div>
+    </Pagina>
   );
 }
 
