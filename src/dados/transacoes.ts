@@ -351,3 +351,89 @@ export async function criarParcelamentoEmAndamento(
   if (error) throw new Error(error.message);
   return (data ?? []).map((linha) => linha.id);
 }
+
+export type CamposEditaveis = {
+  valor?: Centavos;
+  categoriaId?: string | null;
+  descricao?: string | null;
+  data?: DataISO;
+  contaId?: string;
+};
+
+type AtualizacaoTransacao = Database['public']['Tables']['transacoes']['Update'];
+
+function montarAtualizacao(
+  campos: CamposEditaveis,
+  tipo: 'receita' | 'despesa' | 'transferencia',
+  cartao?: ConfiguracaoDoCartao | null,
+): AtualizacaoTransacao {
+  const atualizacao: AtualizacaoTransacao = {};
+
+  if (campos.valor !== undefined) {
+    // O sinal continua vindo do tipo: editar valor nunca transforma despesa em
+    // receita por acidente.
+    const sinal = tipo === 'receita' ? 1 : -1;
+    atualizacao.valor = paraNumerico(sinal * Math.abs(campos.valor));
+  }
+  if (campos.categoriaId !== undefined) atualizacao.categoria_id = campos.categoriaId;
+  if (campos.descricao !== undefined) atualizacao.descricao = campos.descricao?.trim() || null;
+  if (campos.contaId !== undefined) atualizacao.conta_id = campos.contaId;
+  if (campos.data !== undefined) {
+    atualizacao.data_competencia = campos.data;
+    atualizacao.data_caixa = dataDeCaixa(campos.data, cartao);
+  }
+
+  return atualizacao;
+}
+
+export async function atualizarTransacao(
+  transacao: Transacao,
+  campos: CamposEditaveis,
+  cartao?: ConfiguracaoDoCartao | null,
+): Promise<void> {
+  const atualizacao = montarAtualizacao(campos, transacao.tipo, cartao);
+  if (Object.keys(atualizacao).length === 0) return;
+
+  const { error } = await supabase.from('transacoes').update(atualizacao).eq('id', transacao.id);
+  if (error) throw new Error(error.message);
+
+  // Transferência tem duas pontas ligadas (§2.3): valor, data e descrição
+  // precisam andar juntos, senão os dois saldos ficam errados de uma vez.
+  if (transacao.transferenciaParId) {
+    const espelho: AtualizacaoTransacao = { ...atualizacao };
+    delete espelho.conta_id;
+    if (atualizacao.valor !== undefined) espelho.valor = -Number(atualizacao.valor);
+    const { error: erroEspelho } = await supabase
+      .from('transacoes')
+      .update(espelho)
+      .eq('id', transacao.transferenciaParId);
+    if (erroEspelho) throw new Error(erroEspelho.message);
+  }
+}
+
+/**
+ * Editar parcelamento oferece os mesmos três escopos da exclusão (§2.2).
+ * A data fica de fora do escopo múltiplo: cada parcela tem a sua, e mudar todas
+ * para a mesma data destruiria o parcelamento.
+ */
+export async function atualizarParcelamento(
+  grupoId: string,
+  escopo: EscopoDeParcelamento,
+  competenciaDaParcela: DataISO,
+  campos: Omit<CamposEditaveis, 'data'>,
+  tipo: 'receita' | 'despesa' | 'transferencia',
+): Promise<void> {
+  const atualizacao = montarAtualizacao(campos, tipo);
+  if (Object.keys(atualizacao).length === 0) return;
+
+  let consulta = supabase.from('transacoes').update(atualizacao).eq('grupo_parcelamento_id', grupoId);
+
+  if (escopo === 'esta') {
+    consulta = consulta.eq('data_competencia', competenciaDaParcela);
+  } else if (escopo === 'esta-e-futuras') {
+    consulta = consulta.gte('data_competencia', competenciaDaParcela);
+  }
+
+  const { error } = await consulta;
+  if (error) throw new Error(error.message);
+}

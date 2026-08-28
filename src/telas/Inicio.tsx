@@ -81,7 +81,7 @@ export function Inicio() {
       {contas.isSuccess && disponiveis.length > 0 && (
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <p className="text-sm text-slate-400">Disponível para gastar</p>
-          <p className="mt-1 text-3xl font-semibold text-slate-100">{formatar(consolidado)}</p>
+          <p className="dinheiro mt-1 text-3xl font-semibold text-slate-100">{formatar(consolidado)}</p>
           <p className="mt-2 text-xs text-slate-500">
             Não inclui a conta Empresa, dívidas nem faturas de cartão.
           </p>

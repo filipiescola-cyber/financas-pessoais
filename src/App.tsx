@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ProvedorAutenticacao } from './dados/autenticacao';
 import { ProvedorAviso } from './ui/Aviso';
+import { ProvedorPrivacidade } from './ui/Privacidade';
 import { Layout } from './ui/Layout';
 import { RotaProtegida } from './ui/RotaProtegida';
 import { Cartoes } from './telas/Cartoes';
@@ -16,6 +17,7 @@ import { Transacoes } from './telas/Transacoes';
 export function App() {
   return (
     <ProvedorAutenticacao>
+      <ProvedorPrivacidade>
       <ProvedorAviso>
         <BrowserRouter>
           <Routes>
@@ -47,6 +49,7 @@ export function App() {
           </Routes>
         </BrowserRouter>
       </ProvedorAviso>
+      </ProvedorPrivacidade>
     </ProvedorAutenticacao>
   );
 }

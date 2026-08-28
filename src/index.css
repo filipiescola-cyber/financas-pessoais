@@ -14,8 +14,9 @@ body {
 }
 
 /* Modo privado (§10.4): borra todos os valores da tela.
-   Entra em uso na Fase 1; a classe já existe para não espalhar CSS depois. */
-.valor-borrado {
-  filter: blur(7px);
+   Marcar o elemento com a classe .dinheiro é o suficiente — o borrão é ligado
+   por um atributo na raiz, então nenhuma tela precisa saber do estado. */
+[data-privado='true'] .dinheiro {
+  filter: blur(8px);
   user-select: none;
 }

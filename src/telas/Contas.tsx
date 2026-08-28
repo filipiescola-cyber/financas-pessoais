@@ -48,7 +48,7 @@ export function Contas() {
         <>
           <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <p className="text-sm text-slate-400">Disponível para gastar</p>
-            <p className="mt-1 text-3xl font-semibold text-slate-100">{formatar(consolidado)}</p>
+            <p className="dinheiro mt-1 text-3xl font-semibold text-slate-100">{formatar(consolidado)}</p>
             <p className="mt-2 text-xs text-slate-500">
               Soma de conta corrente, poupança, carteira e investimento. Não inclui a conta Empresa,
               dívidas nem faturas de cartão.
@@ -118,7 +118,7 @@ function LinhaDeConta({
         <p className="truncate text-xs text-slate-500">{detalhe}</p>
       </div>
       <div className="flex items-center gap-3">
-        <span className={valor < 0 ? 'text-red-400' : 'text-slate-100'}>{formatar(valor)}</span>
+        <span className={`dinheiro ${valor < 0 ? 'text-red-400' : 'text-slate-100'}`}>{formatar(valor)}</span>
         <button
           onClick={() => arquivar.mutate(id)}
           disabled={arquivar.isPending}
@@ -144,7 +144,7 @@ function BlocoEmpresa({ nome, saldo }: { nome: string; saldo: Centavos }) {
     <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
       <p className="text-sm text-slate-400">{nome}</p>
       <p className="mt-1 text-sm text-slate-400">{rotuloDaContaEmpresa(saldo)}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-200">{formatar(Math.abs(saldo))}</p>
+      <p className="dinheiro mt-1 text-2xl font-semibold text-slate-200">{formatar(saldo === 0 ? 0 : Math.abs(saldo))}</p>
       <p className="mt-2 text-xs text-slate-500">
         Dinheiro seu parado dentro do negócio. É recebível, não caixa — por isso não entra no
         disponível para gastar.

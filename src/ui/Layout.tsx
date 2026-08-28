@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useAutenticacao } from '../dados/autenticacao';
 import { LancamentoRapido } from '../telas/LancamentoRapido';
+import { usarPrivacidade } from './Privacidade';
 
 const ABAS = [
   { para: '/', rotulo: 'Início' },
@@ -17,7 +17,7 @@ const ABAS = [
  * usado do app, e caçá-lo dentro de um menu já seria atrito demais.
  */
 export function Layout() {
-  const { sair } = useAutenticacao();
+  const { privado, alternar } = usarPrivacidade();
   const [lancando, setLancando] = useState(false);
 
   return (
@@ -54,8 +54,13 @@ export function Layout() {
               </NavLink>
             ))}
           </div>
-          <button onClick={() => void sair()} className="text-xs text-slate-500 hover:text-slate-300">
-            Sair
+          <button
+            onClick={alternar}
+            title="Modo privado: borra os valores da tela (§10.4)"
+            aria-pressed={privado}
+            className="rounded-lg border border-slate-800 px-2 py-1 text-xs text-slate-400 hover:text-slate-200"
+          >
+            {privado ? 'mostrar valores' : 'ocultar valores'}
           </button>
         </div>
       </nav>

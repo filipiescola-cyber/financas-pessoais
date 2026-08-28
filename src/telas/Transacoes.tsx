@@ -19,6 +19,7 @@ import {
 } from '../dados/transacoes';
 import { chaves } from '../dados/chaves';
 import { usarAviso } from '../ui/Aviso';
+import { EditarTransacao } from './EditarTransacao';
 
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -33,6 +34,7 @@ function nomeDoMes(data: DataISO): string {
 export function Transacoes() {
   const [mes, setMes] = useState<DataISO>(primeiroDiaDoMes(hoje()));
   const [contaId, setContaId] = useState<string | null>(null);
+  const [editando, setEditando] = useState<Transacao | null>(null);
 
   const contas = usarContas();
   const categorias = usarCategorias(true);
@@ -72,11 +74,11 @@ export function Transacoes() {
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
           <p className="text-xs text-slate-500">Entrou</p>
-          <p className="text-lg text-slate-100">{formatar(receitas)}</p>
+          <p className="dinheiro text-lg text-slate-100">{formatar(receitas)}</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
           <p className="text-xs text-slate-500">Saiu</p>
-          <p className="text-lg text-slate-100">{formatar(Math.abs(despesas))}</p>
+          <p className="dinheiro text-lg text-slate-100">{formatar(Math.abs(despesas))}</p>
         </div>
       </div>
 
@@ -118,9 +120,12 @@ export function Transacoes() {
             nomeCategoria={
               transacao.categoriaId ? (nomeCategoria.get(transacao.categoriaId) ?? null) : null
             }
+            aoEditar={() => setEditando(transacao)}
           />
         ))}
       </ul>
+
+      <EditarTransacao transacao={editando} aoFechar={() => setEditando(null)} />
     </div>
   );
 }
@@ -150,10 +155,12 @@ function ItemDeTransacao({
   transacao,
   nomeConta,
   nomeCategoria,
+  aoEditar,
 }: {
   transacao: Transacao;
   nomeConta: string;
   nomeCategoria: string | null;
+  aoEditar: () => void;
 }) {
   const [confirmandoParcelamento, setConfirmandoParcelamento] = useState(false);
   const cliente = useQueryClient();
@@ -211,25 +218,30 @@ function ItemDeTransacao({
 
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span
-            className={
+            className={`dinheiro ${
               ehTransferencia
                 ? 'text-slate-400'
                 : transacao.valor < 0
                   ? 'text-slate-100'
                   : 'text-emerald-400'
-            }
+            }`}
           >
             {formatar(transacao.valor)}
           </span>
-          <button
-            onClick={() =>
-              ehParcelado ? setConfirmandoParcelamento(true) : excluir.mutate()
-            }
-            disabled={excluir.isPending}
-            className="text-xs text-slate-500 hover:text-red-400"
-          >
-            excluir
-          </button>
+          <div className="flex gap-3">
+            <button onClick={aoEditar} className="text-xs text-slate-500 hover:text-slate-300">
+              editar
+            </button>
+            <button
+              onClick={() =>
+                ehParcelado ? setConfirmandoParcelamento(true) : excluir.mutate()
+              }
+              disabled={excluir.isPending}
+              className="text-xs text-slate-500 hover:text-red-400"
+            >
+              excluir
+            </button>
+          </div>
         </div>
       </div>
 
