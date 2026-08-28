@@ -1,0 +1,162 @@
+// Acesso a cartões (§4.2).
+//
+// Um cartão são duas linhas: uma em `contas` (tipo cartao_credito) e uma em
+// `cartoes` com os dias. O PostgREST não expõe transação, então a criação é
+// feita em dois passos com compensação — se o segundo falhar, o primeiro é
+// desfeito. Sem isso sobraria uma conta de cartão sem fechamento, que é
+// exatamente o estado que quebra o §2.1.
+
+import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
+import { ehDiaValido } from '../dominio/fatura';
+import { supabase } from './supabase';
+import type { CartaoComConta, LinhaCartao, LinhaConta, TipoDeConta } from './tipos';
+import type { Database } from './tipos-gerados';
+
+type AtualizacaoCartao = Database['public']['Tables']['cartoes']['Update'];
+
+export type NovoCartao = {
+  nome: string;
+  instituicao?: string | null;
+  limite: Centavos | null;
+  diaFechamento: number;
+  diaVencimento: number;
+};
+
+function montar(conta: LinhaConta, cartao: LinhaCartao): CartaoComConta {
+  return {
+    contaId: cartao.conta_id,
+    limite: cartao.limite === null ? null : paraCentavos(cartao.limite),
+    diaFechamento: cartao.dia_fechamento,
+    diaVencimento: cartao.dia_vencimento,
+    conta: {
+      id: conta.id,
+      nome: conta.nome,
+      tipo: conta.tipo as TipoDeConta,
+      instituicao: conta.instituicao,
+      saldoInicial: paraCentavos(conta.saldo_inicial),
+      saldoConferido: conta.saldo_conferido === null ? null : paraCentavos(conta.saldo_conferido),
+      dataConferencia: conta.data_conferencia,
+      ativo: conta.ativo,
+    },
+  };
+}
+
+export async function listarCartoes(incluirArquivados = false): Promise<CartaoComConta[]> {
+  const { data: cartoes, error } = await supabase.from('cartoes').select('*');
+  if (error) throw error;
+  if (!cartoes || cartoes.length === 0) return [];
+
+  let consulta = supabase
+    .from('contas')
+    .select('*')
+    .in(
+      'id',
+      cartoes.map((c) => c.conta_id),
+    )
+    .order('nome');
+  if (!incluirArquivados) consulta = consulta.eq('ativo', true);
+
+  const { data: contas, error: erroContas } = await consulta;
+  if (erroContas) throw erroContas;
+
+  const porId = new Map(cartoes.map((c) => [c.conta_id, c]));
+  return (contas ?? [])
+    .map((conta) => {
+      const cartao = porId.get(conta.id);
+      return cartao ? montar(conta, cartao) : null;
+    })
+    .filter((c): c is CartaoComConta => c !== null);
+}
+
+export async function criarCartao(novo: NovoCartao): Promise<CartaoComConta> {
+  validar(novo);
+
+  const { data: conta, error: erroConta } = await supabase
+    .from('contas')
+    .insert({
+      nome: novo.nome.trim(),
+      tipo: 'cartao_credito',
+      instituicao: novo.instituicao?.trim() || null,
+      // Cartão não tem saldo próprio: o que existe é fatura (§2.1).
+      saldo_inicial: 0,
+    })
+    .select()
+    .single();
+
+  if (erroConta) throw new Error(erroConta.message);
+
+  const { data: cartao, error: erroCartao } = await supabase
+    .from('cartoes')
+    .insert({
+      conta_id: conta.id,
+      limite: novo.limite === null ? null : paraNumerico(novo.limite),
+      dia_fechamento: novo.diaFechamento,
+      dia_vencimento: novo.diaVencimento,
+    })
+    .select()
+    .single();
+
+  if (erroCartao) {
+    // Compensação: sem os dias, a conta de cartão é inútil e perigosa.
+    await supabase.from('contas').delete().eq('id', conta.id);
+    throw new Error(erroCartao.message);
+  }
+
+  return montar(conta, cartao);
+}
+
+export async function atualizarCartao(
+  contaId: string,
+  campos: Partial<NovoCartao>,
+): Promise<void> {
+  for (const dia of [campos.diaFechamento, campos.diaVencimento]) {
+    if (dia !== undefined && !ehDiaValido(dia)) throw erroDeDia();
+  }
+
+  if (campos.nome !== undefined || campos.instituicao !== undefined) {
+    const { error } = await supabase
+      .from('contas')
+      .update({
+        ...(campos.nome !== undefined ? { nome: campos.nome.trim() } : {}),
+        ...(campos.instituicao !== undefined
+          ? { instituicao: campos.instituicao?.trim() || null }
+          : {}),
+      })
+      .eq('id', contaId);
+    if (error) throw new Error(error.message);
+  }
+
+  const doCartao: AtualizacaoCartao = {};
+  if (campos.limite !== undefined) {
+    doCartao.limite = campos.limite === null ? null : paraNumerico(campos.limite);
+  }
+  if (campos.diaFechamento !== undefined) doCartao.dia_fechamento = campos.diaFechamento;
+  if (campos.diaVencimento !== undefined) doCartao.dia_vencimento = campos.diaVencimento;
+
+  if (Object.keys(doCartao).length > 0) {
+    const { error } = await supabase.from('cartoes').update(doCartao).eq('conta_id', contaId);
+    if (error) throw new Error(error.message);
+  }
+}
+
+/** Arquivar, nunca excluir (§4.8). Arquiva a conta; a linha de cartão fica. */
+export async function arquivarCartao(contaId: string): Promise<void> {
+  const { error } = await supabase.from('contas').update({ ativo: false }).eq('id', contaId);
+  if (error) throw new Error(error.message);
+}
+
+export async function desarquivarCartao(contaId: string): Promise<void> {
+  const { error } = await supabase.from('contas').update({ ativo: true }).eq('id', contaId);
+  if (error) throw new Error(error.message);
+}
+
+function validar(novo: NovoCartao) {
+  if (novo.nome.trim() === '') throw new Error('O cartão precisa de um nome.');
+  if (!ehDiaValido(novo.diaFechamento) || !ehDiaValido(novo.diaVencimento)) throw erroDeDia();
+}
+
+function erroDeDia(): Error {
+  return new Error(
+    'Dia de fechamento e de vencimento são obrigatórios e precisam estar entre 1 e 31. Sem eles a fatura não fecha (§4.2).',
+  );
+}

@@ -4,6 +4,7 @@ import { useAutenticacao } from '../dados/autenticacao';
 const ABAS = [
   { para: '/', rotulo: 'Início' },
   { para: '/contas', rotulo: 'Contas' },
+  { para: '/cartoes', rotulo: 'Cartões' },
 ];
 
 /**

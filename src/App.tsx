@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ProvedorAutenticacao } from './dados/autenticacao';
 import { Layout } from './ui/Layout';
 import { RotaProtegida } from './ui/RotaProtegida';
+import { Cartoes } from './telas/Cartoes';
 import { Contas } from './telas/Contas';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
@@ -21,6 +22,7 @@ export function App() {
           >
             <Route path="/" element={<Inicio />} />
             <Route path="/contas" element={<Contas />} />
+            <Route path="/cartoes" element={<Cartoes />} />
           </Route>
         </Routes>
       </BrowserRouter>
