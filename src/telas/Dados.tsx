@@ -172,6 +172,10 @@ function Recomecar({ exportouNestaSessao }: { exportouNestaSessao: boolean }) {
     mutationFn: recomecarDoZero,
     onSuccess: async () => {
       await cliente.invalidateQueries();
+      // Espera o status do onboarding voltar do banco antes de navegar: sem
+      // isso o wizard leria o valor velho do cache e abriria no passo em que
+      // estava antes de apagar tudo.
+      await cliente.refetchQueries({ queryKey: ['onboarding'] });
       mostrar('Tudo apagado. O onboarding recomeça do primeiro passo.');
       navegar('/comecar');
     },

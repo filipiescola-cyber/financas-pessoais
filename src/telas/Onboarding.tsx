@@ -16,6 +16,7 @@ import {
   gravarSementesDeRenda,
   gravarStatusOnboarding,
   lerStatusOnboarding,
+  passoDeEntrada,
   type PassoDoOnboarding,
 } from '../dados/config';
 import { usarContas } from '../dados/usarContas';
@@ -48,7 +49,10 @@ export function Onboarding() {
 
   useEffect(() => {
     if (status.data && passo === null) {
-      setPasso(status.data.passoAtual);
+      // O passo gravado é onde o usuário parou. Onde o wizard ABRE é outra
+      // coisa: depois de concluído, o gravado é o último, e entrar por ele
+      // deixava a tela sem nada para fazer.
+      setPasso(passoDeEntrada(status.data));
       setPulados(status.data.pulados);
     }
   }, [status.data, passo]);

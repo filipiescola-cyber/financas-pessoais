@@ -2,41 +2,18 @@
 // Guarda o progresso do onboarding (§4.1), as sementes de renda variável (§4.5)
 // e, a partir da Fase 3, a última execução das rotinas de abertura (§13.3).
 
+import { PASSOS, STATUS_INICIAL, type PassoDoOnboarding, type StatusOnboarding } from '../dominio/onboarding';
 import { supabase } from './supabase';
 
-export type PassoDoOnboarding =
-  | 'carteira'
-  | 'contas'
-  | 'cartoes'
-  | 'fatura-aberta'
-  | 'parcelamentos'
-  | 'despesas-fixas'
-  | 'fontes-de-renda'
-  | 'empresa'
-  | 'categorias';
-
-export const PASSOS: PassoDoOnboarding[] = [
-  'carteira',
-  'contas',
-  'cartoes',
-  'fatura-aberta',
-  'parcelamentos',
-  'despesas-fixas',
-  'fontes-de-renda',
-  'empresa',
-  'categorias',
-];
-
-/** Passos que podem ser adiados, com aviso de que a projeção fica incompleta (§4.1). */
-export const ADIAVEIS: PassoDoOnboarding[] = ['fatura-aberta', 'parcelamentos'];
-
-export type StatusOnboarding = {
-  concluido: boolean;
-  passoAtual: PassoDoOnboarding;
-  pulados: PassoDoOnboarding[];
-};
-
-const PADRAO: StatusOnboarding = { concluido: false, passoAtual: 'carteira', pulados: [] };
+// Os passos e a regra de entrada moram no domínio; aqui fica só a persistência.
+export {
+  ADIAVEIS,
+  PASSOS,
+  passoDeEntrada,
+  STATUS_INICIAL,
+  type PassoDoOnboarding,
+  type StatusOnboarding,
+} from '../dominio/onboarding';
 
 export async function lerConfig<T>(chave: string): Promise<T | null> {
   const { data, error } = await supabase
@@ -62,7 +39,7 @@ export async function gravarConfig(chave: string, valor: unknown): Promise<void>
  */
 export async function lerStatusOnboarding(): Promise<StatusOnboarding> {
   const bruto = await lerConfig<Record<string, unknown>>('onboarding_status');
-  if (!bruto) return PADRAO;
+  if (!bruto) return STATUS_INICIAL;
 
   // O seed gravou o formato antigo, com passo numérico. Traduz sem quebrar.
   const passo = bruto.passoAtual ?? bruto.passo_atual;
