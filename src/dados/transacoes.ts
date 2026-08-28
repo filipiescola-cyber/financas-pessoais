@@ -12,7 +12,7 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje as hojeISO, type DataISO } from '../dominio/datas';
-import { faturaDeReferencia, type ConfiguracaoDoCartao } from '../dominio/fatura';
+import { faturaEscolhida, type ConfiguracaoDoCartao } from '../dominio/fatura';
 import type { Natureza } from '../dominio/natureza';
 import { gerarParcelas, gerarParcelasRestantes } from '../dominio/parcelas';
 import { idDaFatura, idsDasFaturas } from './faturas';
@@ -80,6 +80,11 @@ export type NovoLancamento = {
   parcelas?: number;
   /** Obrigatório quando a conta é cartão: define a data de caixa (§2.1). */
   cartao?: ConfiguracaoDoCartao | null;
+  /**
+   * Ajuste manual da fatura, em meses sobre a calculada (§2.1). O app acerta
+   * quase sempre; quem tem a fatura na mão corrige o quase.
+   */
+  deslocamentoDeFatura?: number;
 };
 
 /**
@@ -101,6 +106,7 @@ export async function criarLancamento(novo: NovoLancamento): Promise<string[]> {
         novo.contaId,
         parcelas.map((p) => p.dataCompetencia),
         novo.cartao,
+        novo.deslocamentoDeFatura ?? 0,
       )
     : null;
 
@@ -111,7 +117,7 @@ export async function criarLancamento(novo: NovoLancamento): Promise<string[]> {
     valor: paraNumerico(parcela.valor),
     tipo: novo.tipo,
     data_competencia: parcela.dataCompetencia,
-    data_caixa: dataDeCaixa(parcela.dataCompetencia, novo.cartao),
+    data_caixa: dataDeCaixa(parcela.dataCompetencia, novo.cartao, novo.deslocamentoDeFatura ?? 0),
     fatura_id: faturas?.get(parcela.dataCompetencia) ?? null,
     grupo_parcelamento_id: grupo,
     parcela_num: quantidade > 1 ? parcela.numero : null,
@@ -130,9 +136,13 @@ export async function criarLancamento(novo: NovoLancamento): Promise<string[]> {
  * Sem isso a compra derrubaria o saldo no dia, que é o erro que o §2.1 combate.
  * A fatura em si (fatura_id) só é preenchida na Fase 2.
  */
-function dataDeCaixa(competencia: DataISO, cartao: ConfiguracaoDoCartao | null | undefined): DataISO {
+function dataDeCaixa(
+  competencia: DataISO,
+  cartao: ConfiguracaoDoCartao | null | undefined,
+  deslocamento = 0,
+): DataISO {
   if (!cartao) return competencia;
-  return faturaDeReferencia(competencia, cartao).dataVencimento;
+  return faturaEscolhida(competencia, cartao, deslocamento).dataVencimento;
 }
 
 export type NovaTransferencia = {
@@ -199,13 +209,22 @@ export async function listarTransacoes(filtros: {
   ate: DataISO;
   contaId?: string | null;
   categoriaId?: string | null;
+  /**
+   * Qual das duas datas filtra o mês (§2.4). `competencia` responde "o que
+   * aconteceu em agosto"; `caixa`, "o que saiu da conta em agosto" — e as duas
+   * trazem listas diferentes, porque compra de cartão tem as datas separadas
+   * por semanas.
+   */
+  porData?: 'competencia' | 'caixa';
 }): Promise<Transacao[]> {
+  const coluna = filtros.porData === 'caixa' ? 'data_caixa' : 'data_competencia';
+
   let consulta = supabase
     .from('transacoes')
     .select('*')
-    .gte('data_competencia', filtros.de)
-    .lte('data_competencia', filtros.ate)
-    .order('data_competencia', { ascending: false })
+    .gte(coluna, filtros.de)
+    .lte(coluna, filtros.ate)
+    .order(coluna, { ascending: false })
     .order('created_at', { ascending: false });
 
   if (filtros.contaId) consulta = consulta.eq('conta_id', filtros.contaId);

@@ -32,6 +32,7 @@ export function usarTransacoes(filtros: {
   ate: DataISO;
   contaId?: string | null;
   categoriaId?: string | null;
+  porData?: 'competencia' | 'caixa';
 }) {
   return useQuery({
     queryKey: [...CHAVE_TRANSACOES, filtros],

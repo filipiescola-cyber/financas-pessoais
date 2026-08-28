@@ -3,6 +3,7 @@ import {
   descreverFatura,
   faturaDeReferencia,
   faturaDoMes,
+  faturaEscolhida,
   proximasFaturas,
 } from '../src/dominio/fatura';
 
@@ -126,5 +127,40 @@ describe('configuração inválida', () => {
     expect(() => faturaDeReferencia('2026-10-01', { diaFechamento: 0, diaVencimento: 10 })).toThrow();
     expect(() => faturaDeReferencia('2026-10-01', { diaFechamento: 32, diaVencimento: 10 })).toThrow();
     expect(() => faturaDeReferencia('2026-10-01', { diaFechamento: 5, diaVencimento: 1.5 })).toThrow();
+  });
+});
+
+describe('escolher a fatura na mão', () => {
+  // Fecha dia 5, vence dia 15.
+  const cartao = { diaFechamento: 5, diaVencimento: 15 };
+
+  it('sem deslocamento, é a calculada pelo fechamento', () => {
+    expect(faturaEscolhida('2026-08-03', cartao).dataVencimento).toBe(
+      faturaDeReferencia('2026-08-03', cartao).dataVencimento,
+    );
+  });
+
+  it('deslocamento +1 joga para a fatura seguinte', () => {
+    // O caso real: compra no dia 4, o banco lançou no dia 6 e caiu na próxima.
+    const calculada = faturaDeReferencia('2026-08-04', cartao);
+    const escolhida = faturaEscolhida('2026-08-04', cartao, 1);
+    expect(escolhida.mesReferencia).toBe('2026-09-01');
+    expect(escolhida.mesReferencia > calculada.mesReferencia).toBe(true);
+  });
+
+  it('deslocamento -1 volta para a fatura anterior', () => {
+    expect(faturaEscolhida('2026-08-10', cartao, -1).mesReferencia).toBe('2026-08-01');
+  });
+
+  it('atravessa a virada de ano sem se perder', () => {
+    expect(faturaEscolhida('2026-12-20', cartao, 1).mesReferencia).toBe('2027-02-01');
+    expect(faturaEscolhida('2027-01-02', cartao, -1).mesReferencia).toBe('2026-12-01');
+  });
+
+  it('o deslocamento acompanha a data: mudar a compra move a fatura junto', () => {
+    // É por isso que o que se guarda é o deslocamento, e não a fatura escolhida.
+    const antes = faturaEscolhida('2026-08-10', cartao, 1).mesReferencia;
+    const depois = faturaEscolhida('2026-09-10', cartao, 1).mesReferencia;
+    expect(depois > antes).toBe(true);
   });
 });

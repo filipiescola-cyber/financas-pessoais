@@ -60,6 +60,27 @@ export function faturaDeReferencia(
 }
 
 /** A fatura que fecha no mês indicado. */
+/**
+ * A fatura em que a compra cai, com o ajuste manual do usuário (§2.1).
+ *
+ * O app calcula pelo dia de fechamento e acerta quase sempre. Quase: compra
+ * feita no próprio dia do fechamento, ou lançada pelo banco um dia depois,
+ * cai na outra fatura — e o usuário é quem tem a fatura na mão para saber.
+ *
+ * `deslocamento` é em meses a partir da calculada: -1 é a fatura anterior, +1
+ * a seguinte. Guardar o deslocamento e não a fatura escolhida mantém a regra
+ * do §2.1 no comando: mudar a data da compra continua movendo a fatura junto.
+ */
+export function faturaEscolhida(
+  dataDaCompra: DataISO,
+  configuracao: ConfiguracaoDoCartao,
+  deslocamento = 0,
+): Fatura {
+  const calculada = faturaDeReferencia(dataDaCompra, configuracao);
+  if (deslocamento === 0) return calculada;
+  return faturaDoMes(somarMeses(calculada.mesReferencia, deslocamento), configuracao);
+}
+
 export function faturaDoMes(
   mes: DataISO,
   { diaFechamento, diaVencimento }: ConfiguracaoDoCartao,

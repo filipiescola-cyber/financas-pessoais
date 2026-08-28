@@ -31,9 +31,10 @@ import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
+import { agruparPorCaixa, type BlocoDeFatura, type Visao } from '../dominio/agrupamento';
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
 import { usarRecorrencias } from '../dados/usarModelos';
-import { IconeConfere, IconeRelogio } from '../ui/icones';
+import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { EditarTransacao } from './EditarTransacao';
 
@@ -51,10 +52,16 @@ export function Transacoes() {
   const [mes, setMes] = useState<DataISO>(primeiroDiaDoMes(hoje()));
   const [contaId, setContaId] = useState<string | null>(null);
   const [editando, setEditando] = useState<Transacao | null>(null);
+  const [visao, setVisao] = useState<Visao>(() => lerVisaoSalva());
 
   const contas = usarContas();
   const categorias = usarCategorias(true);
-  const transacoes = usarTransacoes({ de: mes, ate: ultimoDiaDoMes(mes), contaId });
+  const transacoes = usarTransacoes({
+    de: mes,
+    ate: ultimoDiaDoMes(mes),
+    contaId,
+    porData: visao === 'caixa' ? 'caixa' : 'competencia',
+  });
   const fila = usarFila();
 
   const nomeConta = new Map((contas.data ?? []).map((c) => [c.id, c.nome]));
@@ -95,7 +102,8 @@ export function Transacoes() {
         )
       : [];
 
-  const porDia = agruparPorDia(lista, previstos);
+  const porDia =
+    visao === 'caixa' ? agruparPorDiaDeCaixa(lista, previstos) : agruparPorDia(lista, previstos);
 
   // Saldo diário. Vem por CAIXA, não por competência: é o único que bate com o
   // extrato do banco (§13.2). Sem filtro de conta, usa as mesmas contas que
@@ -187,6 +195,34 @@ export function Transacoes() {
         />
       </div>
 
+      <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
+        {VISOES.map((opcao) => (
+          <button
+            key={opcao.valor}
+            onClick={() => {
+              setVisao(opcao.valor);
+              try {
+                localStorage.setItem(CHAVE_DA_VISAO, opcao.valor);
+              } catch {
+                // Preferência não persiste, mas a visão vale nesta sessão.
+              }
+            }}
+            aria-pressed={visao === opcao.valor}
+            className={`flex-1 rounded-md px-2 py-1.5 text-sm transition ${
+              visao === opcao.valor ? 'bg-slate-700 text-slate-100' : 'text-slate-400'
+            }`}
+          >
+            {opcao.rotulo}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs leading-relaxed text-slate-500">
+        {visao === 'caixa'
+          ? 'Cada compra no cartão aparece dentro da fatura, no dia do vencimento — que é quando o dinheiro sai de fato. É esta visão que bate com o extrato do banco.'
+          : 'Cada lançamento aparece no dia em que aconteceu. Compra no cartão só mexe no saldo no vencimento da fatura, então aqui um dia pode ter lançamento sem o saldo mudar.'}
+      </p>
+
       <div className="flex flex-wrap gap-2">
         <FiltroChip ativo={contaId === null} aoClicar={() => setContaId(null)}>
           Todas as contas
@@ -277,7 +313,15 @@ export function Transacoes() {
           <Cartao>
             <ul className="divide-y divide-borda">
               {doDia.map((linha) =>
-                linha.tipo === 'lancamento' ? (
+                linha.tipo === 'fatura' ? (
+                  <BlocoDaFatura
+                    key={linha.bloco.faturaId}
+                    bloco={linha.bloco}
+                    nomeCartao={nomeConta.get(linha.bloco.contaId) ?? 'Cartão'}
+                    nomeDaCategoria={(id) => (id ? (nomeCategoria.get(id) ?? null) : null)}
+                    aoEditar={setEditando}
+                  />
+                ) : linha.tipo === 'lancamento' ? (
                   <ItemDeTransacao
                     key={linha.transacao.id}
                     transacao={linha.transacao}
@@ -306,10 +350,60 @@ export function Transacoes() {
   );
 }
 
-/** Uma linha da lista: ou um lançamento real, ou uma recorrência ainda por vir. */
+const CHAVE_DA_VISAO = 'visao-lancamentos';
+
+const VISOES: { valor: Visao; rotulo: string }[] = [
+  { valor: 'competencia', rotulo: 'Quando aconteceu' },
+  { valor: 'caixa', rotulo: 'Quando o dinheiro sai' },
+];
+
+function lerVisaoSalva(): Visao {
+  try {
+    return localStorage.getItem(CHAVE_DA_VISAO) === 'caixa' ? 'caixa' : 'competencia';
+  } catch {
+    return 'competencia';
+  }
+}
+
+/** Uma linha da lista: um lançamento, uma fatura inteira, ou uma recorrência por vir. */
 type LinhaDoDia =
   | { tipo: 'lancamento'; transacao: Transacao }
+  | { tipo: 'fatura'; bloco: BlocoDeFatura<Transacao> }
   | { tipo: 'previsto'; previsto: ItemPrevisto };
+
+/**
+ * A visão por caixa (§2.4).
+ *
+ * O previsto continua no dia previsto, e não numa fatura: recorrência que ainda
+ * não foi gerada não tem fatura para entrar. É também onde a linha de saldo já
+ * conta com ela, então as duas continuam falando a mesma coisa.
+ */
+function agruparPorDiaDeCaixa(
+  lista: Transacao[],
+  previstos: ItemPrevisto[],
+): [DataISO, LinhaDoDia[]][] {
+  const mapa = new Map<DataISO, LinhaDoDia[]>();
+
+  for (const { dia, linhas } of agruparPorCaixa(lista)) {
+    mapa.set(
+      dia,
+      linhas.map((linha) =>
+        linha.tipo === 'fatura'
+          ? { tipo: 'fatura' as const, bloco: linha }
+          : { tipo: 'lancamento' as const, transacao: linha.transacao },
+      ),
+    );
+  }
+
+  for (const previsto of previstos) {
+    mapa.set(previsto.dataPrevista, [
+      ...(mapa.get(previsto.dataPrevista) ?? []),
+      { tipo: 'previsto', previsto },
+    ]);
+  }
+
+  return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+}
 
 function agruparPorDia(
   lista: Transacao[],
@@ -620,6 +714,73 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
           />
         )}
       </div>
+    </li>
+  );
+}
+
+/**
+ * A fatura como um bloco só, no dia do vencimento (§2.1).
+ *
+ * O total é o que sai da conta; dentro dele estão as compras que o formaram,
+ * cada uma com a data em que aconteceu e se foi à vista ou parcelada. É a
+ * mesma leitura da fatura do banco — e responde, sem sair da tela, a pergunta
+ * que o número sozinho não responde: de onde veio esse valor.
+ *
+ * Já vem aberto. Fechado por padrão, o bloco esconderia justamente a
+ * informação que ele existe para mostrar.
+ */
+function BlocoDaFatura({
+  bloco,
+  nomeCartao,
+  nomeDaCategoria,
+  aoEditar,
+}: {
+  bloco: BlocoDeFatura<Transacao>;
+  nomeCartao: string;
+  nomeDaCategoria: (id: string | null) => string | null;
+  aoEditar: (transacao: Transacao) => void;
+}) {
+  const [aberto, setAberto] = useState(true);
+
+  return (
+    <li className="px-4 py-3">
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className="flex w-full items-start justify-between gap-3 text-left"
+      >
+        <span className="flex min-w-0 gap-2.5">
+          <IconeFaturas className="mt-0.5 shrink-0 text-slate-500" />
+          <span className="min-w-0">
+            <span className="block truncate text-slate-100">Fatura · {nomeCartao}</span>
+            <span className="block truncate text-xs text-slate-500">
+              {bloco.compras.length} lançamento(s) · vence {formatarBR(bloco.vencimento)}
+            </span>
+          </span>
+        </span>
+        <Dinheiro centavos={bloco.total} className="shrink-0 text-slate-200" />
+      </button>
+
+      {aberto && (
+        <ul className="mt-2.5 space-y-1.5 border-l border-borda pl-3">
+          {bloco.compras.map((compra) => (
+            <li key={compra.id} className="flex items-baseline justify-between gap-3">
+              <button
+                onClick={() => aoEditar(compra)}
+                className="min-w-0 truncate text-left text-xs text-slate-300 hover:text-slate-100"
+              >
+                {compra.descricao || nomeDaCategoria(compra.categoriaId) || 'Sem descrição'}
+              </button>
+              <span className="shrink-0 text-[11px] text-slate-500">
+                {formatarBR(compra.dataCompetencia).slice(0, 5)} ·{' '}
+                {compra.parcelaNum !== null
+                  ? `parcela ${compra.parcelaNum}/${compra.parcelaTotal}`
+                  : 'à vista'}
+              </span>
+              <Dinheiro centavos={compra.valor} className="shrink-0 text-xs text-slate-400" />
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

@@ -10,7 +10,13 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, primeiroDiaDoMes, type DataISO } from '../dominio/datas';
-import { faturaDeReferencia, faturaDoMes, proximasFaturas, type ConfiguracaoDoCartao } from '../dominio/fatura';
+import {
+  faturaDeReferencia,
+  faturaDoMes,
+  faturaEscolhida,
+  proximasFaturas,
+  type ConfiguracaoDoCartao,
+} from '../dominio/fatura';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -79,8 +85,10 @@ export async function idDaFatura(
   cartaoId: string,
   competencia: DataISO,
   configuracao: ConfiguracaoDoCartao,
+  /** Ajuste manual em meses sobre a fatura calculada (§2.1). */
+  deslocamento = 0,
 ): Promise<string> {
-  const calculada = faturaDeReferencia(competencia, configuracao);
+  const calculada = faturaEscolhida(competencia, configuracao, deslocamento);
 
   const { data: existente, error: erroBusca } = await supabase
     .from('faturas')
@@ -122,11 +130,12 @@ export async function idsDasFaturas(
   cartaoId: string,
   competencias: DataISO[],
   configuracao: ConfiguracaoDoCartao,
+  deslocamento = 0,
 ): Promise<Map<DataISO, string>> {
   const mapa = new Map<DataISO, string>();
   for (const competencia of competencias) {
     if (mapa.has(competencia)) continue;
-    mapa.set(competencia, await idDaFatura(cartaoId, competencia, configuracao));
+    mapa.set(competencia, await idDaFatura(cartaoId, competencia, configuracao, deslocamento));
   }
   return mapa;
 }

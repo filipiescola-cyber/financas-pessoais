@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatarBR, hoje, ontem, type DataISO } from '../dominio/datas';
+import { faturaEscolhida } from '../dominio/fatura';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { CampoValor } from '../ui/CampoValor';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -43,6 +44,9 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
   const { mostrar } = usarAviso();
 
   const [modo, setModo] = useState<Modo>('despesa');
+  // Volta ao sugerido a cada folha nova: o ajuste vale para aquela compra, não
+  // vira preferência.
+  const [deslocamentoDeFatura, setDeslocamentoDeFatura] = useState(0);
   const [valor, setValor] = useState<Centavos>(0);
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [contaId, setContaId] = useState<string | null>(null);
@@ -90,6 +94,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
     setCategoriaId(null);
     setDescricao('');
     setParcelas(1);
+    setDeslocamentoDeFatura(0);
     setMotivoEmpresa(null);
     setVerTodasCategorias(false);
     if (!manterContaEData) {
@@ -123,6 +128,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
         descricao,
         parcelas,
         cartao: ehCartao && cartao ? cartao : null,
+        deslocamentoDeFatura,
       });
       resumo =
         parcelas > 1
@@ -271,6 +277,33 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
             )}
           </div>
         </div>
+
+        {ehCartao && modo === 'despesa' && cartao && (
+          <div>
+            <span className="text-sm text-slate-400">Fatura</span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[-1, 0, 1].map((d) => {
+                const opcao = faturaEscolhida(data, cartao, d);
+                return (
+                  <Chip
+                    key={d}
+                    ativo={deslocamentoDeFatura === d}
+                    aoClicar={() => setDeslocamentoDeFatura(d)}
+                  >
+                    <span className="flex items-baseline gap-1.5">
+                      Vence {formatarBR(opcao.dataVencimento)}
+                      {d === 0 && <span className="text-[10px] opacity-70">sugerida</span>}
+                    </span>
+                  </Chip>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Compra depois do dia {cartao.diaFechamento} entra na fatura seguinte — o app já
+              escolheu por essa regra. Mude só se o banco tiver jogado para outra.
+            </p>
+          </div>
+        )}
 
         {ehCartao && modo === 'despesa' && (
           <div>
