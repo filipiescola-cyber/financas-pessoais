@@ -4,6 +4,7 @@ import { AtualizacaoDisponivel } from './ui/AtualizacaoDisponivel';
 import { ProvedorAviso } from './ui/Aviso';
 import { LimiteDeErro } from './ui/LimiteDeErro';
 import { ProvedorPrivacidade } from './ui/Privacidade';
+import { ProvedorTema } from './ui/Tema';
 import { Layout } from './ui/Layout';
 import { RotaProtegida } from './ui/RotaProtegida';
 import { Atalhos } from './telas/Atalhos';
@@ -31,6 +32,7 @@ import { Transacoes } from './telas/Transacoes';
 export function App() {
   return (
     <LimiteDeErro>
+      <ProvedorTema>
       <ProvedorAutenticacao>
       <ProvedorPrivacidade>
       <ProvedorAviso>
@@ -81,6 +83,7 @@ export function App() {
       </ProvedorAviso>
       </ProvedorPrivacidade>
       </ProvedorAutenticacao>
+      </ProvedorTema>
     </LimiteDeErro>
   );
 }

@@ -2,12 +2,32 @@ import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 import { Pagina } from '../ui/base';
 import { gruposForaDasAbas } from '../ui/navegacao';
+import { TEMAS, usarTema } from '../ui/Tema';
 
 export function Mais() {
   const { sessao, sair } = useAutenticacao();
+  const { tema, definir } = usarTema();
 
   return (
     <Pagina titulo="Mais" subtitulo={sessao?.user.email}>
+      <section className="space-y-2">
+        <h2 className="text-[11px] uppercase tracking-wider text-slate-500">tema</h2>
+        <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
+          {TEMAS.map((opcao) => (
+            <button
+              key={opcao.valor}
+              onClick={() => definir(opcao.valor)}
+              aria-pressed={tema === opcao.valor}
+              className={`flex-1 rounded-md px-2 py-1.5 text-sm transition ${
+                tema === opcao.valor ? 'bg-slate-700 text-slate-100' : 'text-slate-400'
+              }`}
+            >
+              {opcao.rotulo}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Os mesmos grupos da barra lateral, vindos da mesma lista: celular e
           desktop discordarem sobre onde uma tela mora é como ter dois apps. */}
       {gruposForaDasAbas().map((grupo) => (

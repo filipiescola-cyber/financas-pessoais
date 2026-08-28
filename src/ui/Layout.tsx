@@ -5,6 +5,8 @@ import { usarPrivacidade } from './Privacidade';
 import { usarRotinasDeAbertura } from '../dados/usarRotinas';
 import { usarFila } from '../dados/usarFila';
 import { IconeMais, IconeOlho } from './icones';
+import { Logo } from './Logo';
+import { TEMAS, usarTema } from './Tema';
 import { ABAS_DO_CELULAR, GRUPOS, PRIMEIRO, type ItemDeNavegacao } from './navegacao';
 
 /**
@@ -71,16 +73,45 @@ export function Layout() {
 
 function Marca({ compacta = false }: { compacta?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-base font-semibold text-white">
-        F
-      </div>
+    <div className="flex items-center gap-2.5">
+      <Logo className="h-9 w-9" />
       {!compacta && (
-        <div className="leading-tight">
-          <p className="text-sm font-semibold text-slate-100">Finanças</p>
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">Pessoais</p>
-        </div>
+        <p className="text-sm font-semibold leading-tight text-slate-100">
+          Finanças
+          <br />
+          Pessoais
+        </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Escolha do tema.
+ *
+ * Três opções e não um interruptor: "sistema" é uma escolha diferente de claro
+ * ou escuro — é dizer que o app deve seguir o aparelho — e um botão de dois
+ * estados não tem como expressar isso.
+ */
+function SeletorDeTema() {
+  const { tema, definir } = usarTema();
+
+  return (
+    <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
+      {TEMAS.map((opcao) => (
+        <button
+          key={opcao.valor}
+          onClick={() => definir(opcao.valor)}
+          aria-pressed={tema === opcao.valor}
+          className={`flex-1 rounded-md px-2 py-1 text-[11px] transition ${
+            tema === opcao.valor
+              ? 'bg-slate-700 text-slate-100'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          {opcao.rotulo}
+        </button>
+      ))}
     </div>
   );
 }
@@ -138,6 +169,7 @@ function BarraLateral({
       </nav>
 
       <div className="space-y-3 border-t border-borda px-4 py-4">
+        <SeletorDeTema />
         <BotaoPrivacidade privado={privado} aoAlternar={aoAlternarPrivacidade} comRotulo />
         <NavLink to="/mais" className="block text-xs text-slate-500 hover:text-slate-300">
           Conta e preferências

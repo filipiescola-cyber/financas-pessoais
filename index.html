@@ -6,6 +6,22 @@
          inferior da tela em celular com notch (§5.1). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0F172A" />
+    <!-- Antes de qualquer pintura: sem isto o app abre escuro e pisca para o
+         claro quando o React monta, que é pior do que não ter tema claro. -->
+    <script>
+      try {
+        var t = localStorage.getItem('tema') || 'escuro';
+        if (t === 'sistema') {
+          t = matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'escuro';
+        }
+        document.documentElement.dataset.tema = t;
+        // A barra do navegador no celular acompanha o tema da pagina.
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', t === 'claro' ? '#f4f6fb' : '#0b1120');
+      } catch (e) {
+        document.documentElement.dataset.tema = 'escuro';
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="./icone.svg" />
     <title>Finanças Pessoais</title>
   </head>

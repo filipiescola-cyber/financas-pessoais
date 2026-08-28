@@ -13,12 +13,64 @@
 
 :root {
   color-scheme: dark;
+  --tinta: #e2e8f0;
+}
+
+/* TEMA CLARO.
+   As telas foram escritas com a paleta slate do Tailwind direto — `text-slate-100`
+   para o texto principal, `text-slate-500` para o secundário. Trocar isso por
+   tokens semânticos custaria um replace em trinta arquivos e o risco que vem
+   junto. Como o Tailwind v4 gera cada cor como variável (`--color-slate-100`) e
+   toda utilidade lê `var(--color-slate-100)`, dá para INVERTER a rampa aqui e
+   virar o app inteiro de uma vez: o que era quase branco vira quase preto, e o
+   resto acompanha.
+
+   Os acentos não invertem — eles escurecem. Emerald-400 sobre branco não tem
+   contraste, e cor de aviso que não se lê não avisa nada. */
+:root[data-tema='claro'] {
+  color-scheme: light;
+  --tinta: #0f172a;
+
+  --color-fundo: #f4f6fb;
+  --color-superficie: #ffffff;
+  --color-superficie-alta: #eef2f8;
+  --color-borda: #dde4ee;
+  --color-borda-forte: #c2ccdc;
+
+  --color-slate-100: #0f172a;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #8794a8;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #f1f5f9;
+  --color-slate-950: #f8fafc;
+
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-emerald-950: #a7f3d0;
+
+  --color-sky-200: #075985;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-sky-900: #bfdbfe;
+  --color-sky-950: #dbeafe;
+
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #b45309;
+  --color-amber-900: #f0b429;
+  --color-amber-950: #fdeec4;
+
+  --color-red-400: #dc2626;
 }
 
 body {
   margin: 0;
   background-color: var(--color-fundo);
-  color: #e2e8f0;
+  color: var(--tinta);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   /* Evita zoom involuntário no iOS ao focar o campo de valor (§5.1). */
   -webkit-text-size-adjust: 100%;
