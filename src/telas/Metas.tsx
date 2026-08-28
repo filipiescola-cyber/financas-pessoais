@@ -37,6 +37,10 @@ export function Metas() {
   const projecao = useQuery({ queryKey: ['projecao'], queryFn: () => montarDadosDaProjecao() });
   const metas = useQuery({ queryKey: ['metas'], queryFn: listarMetas });
 
+  // Cartão não guarda dinheiro: ele tem fatura, não saldo (§2.1). Meta
+  // apontada para um cartão leria um número que não quer dizer nada.
+  const ondeCabeDinheiro = (contas.data ?? []).filter(entraNoConsolidado);
+
   const saldo = (contas.data ?? [])
     .filter(entraNoConsolidado)
     .reduce((total, c) => total + c.saldoAtual, 0);
@@ -105,7 +109,7 @@ export function Metas() {
         ) : (
           <div className="space-y-2">
             {(metas.data ?? []).map((meta) => (
-              <LinhaDaMeta key={meta.id} meta={meta} contas={contas.data ?? []} />
+              <LinhaDaMeta key={meta.id} meta={meta} contas={ondeCabeDinheiro} />
             ))}
           </div>
         )}
@@ -347,7 +351,7 @@ function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
         ajuda="Vinculando a meta a uma conta, o quanto você já tem passa a vir do saldo real em vez de ser digitado. Dizer que guardou sem ter o saldo em lugar nenhum é acreditar, não saber."
       >
         <div className="flex flex-wrap gap-2">
-          {(contas.data ?? []).map((conta) => (
+          {(contas.data ?? []).filter(entraNoConsolidado).map((conta) => (
             <button
               key={conta.id}
               type="button"

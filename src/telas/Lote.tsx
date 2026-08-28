@@ -10,6 +10,7 @@ import { usarCategorias } from '../dados/usarTransacoes';
 import { criarLancamento, excluirTransacoes } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { ALVO_DE_TOQUE, Botao, Cartao, Chip, Nota, Pagina, Secao } from '../ui/base';
+import { ChipsDeConta } from '../ui/ChipsDeConta';
 
 type Linha = {
   chave: number;
@@ -110,13 +111,11 @@ export function Lote() {
         <Cartao className="space-y-4 p-4">
           <div>
             <span className="text-sm text-slate-400">Conta</span>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {disponiveis.map((conta) => (
-                <Chip key={conta.id} ativo={contaId === conta.id} aoClicar={() => setContaId(conta.id)}>
-                  {conta.nome}
-                </Chip>
-              ))}
-            </div>
+            <ChipsDeConta
+              contas={disponiveis}
+              escolhida={contaId}
+              aoEscolher={(id) => setContaId(id)}
+            />
           </div>
 
           <div>

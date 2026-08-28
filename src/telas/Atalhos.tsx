@@ -9,6 +9,7 @@ import { usarCriarModelo, usarExcluirModelo, usarModelos, usarRecorrencias } fro
 import { arquivarRecorrencia, criarRecorrencia } from '../dados/recorrencias';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ChipsDeConta } from '../ui/ChipsDeConta';
 
 /**
  * Modelos e recorrências (§5.2).
@@ -241,17 +242,11 @@ function FormularioModelo({ aoTerminar }: { aoTerminar: () => void }) {
       </Campo>
 
       <Campo rotulo="Conta">
-        <div className="flex flex-wrap gap-2">
-          {disponiveis.map((conta) => (
-            <Chip
-              key={conta.id}
-              ativo={contaId === conta.id}
-              aoClicar={() => setContaId(contaId === conta.id ? null : conta.id)}
-            >
-              {conta.nome}
-            </Chip>
-          ))}
-        </div>
+        <ChipsDeConta
+          contas={disponiveis}
+          escolhida={contaId}
+          aoEscolher={(id) => setContaId(contaId === id ? null : id)}
+        />
       </Campo>
 
       <Campo
@@ -397,13 +392,11 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
       </Campo>
 
       <Campo rotulo="Conta">
-        <div className="flex flex-wrap gap-2">
-          {disponiveis.map((conta) => (
-            <Chip key={conta.id} ativo={contaId === conta.id} aoClicar={() => setContaId(conta.id)}>
-              {conta.nome}
-            </Chip>
-          ))}
-        </div>
+        <ChipsDeConta
+          contas={disponiveis}
+          escolhida={contaId}
+          aoEscolher={(id) => setContaId(id)}
+        />
       </Campo>
 
       <Campo rotulo="Categoria (opcional)">
