@@ -4,7 +4,13 @@ import react from '@vitejs/plugin-react';
 import tailwind from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// O GitHub Pages publica em user.github.io/NOME-DO-REPO/, então todo caminho
+// absoluto precisa desse prefixo — inclusive os do service worker e do manifest.
+// Fica numa constante porque três lugares dependem do mesmo valor.
+const BASE = '/financas-pessoais/';
+
 export default defineConfig({
+  base: BASE,
   plugins: [
     react(),
     tailwind(),
@@ -22,7 +28,7 @@ export default defineConfig({
         // Supabase ficam SEMPRE na rede: dado financeiro em cache é dado que
         // mente, e a fila já cobre o caso de estar sem conexão.
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        navigateFallback: '/index.html',
+        navigateFallback: `${BASE}index.html`,
         cleanupOutdatedCaches: true,
       },
       manifest: {
@@ -30,12 +36,13 @@ export default defineConfig({
         short_name: 'Finanças',
         description: 'Gestão financeira pessoal',
         lang: 'pt-BR',
-        start_url: '/',
+        start_url: BASE,
+        scope: BASE,
         display: 'standalone',
         background_color: '#0F172A',
         theme_color: '#0F172A',
         icons: [
-          { src: '/icone.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: `${BASE}icone.svg`, sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
       },
     }),

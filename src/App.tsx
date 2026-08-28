@@ -31,7 +31,9 @@ export function App() {
     <ProvedorAutenticacao>
       <ProvedorPrivacidade>
       <ProvedorAviso>
-        <BrowserRouter>
+        {/* O Pages serve o app numa subpasta; sem o basename toda rota
+            apontaria para a raiz do domínio e nada resolveria. */}
+        <BrowserRouter basename={import.meta.env.BASE_URL}>
           <Routes>
             <Route path="/entrar" element={<Login />} />
             {/* Fora do Layout: durante o wizard o FAB e as abas só distraem. */}

@@ -20,9 +20,20 @@ Pendências que dependem de você, não do código:
 
 | | |
 |---|---|
-| Produção | https://gleeful-cannoli-d2872a.netlify.app |
+| Produção | https://filipiescola-cyber.github.io/financas-pessoais/ |
 | Supabase | projeto `dfybnjgwlsnshzufmobm`, região São Paulo |
-| Repositório | github.com/filipiescola-cyber/financas-pessoais (privado) |
+| Repositório | github.com/filipiescola-cyber/financas-pessoais (**público**) |
+
+> **Desvio consciente do §10.1**, que pede repositório privado. O GitHub Pages
+> só publica de repositório privado com plano pago, e a escolha foi abrir o
+> código em vez de pagar. Consequência prática: a spec, as migrations e o
+> histórico ficam visíveis. Nenhuma credencial vaza — `.env` sempre esteve no
+> `.gitignore` e o histórico foi varrido antes de abrir — mas a estrutura
+> financeira do projeto passa a ser pública.
+>
+> **O que isso obriga:** nunca commitar valor real, extrato ou export. O
+> `.gitignore` já cobre `backups/`, e o export do §10.2 baixa direto para o seu
+> computador, sem passar pelo repositório.
 
 ---
 
@@ -87,11 +98,22 @@ Preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (painel → Project Sett
 npm run dev
 ```
 
-### 5. Deploy na Netlify
+### 5. Deploy no GitHub Pages
 
-Conectar o repositório (privado). O `netlify.toml` já define build, publish e o
-redirect de SPA. Falta só cadastrar as duas variáveis `VITE_*` no painel da
-Netlify — nenhuma chave vai para o repositório.
+O workflow em `.github/workflows/deploy.yml` publica a cada push na `main`.
+Para ligar, uma vez só:
+
+1. **Settings → Pages → Source: GitHub Actions.**
+2. **Settings → Secrets and variables → Actions → New repository secret**, dois:
+   `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
+
+O endereço fica `https://SEU-USUARIO.github.io/financas-pessoais/`. O caminho
+com subpasta está fixado em `vite.config.ts` na constante `BASE` — mudar o nome
+do repositório exige mudar lá também.
+
+O Pages não tem regra de reescrita como a Netlify tinha, então o workflow copia
+o `index.html` para `404.html`: é o que faz recarregar a página em `/contas`
+continuar funcionando.
 
 ---
 

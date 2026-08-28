@@ -1,0 +1,68 @@
+name: Publicar no GitHub Pages
+
+# Publica a cada push na main. É o mesmo gatilho que a Netlify usava — o que
+# muda é quem hospeda.
+on:
+  push:
+    branches: [main]
+  # Permite republicar sem precisar de um commit novo.
+  workflow_dispatch:
+
+# Permissões mínimas para o Pages funcionar. `contents: read` porque o workflow
+# só precisa ler o código; nada aqui escreve no repositório.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Um deploy por vez. Sem isso, dois pushes seguidos brigam pelo mesmo destino.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Os testes rodam antes do deploy de propósito: publicar um app de
+      # finanças com cálculo quebrado é pior do que não publicar.
+      - name: Testes
+        run: npm run teste
+
+      - name: Build
+        env:
+          # A chave publicável é pública por natureza — ela vai dentro do
+          # bundle que qualquer visitante baixa. Fica em secret mesmo assim
+          # para não precisar de commit quando mudar.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      # O Pages não tem regra de reescrita: recarregar em /contas devolveria 404.
+      # Como ele serve 404.html mantendo a URL, uma cópia do index faz o app
+      # inicializar e o React Router resolver a rota normalmente.
+      - name: Fallback de rota para SPA
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
