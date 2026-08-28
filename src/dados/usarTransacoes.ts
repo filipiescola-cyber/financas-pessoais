@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { hoje, somarDias, type DataISO } from '../dominio/datas';
 import { chaves } from './chaves';
 import { listarCategorias } from './categorias';
@@ -16,6 +16,7 @@ import {
   type TipoDeLancamento,
 } from './transacoes';
 import { enfileirar, estaOnline, removerLinhasDaFila } from './fila';
+import { usarInvalidarTransacoes } from './usarInvalidacao';
 
 const CHAVE_TRANSACOES = ['transacoes'] as const;
 
@@ -67,16 +68,9 @@ export function usarCategoriasSugeridas(tipo: TipoDeLancamento, quantidade = 8) 
   };
 }
 
-function usarInvalidacao() {
-  const cliente = useQueryClient();
-  // Saldo é calculado (§13.2): toda escrita de transação precisa invalidar as
-  // contas, senão o saldo na tela fica velho.
-  return async () => {
-    await cliente.invalidateQueries({ queryKey: CHAVE_TRANSACOES });
-    await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
-    await cliente.invalidateQueries({ queryKey: ['categorias-mais-usadas'] });
-  };
-}
+// Saldo é calculado (§13.2): toda escrita precisa invalidar tudo que deriva de
+// transação. A lista mora em um lugar só — ver `usarInvalidarTransacoes`.
+const usarInvalidacao = usarInvalidarTransacoes;
 
 export function usarCriarLancamento() {
   const invalidar = usarInvalidacao();

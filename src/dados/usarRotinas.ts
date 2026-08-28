@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { rodarRotinasDeAbertura } from './rotinas';
+import { usarInvalidarTransacoes } from './usarInvalidacao';
 import { usarAviso } from '../ui/Aviso';
 
 /**
@@ -10,7 +10,7 @@ import { usarAviso } from '../ui/Aviso';
  * e o usuário ainda consegue lançar. Nada aqui pode virar caminho crítico.
  */
 export function usarRotinasDeAbertura() {
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const jaRodou = useRef(false);
 
@@ -28,9 +28,7 @@ export function usarRotinasDeAbertura() {
           resultado.transacoesVinculadas > 0 ||
           resultado.recorrenciasGeradas > 0
         ) {
-          await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-          await cliente.invalidateQueries({ queryKey: ['faturas'] });
-          await cliente.invalidateQueries({ queryKey: ['contas'] });
+          await invalidar();
         }
 
         if (resultado.recorrenciasGeradas > 0) {
@@ -46,5 +44,5 @@ export function usarRotinasDeAbertura() {
         // Silêncio proposital: rotina de manutenção não derruba o app.
       }
     })();
-  }, [cliente, mostrar]);
+  }, [invalidar, mostrar]);
 }

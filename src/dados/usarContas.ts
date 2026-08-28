@@ -3,8 +3,9 @@
 // Toda escrita invalida também `contas.comSaldo`: saldo é calculado pela view
 // (§13.2), então mudar saldo inicial ou arquivar uma conta muda o consolidado.
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { chaves } from './chaves';
+import { usarInvalidarTransacoes } from './usarInvalidacao';
 import {
   arquivarConta,
   atualizarConta,
@@ -30,10 +31,10 @@ export function usarContasComSaldo() {
   });
 }
 
-function usarInvalidacao() {
-  const cliente = useQueryClient();
-  return () => cliente.invalidateQueries({ queryKey: chaves.contas.todas });
-}
+// Criar ou arquivar conta muda o consolidado e o saldo de abertura da linha
+// diária, porque o saldo inicial dela entra na conta. Por isso a invalidação é
+// a mesma de transação, e não só a lista de contas.
+const usarInvalidacao = usarInvalidarTransacoes;
 
 export function usarCriarConta() {
   const invalidar = usarInvalidacao();

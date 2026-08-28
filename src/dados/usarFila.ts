@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { chaves } from './chaves';
+import { usarInvalidarTransacoes } from './usarInvalidacao';
 import { estaOnline, quantidadePendente, sincronizar } from './fila';
 
 /**
@@ -12,7 +11,7 @@ import { estaOnline, quantidadePendente, sincronizar } from './fila';
  * falha só devolve os itens para a fila em vez de perdê-los.
  */
 export function usarFila() {
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const [online, setOnline] = useState(estaOnline());
   const [pendentes, setPendentes] = useState(quantidadePendente());
   const [sincronizando, setSincronizando] = useState(false);
@@ -26,17 +25,14 @@ export function usarFila() {
     setSincronizando(true);
     try {
       const resultado = await sincronizar();
-      if (resultado.enviados > 0) {
-        await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-        await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
-      }
+      if (resultado.enviados > 0) await invalidar();
     } catch {
       // Falha de rede: os itens continuam na fila para a próxima tentativa.
     } finally {
       setPendentes(quantidadePendente());
       setSincronizando(false);
     }
-  }, [cliente]);
+  }, [invalidar]);
 
   useEffect(() => {
     function aoVoltar() {

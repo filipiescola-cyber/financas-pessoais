@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { formatarBR, hoje, ontem, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { CampoValor } from '../ui/CampoValor';
@@ -8,7 +8,7 @@ import { usarContas } from '../dados/usarContas';
 import { usarCartoes } from '../dados/usarCartoes';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { criarLancamento, excluirTransacoes } from '../dados/transacoes';
-import { chaves } from '../dados/chaves';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { Botao, Cartao, Chip, Nota, Pagina, Secao } from '../ui/base';
 
 type Linha = {
@@ -33,7 +33,7 @@ function linhaVazia(data: DataISO): Linha {
  * diferente da folha: aqui o que varia é valor, categoria e dia.
  */
 export function Lote() {
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const contas = usarContas();
   const cartoes = usarCartoes();
@@ -74,18 +74,14 @@ export function Lote() {
       return criados;
     },
     onSuccess: async (ids) => {
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
-      await cliente.invalidateQueries({ queryKey: ['faturas'] });
+      await invalidar();
 
       // Undo cobre o lote inteiro: errar a conta com quinze linhas dentro é o
       // acidente mais caro desta tela.
       mostrar(`${ids.length} lançamento(s) salvos.`, {
         rotulo: 'Desfazer tudo',
         executar: () => {
-          void excluirTransacoes(ids).then(() =>
-            cliente.invalidateQueries({ queryKey: ['transacoes'] }),
-          );
+          void excluirTransacoes(ids).then(invalidar);
         },
       });
 

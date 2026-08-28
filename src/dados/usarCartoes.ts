@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { chaves } from './chaves';
+import { usarInvalidarTransacoes } from './usarInvalidacao';
 import {
   arquivarCartao,
   atualizarCartao,
@@ -18,10 +19,11 @@ export function usarCartoes(incluirArquivados = false) {
 
 function usarInvalidacao() {
   const cliente = useQueryClient();
-  // Cartão vive em `contas` também: mexer nele muda a listagem de contas.
+  const invalidarTransacoes = usarInvalidarTransacoes();
+  // Cartão vive em `contas` também, e mexer nele muda fatura e saldo.
   return async () => {
     await cliente.invalidateQueries({ queryKey: chaves.cartoes.todos });
-    await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
+    await invalidarTransacoes();
   };
 }
 

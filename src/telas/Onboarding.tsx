@@ -22,6 +22,7 @@ import {
 import { usarContas } from '../dados/usarContas';
 import { usarCartoes } from '../dados/usarCartoes';
 import { usarCategorias } from '../dados/usarTransacoes';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 
 /**
  * Onboarding (§4.1). Uma pergunta por tela, caminho MANUAL apenas — a
@@ -394,7 +395,7 @@ function PassoFaturaAberta({
   aoPular: () => void;
 }) {
   const cartoes = usarCartoes();
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const [porCartao, setPorCartao] = useState<Record<string, Centavos>>({});
   const lista = cartoes.data ?? [];
 
@@ -415,8 +416,7 @@ function PassoFaturaAberta({
       }
     },
     onSuccess: async () => {
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: ['contas'] });
+      await invalidar();
       aoAvancar();
     },
   });
@@ -470,7 +470,7 @@ function PassoParcelamentos({
 }) {
   const cartoes = usarCartoes();
   const contas = usarContas();
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
 
   const [descricao, setDescricao] = useState('');
@@ -516,8 +516,7 @@ function PassoParcelamentos({
         cartao,
       }),
     onSuccess: async (ids) => {
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: ['contas'] });
+      await invalidar();
       setAdicionados((atual) => [...atual, `${descricao || 'Parcelamento'} · ${ids.length}x`]);
       mostrar(`${ids.length} parcelas futuras geradas.`);
       setDescricao('');

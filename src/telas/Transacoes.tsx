@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   formatarBR,
   hoje,
@@ -24,7 +24,7 @@ import {
   type Transacao,
 } from '../dados/transacoes';
 import { usarCartoes } from '../dados/usarCartoes';
-import { chaves } from '../dados/chaves';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { usarAviso } from '../ui/Aviso';
 import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
@@ -264,15 +264,10 @@ function ItemDeTransacao({
   aoEditar: () => void;
 }) {
   const [confirmandoParcelamento, setConfirmandoParcelamento] = useState(false);
-  const cliente = useQueryClient();
   const cartoes = usarCartoes();
   const { mostrar } = usarAviso();
 
-  const invalidar = async () => {
-    await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-    await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
-    await cliente.invalidateQueries({ queryKey: ['faturas'] });
-  };
+  const invalidar = usarInvalidarTransacoes();
 
   const excluir = useMutation({
     mutationFn: () => excluirTransacao(transacao),

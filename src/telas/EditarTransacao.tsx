@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { formatarBR, type DataISO } from '../dominio/datas';
 import type { Centavos } from '../dominio/dinheiro';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -8,7 +8,7 @@ import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
-import { chaves } from '../dados/chaves';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import {
   atualizarParcelamento,
   atualizarTransacao,
@@ -36,7 +36,7 @@ export function EditarTransacao({
 }
 
 function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: () => void }) {
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const contas = usarContas();
   const cartoes = usarCartoes();
@@ -72,8 +72,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
       await atualizarTransacao(transacao, { valor, categoriaId, descricao, data }, cartao);
     },
     onSuccess: async () => {
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
+      await invalidar();
       mostrar('Lançamento atualizado.');
       aoFechar();
     },

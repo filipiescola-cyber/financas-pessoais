@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { formatarBR } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { conferir } from '../dominio/orcamento';
 import { registrarConferencia } from '../dados/orcamentos';
-import { chaves } from '../dados/chaves';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
@@ -85,7 +85,7 @@ function FormularioDeConferencia({
   conferidoEm: string | null;
   saldoConferido: Centavos | null;
 }) {
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const [saldoReal, setSaldoReal] = useState<Centavos>(saldoDoApp);
   const [conferido, setConferido] = useState(false);
@@ -101,8 +101,7 @@ function FormularioDeConferencia({
         criarAjuste,
       }),
     onSuccess: async (_, criarAjuste) => {
-      await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
+      await invalidar();
       mostrar(
         criarAjuste
           ? 'Conferência registrada e ajuste lançado.'

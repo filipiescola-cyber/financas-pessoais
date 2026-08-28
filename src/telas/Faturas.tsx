@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, faturaDoMes } from '../dominio/fatura';
@@ -9,6 +9,7 @@ import { usarCartoes } from '../dados/usarCartoes';
 import { usarContas } from '../dados/usarContas';
 import { listarFaturas, pagarFatura, totalDaFatura, type Fatura } from '../dados/faturas';
 import { listarTransacoesDaFatura } from '../dados/transacoes';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { Chip, Pagina, Vazio } from '../ui/base';
 
 const ROTULO_STATUS: Record<Fatura['status'], string> = {
@@ -248,7 +249,7 @@ function PagamentoDeFatura({
   total: Centavos;
   vencimento: DataISO;
 }) {
-  const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const contas = usarContas();
   const [aberto, setAberto] = useState(false);
@@ -270,10 +271,7 @@ function PagamentoDeFatura({
     mutationFn: () =>
       pagarFatura({ faturaId, cartaoId, contaOrigemId: contaOrigemId!, valor, data }),
     onSuccess: async () => {
-      await cliente.invalidateQueries({ queryKey: ['faturas'] });
-      await cliente.invalidateQueries({ queryKey: ['fatura-total'] });
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: ['contas'] });
+      await invalidar();
       setAberto(false);
       mostrar('Fatura paga. Registrado como transferência, não como despesa.');
     },

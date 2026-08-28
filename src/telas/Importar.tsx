@@ -18,7 +18,7 @@ import {
   listarImportacoes,
 } from '../dados/importacao';
 import { memoriaCompleta } from '../dados/modelos';
-import { chaves } from '../dados/chaves';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarAviso } from '../ui/Aviso';
@@ -39,6 +39,7 @@ export function Importar() {
   const contas = usarContas();
   const categorias = usarCategorias();
   const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const entradaDeArquivo = useRef<HTMLInputElement>(null);
 
@@ -127,8 +128,7 @@ export function Importar() {
         categoriaPorFitid,
       }),
     onSuccess: async (resultado) => {
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
+      await invalidar();
       await cliente.invalidateQueries({ queryKey: ['importacoes'] });
       mostrar(
         `${resultado.criadas} novo(s), ${resultado.conciliadas} conciliado(s). Dá para desfazer no histórico.`,
@@ -405,6 +405,7 @@ function LinhaDoArquivo({
 
 function Historico() {
   const cliente = useQueryClient();
+  const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const contas = usarContas(true);
   const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: listarImportacoes });
@@ -412,9 +413,8 @@ function Historico() {
   const desfazer = useMutation({
     mutationFn: desfazerImportacao,
     onSuccess: async (quantidade) => {
+      await invalidar();
       await cliente.invalidateQueries({ queryKey: ['importacoes'] });
-      await cliente.invalidateQueries({ queryKey: ['transacoes'] });
-      await cliente.invalidateQueries({ queryKey: chaves.contas.todas });
       mostrar(`Importação desfeita: ${quantidade} lançamento(s) revertido(s).`);
     },
   });
