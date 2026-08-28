@@ -76,11 +76,7 @@ function Marca({ compacta = false }: { compacta?: boolean }) {
     <div className="flex items-center gap-2.5">
       <Logo className="h-9 w-9" />
       {!compacta && (
-        <p className="text-sm font-semibold leading-tight text-slate-100">
-          Finanças
-          <br />
-          Pessoais
-        </p>
+        <p className="truncate text-sm font-semibold text-slate-100">Finanças Pessoais</p>
       )}
     </div>
   );
