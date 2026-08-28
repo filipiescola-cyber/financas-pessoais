@@ -5,6 +5,7 @@ import { usarPrivacidade } from './Privacidade';
 import { usarRotinasDeAbertura } from '../dados/usarRotinas';
 import {
   IconeCategorias,
+  IconeConferencia,
   IconeContas,
   IconeDados,
   IconeFaturas,
@@ -13,6 +14,8 @@ import {
   IconeInicio,
   IconeLancamentos,
   IconeMais,
+  IconeMetas,
+  IconeOrcamento,
   IconeRelatorios,
   IconeSimulador,
   IconeOlho,
@@ -28,6 +31,9 @@ const PRINCIPAIS: Item[] = [
 ];
 
 const SECUNDARIOS: Item[] = [
+  { para: '/orcamento', rotulo: 'Orçamento', icone: IconeOrcamento },
+  { para: '/metas', rotulo: 'Metas', icone: IconeMetas },
+  { para: '/conferencia', rotulo: 'Conferência', icone: IconeConferencia },
   { para: '/fluxo', rotulo: 'Fluxo de caixa', icone: IconeFluxo },
   { para: '/simulador', rotulo: 'Simulador', icone: IconeSimulador },
   { para: '/relatorios', rotulo: 'Relatórios', icone: IconeRelatorios },

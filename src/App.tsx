@@ -7,6 +7,7 @@ import { RotaProtegida } from './ui/RotaProtegida';
 import { Atalhos } from './telas/Atalhos';
 import { Cartoes } from './telas/Cartoes';
 import { Categorias } from './telas/Categorias';
+import { Conferencia } from './telas/Conferencia';
 import { Contas } from './telas/Contas';
 import { Faturas } from './telas/Faturas';
 import { Dados } from './telas/Dados';
@@ -14,6 +15,8 @@ import { FluxoDeCaixa } from './telas/FluxoDeCaixa';
 import { Importar } from './telas/Importar';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
+import { Metas } from './telas/Metas';
+import { Orcamento } from './telas/Orcamento';
 import { Relatorios } from './telas/Relatorios';
 import { Simulador } from './telas/Simulador';
 import { Lote } from './telas/Lote';
@@ -48,6 +51,9 @@ export function App() {
               <Route path="/" element={<Inicio />} />
               <Route path="/transacoes" element={<Transacoes />} />
               <Route path="/relatorios" element={<Relatorios />} />
+              <Route path="/orcamento" element={<Orcamento />} />
+              <Route path="/metas" element={<Metas />} />
+              <Route path="/conferencia" element={<Conferencia />} />
               <Route path="/fluxo" element={<FluxoDeCaixa />} />
               <Route path="/simulador" element={<Simulador />} />
               <Route path="/lote" element={<Lote />} />

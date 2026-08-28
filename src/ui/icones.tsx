@@ -58,6 +58,32 @@ export function IconeFaturas(p: Props) {
   );
 }
 
+export function IconeOrcamento(p: Props) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Svg>
+  );
+}
+
+export function IconeMetas(p: Props) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3.5" />
+    </Svg>
+  );
+}
+
+export function IconeConferencia(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M20 6 9 17l-5-5" />
+    </Svg>
+  );
+}
+
 export function IconeFluxo(p: Props) {
   return (
     <Svg {...p}>
