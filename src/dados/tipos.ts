@@ -29,6 +29,11 @@ export type Conta = {
   saldoConferido: Centavos | null;
   dataConferencia: DataISO | null;
   ativo: boolean;
+  /**
+   * Data em que a conta deixou de existir no mundo real (§4.8). Null em conta
+   * apenas arquivada — encerrar e arquivar não são a mesma coisa.
+   */
+  encerradaEm: DataISO | null;
 };
 
 /** Conta com o saldo calculado pela view (§13.2). */

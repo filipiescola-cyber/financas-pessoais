@@ -1,5 +1,11 @@
 import { useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatar, type Centavos } from '../dominio/dinheiro';
+import { formatarBR, hoje, type DataISO } from '../dominio/datas';
+import { conferirEncerramento, type Aviso, type Bloqueio } from '../dominio/encerramento';
+import { situacaoDaConta } from '../dados/contas';
+import { criarTransferencia } from '../dados/transacoes';
+import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { empresaComSaldoSuspeito, entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { CampoValor } from '../ui/CampoValor';
 import {
@@ -16,11 +22,12 @@ import {
   Vazio,
 } from '../ui/base';
 import {
-  usarArquivarConta,
   usarContas,
   usarContasComSaldo,
   usarCriarConta,
   usarDesarquivarConta,
+  usarEncerrarConta,
+  usarExcluirConta,
 } from '../dados/usarContas';
 import { ROTULO_TIPO_CONTA, TIPOS_DE_CONTA_CADASTRAVEIS, type TipoDeConta } from '../dados/tipos';
 
@@ -147,57 +154,257 @@ function LinhaDeConta({
   valor: Centavos;
   neutra?: boolean;
 }) {
-  const arquivar = usarArquivarConta();
+  const [encerrando, setEncerrando] = useState(false);
 
   return (
-    <li className="flex items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0">
-        <p className="truncate text-slate-100">{nome}</p>
-        <p className="truncate text-xs text-slate-500">{detalhe}</p>
+    <li className="px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-slate-100">{nome}</p>
+          <p className="truncate text-xs text-slate-500">{detalhe}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-4">
+          <Dinheiro
+            centavos={neutra ? Math.abs(valor) : valor}
+            className={neutra ? 'text-slate-300' : valor < 0 ? 'text-red-400' : 'text-slate-100'}
+          />
+          <button
+            onClick={() => setEncerrando((v) => !v)}
+            title="Encerrar — o histórico é preservado"
+            className="text-xs text-slate-600 transition hover:text-slate-300"
+          >
+            {encerrando ? 'cancelar' : 'encerrar'}
+          </button>
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-4">
-        <Dinheiro
-          centavos={neutra ? Math.abs(valor) : valor}
-          className={neutra ? 'text-slate-300' : valor < 0 ? 'text-red-400' : 'text-slate-100'}
-        />
-        <button
-          onClick={() => arquivar.mutate(id)}
-          disabled={arquivar.isPending}
-          title="Arquivar — o histórico é preservado"
-          className="text-xs text-slate-600 transition hover:text-slate-300"
-        >
-          arquivar
-        </button>
-      </div>
+
+      {encerrando && (
+        <PainelDeEncerramento id={id} nome={nome} aoTerminar={() => setEncerrando(false)} />
+      )}
     </li>
   );
 }
 
-function BlocoArquivadas({ contas }: { contas: { id: string; nome: string; tipo: TipoDeConta }[] }) {
+const TEXTO_DO_BLOQUEIO: Record<Bloqueio['motivo'], (q: number) => string> = {
+  saldo: (q) =>
+    `Ainda tem ${formatar(Math.abs(q))} nesta conta. Dinheiro não some porque a conta fechou — ele foi para algum lugar, e esse lugar precisa estar lançado.`,
+  recorrencias: (q) =>
+    `${q} recorrência(s) ativa(s) apontam para cá. Se continuarem, geram lançamento todo mês numa conta que não existe mais — sozinhas, sem ninguém ver.`,
+};
+
+const TEXTO_DO_AVISO: Record<Aviso['motivo'], (q: number) => string> = {
+  lancamentos_futuros: (q) =>
+    `${q} lançamento(s) com data à frente continuam aqui. Está certo: parcela lançada é dívida que existe, e ela não deixa de existir porque a conta fechou.`,
+  metas: (q) =>
+    `${q} meta(s) usam o saldo desta conta como "quanto já tem". Depois de encerrada elas vão ler zero — vale reapontar para a conta nova.`,
+  cartoes: (q) =>
+    `${q} cartão(ões) têm esta conta como pagadora. A tela de pagamento deixa de sugeri-la e volta a pedir a conta na hora.`,
+};
+
+/**
+ * O que precisa ser resolvido antes de encerrar (§4.8).
+ *
+ * A conta não é apagada em momento nenhum: encerrar é gravar a data e tirar de
+ * circulação. O histórico continua inteiro, e é justamente por isso que o
+ * painel pode ser exigente antes — depois de encerrada, uma pendência
+ * esquecida vira um número errado que ninguém mais vai procurar.
+ */
+function PainelDeEncerramento({
+  id,
+  nome,
+  aoTerminar,
+}: {
+  id: string;
+  nome: string;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const contas = usarContasComSaldo();
+  const encerrar = usarEncerrarConta();
+  const excluir = usarExcluirConta();
+  const [data, setData] = useState<DataISO>(hoje());
+  const [destinoId, setDestinoId] = useState<string | null>(null);
+
+  const situacao = useQuery({
+    queryKey: ['situacao-conta', id],
+    queryFn: () => situacaoDaConta(id),
+  });
+
+  const transferir = useMutation({
+    mutationFn: (saldo: Centavos) =>
+      criarTransferencia({
+        valor: Math.abs(saldo),
+        // Saldo negativo é dívida: aí o dinheiro entra aqui, não sai.
+        contaOrigemId: saldo > 0 ? id : destinoId!,
+        contaDestinoId: saldo > 0 ? destinoId! : id,
+        data,
+        descricao: `Encerramento da conta ${nome}`,
+      }),
+    onSuccess: () => cliente.invalidateQueries(),
+  });
+
+  const desativar = useMutation({
+    mutationFn: () => arquivarRecorrenciasDaConta(id),
+    onSuccess: () => cliente.invalidateQueries(),
+  });
+
+  if (situacao.isPending) {
+    return <p className="mt-3 text-xs text-slate-500">Conferindo pendências…</p>;
+  }
+  if (situacao.isError) {
+    return <p className="mt-3 text-xs text-red-400">{(situacao.error as Error).message}</p>;
+  }
+
+  const conferencia = conferirEncerramento(situacao.data);
+  const saldo = situacao.data.saldo;
+  const destinos = (contas.data ?? []).filter((c) => c.id !== id && entraNoConsolidado(c));
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      {conferencia.bloqueios.map((bloqueio) => (
+        <div key={bloqueio.motivo} className="space-y-2">
+          <p className="text-xs leading-relaxed text-amber-300">
+            {TEXTO_DO_BLOQUEIO[bloqueio.motivo](bloqueio.quantidade)}
+          </p>
+
+          {bloqueio.motivo === 'saldo' && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] uppercase tracking-wider text-slate-600">
+                  {saldo > 0 ? 'transferir para' : 'cobrir com'}
+                </span>
+                {destinos.map((conta) => (
+                  <button
+                    key={conta.id}
+                    onClick={() => setDestinoId(conta.id)}
+                    className={`rounded-full px-2.5 py-1 text-xs transition ${
+                      destinoId === conta.id
+                        ? 'bg-sky-900/60 text-sky-200'
+                        : 'border border-borda text-slate-500 hover:border-borda-forte'
+                    }`}
+                  >
+                    {conta.nome}
+                  </button>
+                ))}
+              </div>
+              <Botao
+                tipo="secundario"
+                aoClicar={() => transferir.mutate(saldo)}
+                desabilitado={destinoId === null || transferir.isPending}
+              >
+                Transferir {formatar(Math.abs(saldo))}
+              </Botao>
+              {transferir.isError && (
+                <p className="text-xs text-red-400">{(transferir.error as Error).message}</p>
+              )}
+            </div>
+          )}
+
+          {bloqueio.motivo === 'recorrencias' && (
+            <Botao
+              tipo="secundario"
+              aoClicar={() => desativar.mutate()}
+              desabilitado={desativar.isPending}
+            >
+              Desativar as {bloqueio.quantidade}
+            </Botao>
+          )}
+        </div>
+      ))}
+
+      {conferencia.avisos.map((aviso) => (
+        <p key={aviso.motivo} className="text-xs leading-relaxed text-slate-500">
+          {TEXTO_DO_AVISO[aviso.motivo](aviso.quantidade)}
+        </p>
+      ))}
+
+      <div className="space-y-2 border-t border-borda pt-3">
+        <label className="block text-xs text-slate-400">Encerrada em</label>
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+        <p className="text-xs leading-relaxed text-slate-600">
+          A data em que a conta fechou de verdade. Sem ela, um saldo antigo fica sem explicação —
+          parece dinheiro que sumiu.
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <Botao
+            aoClicar={() => encerrar.mutate({ id, data }, { onSuccess: aoTerminar })}
+            desabilitado={!conferencia.pode || encerrar.isPending}
+          >
+            Encerrar conta
+          </Botao>
+          {conferencia.podeExcluir && (
+            <Botao
+              tipo="secundario"
+              aoClicar={() => excluir.mutate(id, { onSuccess: aoTerminar })}
+              desabilitado={excluir.isPending}
+            >
+              Excluir de vez
+            </Botao>
+          )}
+        </div>
+
+        {conferencia.podeExcluir && (
+          <p className="text-xs leading-relaxed text-slate-600">
+            Esta conta não tem lançamento nenhum, então dá para apagar sem quebrar relatório de mês
+            fechado. É o caso de conta criada por engano.
+          </p>
+        )}
+
+        {encerrar.isError && (
+          <p className="text-xs text-red-400">{(encerrar.error as Error).message}</p>
+        )}
+        {excluir.isError && (
+          <p className="text-xs text-red-400">{(excluir.error as Error).message}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function BlocoArquivadas({
+  contas,
+}: {
+  contas: { id: string; nome: string; tipo: TipoDeConta; encerradaEm: DataISO | null }[];
+}) {
   const desarquivar = usarDesarquivarConta();
 
   return (
-    <Secao titulo="Arquivadas">
+    <Secao titulo="Fora de circulação">
       <Cartao>
         <ul className="divide-y divide-borda">
           {contas.map((conta) => (
             <li key={conta.id} className="flex items-center justify-between px-4 py-2.5">
-              <span className="text-sm text-slate-500">
-                {conta.nome} · {ROTULO_TIPO_CONTA[conta.tipo]}
+              <span className="min-w-0 text-sm text-slate-500">
+                <span className="truncate">
+                  {conta.nome} · {ROTULO_TIPO_CONTA[conta.tipo]}
+                </span>
+                {conta.encerradaEm !== null && (
+                  <span className="block text-xs text-slate-600">
+                    encerrada em {formatarBR(conta.encerradaEm)}
+                  </span>
+                )}
               </span>
               <button
                 onClick={() => desarquivar.mutate(conta.id)}
-                className="text-xs text-slate-600 transition hover:text-slate-300"
+                className="shrink-0 text-xs text-slate-600 transition hover:text-slate-300"
               >
-                reativar
+                {conta.encerradaEm === null ? 'reativar' : 'reabrir'}
               </button>
             </li>
           ))}
         </ul>
       </Cartao>
       <p className="text-xs text-slate-600">
-        Conta arquivada some dos seletores e do saldo, mas continua nos relatórios dos meses
-        fechados.
+        Conta encerrada ou arquivada some dos seletores e do saldo, mas continua inteira nos
+        relatórios dos meses fechados — nada foi apagado. Reabrir volta a colocá-la em circulação e
+        limpa a data de encerramento.
       </p>
     </Secao>
   );

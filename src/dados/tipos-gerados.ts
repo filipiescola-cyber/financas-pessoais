@@ -177,6 +177,7 @@ export type Database = {
           ativo: boolean
           created_at: string
           data_conferencia: string | null
+          encerrada_em: string | null
           id: string
           instituicao: string | null
           nome: string
@@ -189,6 +190,7 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           data_conferencia?: string | null
+          encerrada_em?: string | null
           id?: string
           instituicao?: string | null
           nome: string
@@ -201,6 +203,7 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           data_conferencia?: string | null
+          encerrada_em?: string | null
           id?: string
           instituicao?: string | null
           nome?: string

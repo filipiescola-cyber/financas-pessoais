@@ -77,6 +77,22 @@ export async function criarRecorrencia(nova: NovaRecorrencia): Promise<string> {
   return data.id;
 }
 
+/**
+ * Desativa todas as recorrências de uma conta, para encerrá-la (§4.8).
+ *
+ * Recorrência apontando para conta encerrada geraria lançamento todo mês numa
+ * conta morta, sozinha e sem ninguém ver. Desativar não apaga: o histórico do
+ * que já foi gerado continua todo lá.
+ */
+export async function arquivarRecorrenciasDaConta(contaId: string): Promise<void> {
+  const { error } = await supabase
+    .from('recorrencias')
+    .update({ ativo: false })
+    .eq('conta_id', contaId)
+    .eq('ativo', true);
+  if (error) throw new Error(error.message);
+}
+
 export async function arquivarRecorrencia(id: string): Promise<void> {
   const { error } = await supabase.from('recorrencias').update({ ativo: false }).eq('id', id);
   if (error) throw new Error(error.message);

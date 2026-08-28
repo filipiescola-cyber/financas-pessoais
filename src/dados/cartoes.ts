@@ -39,6 +39,7 @@ function montar(conta: LinhaConta, cartao: LinhaCartao): CartaoComConta {
       saldoConferido: conta.saldo_conferido === null ? null : paraCentavos(conta.saldo_conferido),
       dataConferencia: conta.data_conferencia,
       ativo: conta.ativo,
+      encerradaEm: conta.encerrada_em,
     },
   };
 }

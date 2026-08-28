@@ -7,15 +7,16 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { chaves } from './chaves';
 import { usarInvalidarTransacoes } from './usarInvalidacao';
 import {
-  arquivarConta,
   atualizarConta,
   criarConta,
   desarquivarConta,
+  encerrarConta,
   excluirContaSemHistorico,
   listarContas,
   listarContasComSaldo,
   type NovaConta,
 } from './contas';
+import type { DataISO } from '../dominio/datas';
 
 export function usarContas(incluirArquivadas = false) {
   return useQuery({
@@ -53,18 +54,19 @@ export function usarAtualizarConta() {
   });
 }
 
-export function usarArquivarConta() {
-  const invalidar = usarInvalidacao();
-  return useMutation({
-    mutationFn: (id: string) => arquivarConta(id),
-    onSuccess: invalidar,
-  });
-}
-
 export function usarDesarquivarConta() {
   const invalidar = usarInvalidacao();
   return useMutation({
     mutationFn: (id: string) => desarquivarConta(id),
+    onSuccess: invalidar,
+  });
+}
+
+/** Encerrar é arquivar com data (§4.8): a conta acabou no mundo real. */
+export function usarEncerrarConta() {
+  const invalidar = usarInvalidacao();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: DataISO }) => encerrarConta(id, data),
     onSuccess: invalidar,
   });
 }
