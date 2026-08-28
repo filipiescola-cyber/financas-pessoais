@@ -85,12 +85,24 @@ export function Layout() {
         </main>
       </div>
 
+      {/* O "+" é desenhado, não escrito: como texto ele depende das métricas da
+          fonte e fica visivelmente fora do centro do círculo. */}
       <button
         onClick={() => setLancando(true)}
         aria-label="Lançar"
-        className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-3xl leading-none text-white shadow-xl shadow-emerald-950/50 transition active:scale-95 md:bottom-8 md:right-8 md:h-16 md:w-16"
+        className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xl shadow-emerald-950/50 transition hover:bg-emerald-500 active:scale-95 md:bottom-8 md:right-8 md:h-16 md:w-16"
       >
-        +
+        <svg
+          viewBox="0 0 24 24"
+          className="h-7 w-7 md:h-8 md:w-8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
       </button>
 
       <LancamentoRapido aberto={lancando} aoFechar={() => setLancando(false)} />

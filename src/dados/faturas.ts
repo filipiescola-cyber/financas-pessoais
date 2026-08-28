@@ -284,16 +284,25 @@ export async function backfillFaturas(): Promise<{ atualizadas: number; cartoes:
       configuracao,
     );
 
+    // Agrupa por fatura: um update por fatura em vez de um por transação. Um
+    // mês de compras dava dezenas de idas ao banco só para preencher a mesma
+    // coluna com o mesmo valor.
+    const porFatura = new Map<string, string[]>();
     for (const transacao of orfas ?? []) {
       const faturaId = mapa.get(transacao.data_competencia);
       if (!faturaId) continue;
+      porFatura.set(faturaId, [...(porFatura.get(faturaId) ?? []), transacao.id]);
+    }
+
+    for (const [faturaId, ids] of porFatura) {
       const { error: erroUpdate } = await supabase
         .from('transacoes')
         .update({ fatura_id: faturaId })
-        .eq('id', transacao.id)
+        .in('id', ids)
+        // A condição continua aqui: se outra aba já vinculou, esta não desfaz.
         .is('fatura_id', null);
       if (erroUpdate) throw new Error(erroUpdate.message);
-      atualizadas += 1;
+      atualizadas += ids.length;
     }
   }
 

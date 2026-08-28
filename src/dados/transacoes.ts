@@ -13,6 +13,7 @@
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje as hojeISO, type DataISO } from '../dominio/datas';
 import { faturaDeReferencia, type ConfiguracaoDoCartao } from '../dominio/fatura';
+import type { Natureza } from '../dominio/natureza';
 import { gerarParcelas, gerarParcelasRestantes } from '../dominio/parcelas';
 import { idDaFatura, idsDasFaturas } from './faturas';
 import { supabase } from './supabase';
@@ -40,6 +41,8 @@ export type Transacao = {
   transacaoPaiId: string | null;
   faturaId: string | null;
   motivoEmpresa: MotivoEmpresa | null;
+  /** Sobrescreve a natureza da categoria (§2.5). Null = herda da categoria. */
+  natureza: Natureza | null;
   revisado: boolean;
 };
 
@@ -60,6 +63,7 @@ function daLinha(linha: LinhaTransacao): Transacao {
     transacaoPaiId: linha.transacao_pai_id,
     faturaId: linha.fatura_id,
     motivoEmpresa: linha.motivo_empresa as MotivoEmpresa | null,
+    natureza: linha.natureza as Natureza | null,
     revisado: linha.revisado,
   };
 }

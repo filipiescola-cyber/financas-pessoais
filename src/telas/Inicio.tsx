@@ -34,6 +34,10 @@ export function Inicio() {
   const entradaDosAlertas = useQuery({
     queryKey: ['alertas'],
     queryFn: () => montarEntradaDosAlertas(),
+    // Os alertas custam várias consultas e uma projeção inteira. Recalcular a
+    // cada volta ao Início deixaria a tela mais usada do app lenta, e o que
+    // eles medem muda por dia, não por minuto.
+    staleTime: 10 * 60 * 1000,
   });
 
   const alertas = entradaDosAlertas.data

@@ -37,6 +37,22 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
   const { data: cartoes } = await supabase.from('cartoes').select('*');
   const porConta = new Map((cartoes ?? []).map((c) => [c.conta_id, c]));
 
+  // Tudo que já foi gerado, numa consulta só.
+  //
+  // Antes isto era uma consulta por mês por recorrência: dez recorrências com um
+  // ano de janela davam mais de cem idas ao banco na primeira abertura. O par
+  // (recorrencia_id, data_competencia) continua sendo a chave da idempotência —
+  // só a leitura ficou barata.
+  const { data: jaExistentes, error: erroExistentes } = await supabase
+    .from('transacoes')
+    .select('recorrencia_id, data_competencia')
+    .not('recorrencia_id', 'is', null);
+  if (erroExistentes) throw erroExistentes;
+
+  const jaGeradas = new Set(
+    (jaExistentes ?? []).map((linha) => `${linha.recorrencia_id}|${linha.data_competencia}`),
+  );
+
   let geradas = 0;
 
   for (const recorrencia of recorrencias) {
@@ -44,13 +60,7 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
     const vencimentos = vencimentosPendentes(criadaEm, referencia, recorrencia.dia);
 
     for (const competencia of vencimentos) {
-      const { count, error: erroBusca } = await supabase
-        .from('transacoes')
-        .select('id', { count: 'exact', head: true })
-        .eq('recorrencia_id', recorrencia.id)
-        .eq('data_competencia', competencia);
-      if (erroBusca) throw erroBusca;
-      if ((count ?? 0) > 0) continue;
+      if (jaGeradas.has(`${recorrencia.id}|${competencia}`)) continue;
 
       const cartao = porConta.get(recorrencia.conta_id);
       const configuracao = cartao
@@ -86,6 +96,7 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
 
       const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);
       if (erroInsercao) throw new Error(erroInsercao.message);
+      jaGeradas.add(`${recorrencia.id}|${competencia}`);
       geradas += 1;
     }
   }

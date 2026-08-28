@@ -12,6 +12,7 @@ import {
 import { copiarOrcamentoDoMesAnterior } from '../dados/orcamentos';
 import { baixarArquivo, exportarTudo, nomeDoArquivo } from '../dados/exportar';
 import { usarContasComSaldo } from '../dados/usarContas';
+import { naturezaEfetiva } from '../dominio/natureza';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { usarAviso } from '../ui/Aviso';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Nota, Pagina, Secao } from '../ui/base';
@@ -62,7 +63,9 @@ export function Fechamento() {
     tipo: t.tipo,
     dataCompetencia: t.dataCompetencia,
     categoriaId: t.categoriaId,
-    natureza: t.categoriaId ? (naturezaDaCategoria.get(t.categoriaId) ?? null) : null,
+    natureza: naturezaEfetiva(t, {
+      natureza: t.categoriaId ? (naturezaDaCategoria.get(t.categoriaId) ?? null) : null,
+    }),
     transacaoPaiId: t.transacaoPaiId,
     temFilhas: false,
   }));

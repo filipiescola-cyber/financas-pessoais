@@ -10,6 +10,7 @@ import {
   totalDeReceitas,
   type TransacaoDeRelatorio,
 } from '../dominio/relatorios';
+import { naturezaEfetiva } from '../dominio/natureza';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { BarrasHorizontais, ColunasAgrupadas, COR_ENTRADA, COR_SAIDA } from '../ui/graficos';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
@@ -54,8 +55,11 @@ export function Relatorios() {
     tipo: t.tipo,
     dataCompetencia: t.dataCompetencia,
     categoriaId: t.categoriaId,
-    // A natureza da transação vence a da categoria (§2.5).
-    natureza: t.categoriaId ? (naturezaCategoria.get(t.categoriaId) ?? null) : null,
+    // A da transação vence a da categoria (§2.5): mercado é variável, mas a
+    // compra da viagem pode ser eventual.
+    natureza: naturezaEfetiva(t, {
+      natureza: t.categoriaId ? (naturezaCategoria.get(t.categoriaId) ?? null) : null,
+    }),
     transacaoPaiId: t.transacaoPaiId,
     temFilhas: paisComFilhas.has(t.id),
   }));

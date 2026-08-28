@@ -17,7 +17,7 @@ import {
   importarLote,
   listarImportacoes,
 } from '../dados/importacao';
-import { sugerirDescricoes } from '../dados/modelos';
+import { memoriaCompleta } from '../dados/modelos';
 import { chaves } from '../dados/chaves';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
@@ -87,19 +87,19 @@ export function Importar() {
 
       // Categorização automática pela memória de descrição (§6.5). Sem match,
       // fica sem categoria — nunca chutar.
-      const memoria = new Map<string, string | null>();
-      for (const transacao of unicas) {
-        if (memoria.has(transacao.descricao)) continue;
-        const sugestoes = await sugerirDescricoes(transacao.descricao, 1);
-        memoria.set(transacao.descricao, sugestoes[0]?.categoriaId ?? null);
-      }
+      //
+      // A memória inteira vem numa consulta só: um extrato tem dezenas de
+      // descrições distintas, e uma consulta por linha faria o preview demorar
+      // mais que o próprio download do arquivo.
+      const memoria = await memoriaCompleta();
+      const porPrefixo = (descricao: string) =>
+        memoria.find((m) => m.descricao.toLowerCase() === descricao.toLowerCase())
+          ?.categoriaId ??
+        memoria.find((m) => descricao.toLowerCase().startsWith(m.descricao.toLowerCase()))
+          ?.categoriaId ??
+        null;
 
-      const preview = montarPreview(
-        unicas,
-        jaImportados,
-        manuais,
-        (descricao) => memoria.get(descricao) ?? null,
-      );
+      const preview = montarPreview(unicas, jaImportados, manuais, porPrefixo);
 
       setExtrato({ ...lido, transacoes: unicas });
       setLinhas(preview);

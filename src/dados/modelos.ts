@@ -67,6 +67,27 @@ export type SugestaoDeDescricao = {
 };
 
 /**
+ * Toda a memória de uma vez, para casar em lote.
+ *
+ * A importação precisa sugerir categoria para dezenas de descrições de um
+ * arquivo; uma consulta por linha transformaria o preview numa espera longa.
+ */
+export async function memoriaCompleta(): Promise<SugestaoDeDescricao[]> {
+  const { data, error } = await supabase
+    .from('memoria_descricao')
+    .select('descricao, categoria_id, conta_id, vezes_usada')
+    .order('vezes_usada', { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((linha) => ({
+    descricao: linha.descricao,
+    categoriaId: linha.categoria_id,
+    contaId: linha.conta_id,
+    vezesUsada: linha.vezes_usada,
+  }));
+}
+
+/**
  * Autocomplete que aprende (§5.2). A escrita em `memoria_descricao` começou na
  * Fase 1; aqui entra a leitura.
  *
