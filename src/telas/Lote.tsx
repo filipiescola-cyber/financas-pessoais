@@ -9,7 +9,7 @@ import { usarCartoes } from '../dados/usarCartoes';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { criarLancamento, excluirTransacoes } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
-import { Botao, Cartao, Chip, Nota, Pagina, Secao } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, Chip, Nota, Pagina, Secao } from '../ui/base';
 
 type Linha = {
   chave: number;
@@ -201,7 +201,7 @@ export function Lote() {
                     onClick={() =>
                       setLinhas((atual) => atual.filter((l) => l.chave !== linha.chave))
                     }
-                    className="mt-3 shrink-0 text-xs text-slate-600 transition hover:text-red-400"
+                    className={`mt-3 shrink-0 text-xs text-slate-600 transition hover:text-red-400 ${ALVO_DE_TOQUE}`}
                   >
                     Remover
                   </button>

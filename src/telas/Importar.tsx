@@ -22,7 +22,7 @@ import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarAviso } from '../ui/Aviso';
-import { Botao, Cartao, Chip, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, Chip, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
 type Etapa = 'escolher' | 'preview';
 
@@ -388,7 +388,7 @@ function LinhaDoArquivo({
               ) : (
                 <button
                   onClick={() => setMostrandoCategorias(true)}
-                  className="text-xs text-emerald-400 hover:text-emerald-300"
+                  className={`text-xs text-emerald-400 hover:text-emerald-300 ${ALVO_DE_TOQUE}`}
                 >
                   {categoriaId
                     ? categorias.find((c) => c.id === categoriaId)?.nome
@@ -446,7 +446,7 @@ function Historico() {
               <button
                 onClick={() => desfazer.mutate(importacao.id)}
                 disabled={desfazer.isPending}
-                className="shrink-0 text-xs text-slate-600 transition hover:text-red-400"
+                className={`shrink-0 text-xs text-slate-600 transition hover:text-red-400 ${ALVO_DE_TOQUE}`}
               >
                 Desfazer
               </button>

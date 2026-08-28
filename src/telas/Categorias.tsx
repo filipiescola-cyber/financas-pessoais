@@ -166,7 +166,7 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
         {!categoria.sistema && (
           <button
             onClick={() => arquivar.mutate()}
-            className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
+            className={`shrink-0 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
           >
             Arquivar
           </button>

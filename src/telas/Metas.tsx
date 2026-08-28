@@ -21,7 +21,7 @@ import {
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { CampoValor } from '../ui/CampoValor';
-import { Botao, Campo, Cartao, CartaoIndicador, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
 /**
  * Metas e reserva de emergência (§8.8).
@@ -192,13 +192,13 @@ function LinhaDaMeta({
               }
               setEditando((v) => !v);
             }}
-            className="text-xs text-slate-500 hover:text-slate-300"
+            className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
           >
             {editando ? 'Fechar' : 'Editar'}
           </button>
           <button
             onClick={() => remover.mutate()}
-            className="text-xs text-slate-600 hover:text-red-400"
+            className={`text-xs text-slate-600 hover:text-red-400 ${ALVO_DE_TOQUE}`}
           >
             Excluir
           </button>

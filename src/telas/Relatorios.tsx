@@ -13,7 +13,7 @@ import {
 import { naturezaEfetiva } from '../dominio/natureza';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { BarrasHorizontais, ColunasAgrupadas, COR_ENTRADA, COR_SAIDA } from '../ui/graficos';
-import { Botao, Cartao, CartaoIndicador, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -163,7 +163,7 @@ export function Relatorios() {
         acao={
           <button
             onClick={() => setVerTabela((v) => !v)}
-            className="text-xs text-emerald-400 hover:text-emerald-300"
+            className={`text-xs text-emerald-400 hover:text-emerald-300 ${ALVO_DE_TOQUE}`}
           >
             {verTabela ? 'Ver gráfico' : 'Ver tabela'}
           </button>

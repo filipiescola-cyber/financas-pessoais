@@ -30,7 +30,7 @@ import { usarAviso } from '../ui/Aviso';
 import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
-import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
 import { agruparPorCaixa, type BlocoDeFatura, type Visao } from '../dominio/agrupamento';
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
@@ -555,7 +555,7 @@ function ItemDeTransacao({
             }
           />
           <div className="flex gap-3">
-            <button onClick={aoEditar} className="text-xs text-slate-600 transition hover:text-slate-300">
+            <button onClick={aoEditar} className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}>
               Editar
             </button>
             {!ehTransferencia && (
@@ -563,7 +563,7 @@ function ItemDeTransacao({
                 onClick={() => duplicar.mutate()}
                 disabled={duplicar.isPending}
                 title="Repete este lançamento com a data de hoje"
-                className="text-xs text-slate-600 transition hover:text-slate-300"
+                className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
               >
                 Duplicar
               </button>
@@ -571,7 +571,7 @@ function ItemDeTransacao({
             <button
               onClick={() => (ehParcelado ? setConfirmandoParcelamento(true) : excluir.mutate())}
               disabled={excluir.isPending}
-              className="text-xs text-slate-600 transition hover:text-red-400"
+              className={`text-xs text-slate-600 transition hover:text-red-400 ${ALVO_DE_TOQUE}`}
             >
               Excluir
             </button>
@@ -722,7 +722,7 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
           {atrasado && !revisando && (
             <button
               onClick={() => setRevisando(true)}
-              className="text-xs text-emerald-400 transition hover:text-emerald-300"
+              className={`text-xs text-emerald-400 transition hover:text-emerald-300 ${ALVO_DE_TOQUE}`}
             >
               Revisar e lançar
             </button>
@@ -791,7 +791,7 @@ function BlocoDaFatura({
             <li key={compra.id} className="flex items-baseline justify-between gap-3">
               <button
                 onClick={() => aoEditar(compra)}
-                className="min-w-0 truncate text-left text-xs text-slate-300 hover:text-slate-100"
+                className={`min-w-0 truncate text-left text-xs text-slate-300 hover:text-slate-100 ${ALVO_DE_TOQUE}`}
               >
                 {compra.descricao || nomeDaCategoria(compra.categoriaId) || 'Sem descrição'}
               </button>

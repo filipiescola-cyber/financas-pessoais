@@ -12,7 +12,7 @@ import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
-import { Botao, Pagina } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Pagina } from '../ui/base';
 import {
   usarAtualizarCartao,
   usarCartoes,
@@ -140,7 +140,7 @@ function EncerrarCartao({ contaId }: { contaId: string }) {
       <button
         onClick={() => setAberto((v) => !v)}
         title="Encerrar — as faturas antigas são preservadas"
-        className="text-xs text-slate-500 hover:text-slate-300"
+        className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
       >
         {aberto ? 'Cancelar' : 'Encerrar'}
       </button>
@@ -299,7 +299,7 @@ function DesarquivarCartao({
       </span>
       <button
         onClick={() => desarquivar.mutate(contaId)}
-        className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
+        className={`shrink-0 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
       >
         {encerradoEm === null ? 'Reativar' : 'Reabrir'}
       </button>

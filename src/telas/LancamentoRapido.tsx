@@ -16,6 +16,7 @@ import {
 } from '../dados/usarTransacoes';
 import { usarModelos, usarSugestoesDeDescricao } from '../dados/usarModelos';
 import type { MotivoEmpresa, TipoDeLancamento } from '../dados/transacoes';
+import { ALVO_DE_TOQUE } from '../ui/base';
 
 type Modo = TipoDeLancamento | 'transferencia';
 
@@ -184,7 +185,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
               <button
                 type="button"
                 onClick={() => setVerTodasCategorias((v) => !v)}
-                className="text-xs text-emerald-400"
+                className={`text-xs text-emerald-400 ${ALVO_DE_TOQUE}`}
               >
                 {verTodasCategorias ? 'Ver menos' : 'Ver todas'}
               </button>

@@ -10,19 +10,7 @@ import { criarTransferencia } from '../dados/transacoes';
 import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { empresaComSaldoSuspeito, entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { CampoValor } from '../ui/CampoValor';
-import {
-  Botao,
-  Campo,
-  Cartao,
-  CartaoIndicador,
-  Chip,
-  Dinheiro,
-  ENTRADA,
-  Nota,
-  Pagina,
-  Secao,
-  Vazio,
-} from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import {
   usarContas,
   usarContasComSaldo,
@@ -182,7 +170,7 @@ function LinhaDeConta({
           <button
             onClick={() => setEncerrando((v) => !v)}
             title="Encerrar — o histórico é preservado"
-            className="text-xs text-slate-600 transition hover:text-slate-300"
+            className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
           >
             {encerrando ? 'Cancelar' : 'Encerrar'}
           </button>
@@ -416,7 +404,7 @@ function BlocoArquivadas({
               </span>
               <button
                 onClick={() => desarquivar.mutate(conta.id)}
-                className="shrink-0 text-xs text-slate-600 transition hover:text-slate-300"
+                className={`shrink-0 text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
               >
                 {conta.encerradaEm === null ? 'Reativar' : 'Reabrir'}
               </button>

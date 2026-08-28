@@ -8,7 +8,7 @@ import { usarCategorias } from '../dados/usarTransacoes';
 import { usarCriarModelo, usarExcluirModelo, usarModelos, usarRecorrencias } from '../dados/usarModelos';
 import { arquivarRecorrencia, criarRecorrencia } from '../dados/recorrencias';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
-import { Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
 /**
  * Modelos e recorrências (§5.2).
@@ -89,7 +89,7 @@ function ListaDeModelos({ aoCriar }: { aoCriar: () => void }) {
                   )}
                   <button
                     onClick={() => excluir.mutate(modelo.id)}
-                    className="text-xs text-slate-600 transition hover:text-red-400"
+                    className={`text-xs text-slate-600 transition hover:text-red-400 ${ALVO_DE_TOQUE}`}
                   >
                     Excluir
                   </button>
@@ -130,7 +130,7 @@ function ListaDeRecorrencias({
     <Secao
       titulo="Recorrências"
       acao={
-        <button onClick={aoCriar} className="text-xs text-emerald-400 hover:text-emerald-300">
+        <button onClick={aoCriar} className={`text-xs text-emerald-400 hover:text-emerald-300 ${ALVO_DE_TOQUE}`}>
           {criando ? 'cancelar' : '+ nova recorrência'}
         </button>
       }
@@ -168,7 +168,7 @@ function ListaDeRecorrencias({
                     )}
                     <button
                       onClick={() => arquivar.mutate(recorrencia.id)}
-                      className="text-xs text-slate-600 transition hover:text-slate-300"
+                      className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
                     >
                       Arquivar
                     </button>

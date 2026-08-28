@@ -12,7 +12,7 @@ import { copiarOrcamentoDoMesAnterior, definirTeto, listarOrcamentos } from '../
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
-import { Botao, Cartao, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 
 const MESES = [
@@ -128,7 +128,7 @@ export function Orcamento() {
         acao={
           <button
             onClick={() => setVerTodas((v) => !v)}
-            className="text-xs text-emerald-400 hover:text-emerald-300"
+            className={`text-xs text-emerald-400 hover:text-emerald-300 ${ALVO_DE_TOQUE}`}
           >
             {verTodas ? 'Ver menos' : 'Ver todas'}
           </button>
@@ -197,7 +197,7 @@ function LinhaDoOrcamento({
         </span>
         <button
           onClick={() => setEditando((v) => !v)}
-          className="shrink-0 text-xs text-slate-500 hover:text-slate-300"
+          className={`shrink-0 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
           {progresso.planejado > 0 ? 'Mudar teto' : 'Definir teto'}
         </button>

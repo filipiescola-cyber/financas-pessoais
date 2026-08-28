@@ -22,7 +22,7 @@ import {
 } from '../dados/indicadores';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
-import { Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
 const TIPOS: TipoDeInvestimento[] = ['cdb', 'tesouro', 'lci', 'lca', 'poupanca', 'fundo', 'acoes', 'cripto', 'outro'];
 
@@ -306,7 +306,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
 
       <button
         onClick={() => setAberto((v) => !v)}
-        className="mt-3 text-xs text-slate-500 hover:text-slate-300"
+        className={`mt-3 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
       >
         {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
       </button>
