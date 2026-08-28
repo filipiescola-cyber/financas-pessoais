@@ -12,7 +12,7 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { entraNoConsolidado } from '../dominio/saldo';
-import { saldosAoFimDoDia, temMovimentoAdiado } from '../dominio/saldoDiario';
+import { saldosAoFimDoDia } from '../dominio/saldoDiario';
 import {
   duplicarTransacao,
   excluirParcelamento,
@@ -30,9 +30,9 @@ import { usarAviso } from '../ui/Aviso';
 import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
-import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
 import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
-import { agruparPorCaixa, type BlocoDeFatura, type Visao } from '../dominio/agrupamento';
+import { agruparPorCaixa, type BlocoDeFatura } from '../dominio/agrupamento';
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
@@ -53,7 +53,6 @@ export function Transacoes() {
   const [mes, setMes] = useState<DataISO>(primeiroDiaDoMes(hoje()));
   const [contaId, setContaId] = useState<string | null>(null);
   const [editando, setEditando] = useState<Transacao | null>(null);
-  const [visao, setVisao] = useState<Visao>(() => lerVisaoSalva());
 
   const contas = usarContas();
   const categorias = usarCategorias(true);
@@ -61,7 +60,9 @@ export function Transacoes() {
     de: mes,
     ate: ultimoDiaDoMes(mes),
     contaId,
-    porData: visao === 'caixa' ? 'caixa' : 'competencia',
+    // Sempre por caixa. A lista existe para responder o que entrou e saiu da
+    // conta, e uma compra no cartao nao saiu de lugar nenhum no dia da compra.
+    porData: 'caixa',
   });
   const fila = usarFila();
 
@@ -103,8 +104,7 @@ export function Transacoes() {
         )
       : [];
 
-  const porDia =
-    visao === 'caixa' ? agruparPorDiaDeCaixa(lista, previstos) : agruparPorDia(lista, previstos);
+  const porDia = agruparPorDiaDeCaixa(lista, previstos);
 
   // Saldo diário. Vem por CAIXA, não por competência: é o único que bate com o
   // extrato do banco (§13.2). Sem filtro de conta, usa as mesmas contas que
@@ -169,8 +169,6 @@ export function Transacoes() {
         )
       : null;
 
-  const algumAdiado = lista.some((t) => t.dataCaixa > t.dataCompetencia);
-
   return (
     <Pagina
       titulo="Lançamentos"
@@ -196,32 +194,10 @@ export function Transacoes() {
         />
       </div>
 
-      <div className="flex gap-1 rounded-lg bg-superficie-alta p-1">
-        {VISOES.map((opcao) => (
-          <button
-            key={opcao.valor}
-            onClick={() => {
-              setVisao(opcao.valor);
-              try {
-                localStorage.setItem(CHAVE_DA_VISAO, opcao.valor);
-              } catch {
-                // Preferência não persiste, mas a visão vale nesta sessão.
-              }
-            }}
-            aria-pressed={visao === opcao.valor}
-            className={`flex-1 rounded-md px-2 py-1.5 text-sm transition ${
-              visao === opcao.valor ? 'bg-slate-700 text-slate-100' : 'text-slate-400'
-            }`}
-          >
-            {opcao.rotulo}
-          </button>
-        ))}
-      </div>
-
       <p className="text-xs leading-relaxed text-slate-500">
-        {visao === 'caixa'
-          ? 'Cada compra no cartão aparece dentro da fatura, no dia do vencimento — que é quando o dinheiro sai de fato. É esta visão que bate com o extrato do banco.'
-          : 'Cada lançamento aparece no dia em que aconteceu. Compra no cartão só mexe no saldo no vencimento da fatura, então aqui um dia pode ter lançamento sem o saldo mudar.'}
+        Cada dia mostra o que entrou e saiu da conta nele. Compra no cartão aparece dentro da
+        fatura, no dia do vencimento — que é quando o dinheiro sai de fato. Para ver o gasto pela
+        data em que aconteceu, o lugar é Relatórios.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -234,7 +210,18 @@ export function Transacoes() {
             ativo={contaId === conta.id}
             aoClicar={() => setContaId(conta.id)}
           >
-            {conta.nome}
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+              />
+              {conta.nome}
+              {/* Dois filtros escritos "Nubank" — a conta e o cartão — não dão
+                  para distinguir. Aqui a fila é uma só, então o rótulo resolve. */}
+              {conta.tipo === 'cartao_credito' && (
+                <span className="opacity-60">· cartão</span>
+              )}
+            </span>
           </FiltroChip>
         ))}
       </div>
@@ -278,14 +265,6 @@ export function Transacoes() {
         />
       )}
 
-      {algumAdiado && saldosDoDia && (
-        <Nota>
-          O saldo ao lado de cada dia é o do <strong>caixa</strong>: ele anda quando o dinheiro sai
-          de fato. Compra no cartão aparece no dia da compra e só mexe no saldo no vencimento da
-          fatura — por isso um dia pode ter lançamento e o saldo não mudar.
-        </Nota>
-      )}
-
       {porDia.map(([dia, doDia]) => (
         <Secao
           key={dia}
@@ -300,13 +279,6 @@ export function Transacoes() {
                   centavos={saldosDoDia.get(dia)!}
                   className={saldosDoDia.get(dia)! < 0 ? 'text-red-400' : 'text-slate-300'}
                 />
-                {temMovimentoAdiado(
-                  doDia.flatMap((l) => (l.tipo === 'lancamento' ? [l.transacao] : [])),
-                ) && (
-                  <span title="Há compra no cartão neste dia: ela só sai do caixa no vencimento da fatura">
-                    ·
-                  </span>
-                )}
               </span>
             ) : undefined
           }
@@ -351,21 +323,6 @@ export function Transacoes() {
   );
 }
 
-const CHAVE_DA_VISAO = 'visao-lancamentos';
-
-const VISOES: { valor: Visao; rotulo: string }[] = [
-  { valor: 'competencia', rotulo: 'Quando aconteceu' },
-  { valor: 'caixa', rotulo: 'Quando o dinheiro sai' },
-];
-
-function lerVisaoSalva(): Visao {
-  try {
-    return localStorage.getItem(CHAVE_DA_VISAO) === 'caixa' ? 'caixa' : 'competencia';
-  } catch {
-    return 'competencia';
-  }
-}
-
 /** Uma linha da lista: um lançamento, uma fatura inteira, ou uma recorrência por vir. */
 type LinhaDoDia =
   | { tipo: 'lancamento'; transacao: Transacao }
@@ -373,7 +330,7 @@ type LinhaDoDia =
   | { tipo: 'previsto'; previsto: ItemPrevisto };
 
 /**
- * A visão por caixa (§2.4).
+ * O agrupamento da lista (§2.4).
  *
  * O previsto continua no dia previsto, e não numa fatura: recorrência que ainda
  * não foi gerada não tem fatura para entrar. É também onde a linha de saldo já
@@ -401,26 +358,6 @@ function agruparPorDiaDeCaixa(
       ...(mapa.get(previsto.dataPrevista) ?? []),
       { tipo: 'previsto', previsto },
     ]);
-  }
-
-  return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-}
-
-function agruparPorDia(
-  lista: Transacao[],
-  previstos: ItemPrevisto[],
-): [DataISO, LinhaDoDia[]][] {
-  const mapa = new Map<DataISO, LinhaDoDia[]>();
-
-  const adicionar = (dia: DataISO, linha: LinhaDoDia) => {
-    mapa.set(dia, [...(mapa.get(dia) ?? []), linha]);
-  };
-
-  for (const transacao of lista) {
-    adicionar(transacao.dataCompetencia, { tipo: 'lancamento', transacao });
-  }
-  for (const previsto of previstos) {
-    adicionar(previsto.dataPrevista, { tipo: 'previsto', previsto });
   }
 
   return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0]));

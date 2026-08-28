@@ -11,13 +11,14 @@
 // entra num BLOCO DE FATURA no dia do vencimento — que é onde o dinheiro sai de
 // verdade, e onde o saldo finalmente tem uma causa visível ao lado dele.
 //
-// Nenhuma das duas visões é "a certa": são perguntas diferentes. Por isso a
-// tela oferece as duas em vez de trocar uma pela outra.
+// A lista responde uma pergunta só: o que entrou e saiu da conta em cada dia.
+// A outra pergunta — quanto eu gastei, e quando — é de Relatórios, que continua
+// por competência (§2.4). Havia um seletor com as duas visões aqui, e ele saiu:
+// a visão por competência mostrava a compra num dia em que o saldo ao lado não
+// se mexia, e uma tela que se contradiz não vira duas respostas, vira dúvida.
 
 import type { Centavos } from './dinheiro';
 import type { DataISO } from './datas';
-
-export type Visao = 'competencia' | 'caixa';
 
 export type TransacaoAgrupavel = {
   id: string;
