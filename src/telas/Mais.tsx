@@ -1,43 +1,35 @@
 import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 import { Pagina } from '../ui/base';
-
-const ITENS = [
-  { para: '/fechamento', titulo: 'Fechamento mensal', descricao: 'O ritual de 10 minutos, uma vez por mês' },
-  { para: '/orcamento', titulo: 'Orçamento', descricao: 'Teto por categoria, planejado x realizado' },
-  { para: '/metas', titulo: 'Metas e reserva', descricao: 'Objetivos e meses de custo fixo cobertos' },
-  { para: '/investimentos', titulo: 'Investimentos', descricao: 'Rendimento diário, bruto x líquido' },
-  { para: '/conferencia', titulo: 'Conferência de saldo', descricao: 'O que o banco diz x o que o app diz' },
-  { para: '/fluxo', titulo: 'Fluxo de caixa', descricao: 'Projeção de 12 meses em três cenários' },
-  { para: '/simulador', titulo: 'Simulador de compra', descricao: 'O que uma compra faz com os próximos meses' },
-  { para: '/relatorios', titulo: 'Relatórios', descricao: 'Por categoria, por natureza e evolução mensal' },
-  { para: '/importar', titulo: 'Importar extrato', descricao: 'OFX de conta corrente, com conciliação' },
-  { para: '/lote', titulo: 'Lançamento em lote', descricao: 'Vários de uma vez, em tabela' },
-  { para: '/atalhos', titulo: 'Atalhos', descricao: 'Modelos e recorrências' },
-  { para: '/faturas', titulo: 'Faturas', descricao: 'Fatura por mês, compras e pagamento' },
-  { para: '/cartoes', titulo: 'Cartões', descricao: 'Fechamento, vencimento e limite' },
-  { para: '/categorias', titulo: 'Categorias', descricao: 'Natureza fixa, variável e eventual' },
-  { para: '/dados', titulo: 'Dados', descricao: 'Backup e exportação em JSON e CSV' },
-];
+import { gruposForaDasAbas } from '../ui/navegacao';
 
 export function Mais() {
   const { sessao, sair } = useAutenticacao();
 
   return (
     <Pagina titulo="Mais" subtitulo={sessao?.user.email}>
-
-      <nav className="space-y-2">
-        {ITENS.map((item) => (
-          <Link
-            key={item.para}
-            to={item.para}
-            className="block rounded-lg border border-borda bg-superficie px-4 py-3 hover:border-borda-forte"
-          >
-            <p className="text-slate-100">{item.titulo}</p>
-            <p className="text-xs text-slate-500">{item.descricao}</p>
-          </Link>
-        ))}
-      </nav>
+      {/* Os mesmos grupos da barra lateral, vindos da mesma lista: celular e
+          desktop discordarem sobre onde uma tela mora é como ter dois apps. */}
+      {gruposForaDasAbas().map((grupo) => (
+        <section key={grupo.titulo} className="space-y-2">
+          <h2 className="text-[11px] uppercase tracking-wider text-slate-500">{grupo.titulo}</h2>
+          {grupo.itens.map((item) => (
+            <Link
+              key={item.para}
+              to={item.para}
+              className="flex items-center gap-3 rounded-lg border border-borda bg-superficie px-4 py-3 hover:border-borda-forte"
+            >
+              <span className="text-slate-500">
+                <item.icone />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-slate-100">{item.rotulo}</span>
+                <span className="block text-xs text-slate-500">{item.descricao}</span>
+              </span>
+            </Link>
+          ))}
+        </section>
+      ))}
 
       <button
         onClick={() => void sair()}

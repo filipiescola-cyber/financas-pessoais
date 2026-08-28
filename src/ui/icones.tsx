@@ -40,11 +40,50 @@ export function IconeLancamentos(p: Props) {
   );
 }
 
+// Conta é carteira; cartão é o retângulo com tarja. Eram o mesmo desenho
+// enquanto viviam longe um do outro na lista — agrupados, viraram dois itens
+// iguais lado a lado.
 export function IconeContas(p: Props) {
   return (
     <Svg {...p}>
       <rect x="3" y="6" width="18" height="13" rx="2" />
-      <path d="M3 10h18M7 15h4" />
+      <path d="M16 11h5v4h-5a2 2 0 0 1 0-4z" />
+    </Svg>
+  );
+}
+
+export function IconeCartoes(p: Props) {
+  return (
+    <Svg {...p}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18M7 15h3" />
+    </Svg>
+  );
+}
+
+export function IconeLote(p: Props) {
+  return (
+    <Svg {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9.5h18M3 14.5h18M9 4v16" />
+    </Svg>
+  );
+}
+
+export function IconeAtalhos(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M13 3 5 13.5h5.5L10 21l8-10.5h-5.5z" />
+    </Svg>
+  );
+}
+
+export function IconeFechamento(p: Props) {
+  return (
+    <Svg {...p}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+      <path d="M9.5 15.5 11 17l3.5-3.5" />
     </Svg>
   );
 }

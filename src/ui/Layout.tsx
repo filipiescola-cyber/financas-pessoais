@@ -1,54 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { LancamentoRapido } from '../telas/LancamentoRapido';
 import { usarPrivacidade } from './Privacidade';
 import { usarRotinasDeAbertura } from '../dados/usarRotinas';
 import { usarFila } from '../dados/usarFila';
-import {
-  IconeCategorias,
-  IconeConferencia,
-  IconeContas,
-  IconeDados,
-  IconeFaturas,
-  IconeFluxo,
-  IconeImportar,
-  IconeInicio,
-  IconeInvestimentos,
-  IconeLancamentos,
-  IconeMais,
-  IconeMetas,
-  IconeOrcamento,
-  IconeRelatorios,
-  IconeSimulador,
-  IconeOlho,
-} from './icones';
-
-type Item = { para: string; rotulo: string; icone: (p: { className?: string }) => ReactNode };
-
-/** No celular só cabem quatro; o resto vive atrás de "Mais". */
-const PRINCIPAIS: Item[] = [
-  { para: '/', rotulo: 'Início', icone: IconeInicio },
-  { para: '/transacoes', rotulo: 'Lançamentos', icone: IconeLancamentos },
-  { para: '/contas', rotulo: 'Contas', icone: IconeContas },
-];
-
-const SECUNDARIOS: Item[] = [
-  { para: '/fechamento', rotulo: 'Fechamento', icone: IconeConferencia },
-  { para: '/orcamento', rotulo: 'Orçamento', icone: IconeOrcamento },
-  { para: '/metas', rotulo: 'Metas', icone: IconeMetas },
-  { para: '/investimentos', rotulo: 'Investimentos', icone: IconeInvestimentos },
-  { para: '/conferencia', rotulo: 'Conferência', icone: IconeConferencia },
-  { para: '/fluxo', rotulo: 'Fluxo de caixa', icone: IconeFluxo },
-  { para: '/simulador', rotulo: 'Simulador', icone: IconeSimulador },
-  { para: '/relatorios', rotulo: 'Relatórios', icone: IconeRelatorios },
-  { para: '/faturas', rotulo: 'Faturas', icone: IconeFaturas },
-  { para: '/lote', rotulo: 'Em lote', icone: IconeLancamentos },
-  { para: '/atalhos', rotulo: 'Atalhos', icone: IconeCategorias },
-  { para: '/importar', rotulo: 'Importar', icone: IconeImportar },
-  { para: '/cartoes', rotulo: 'Cartões', icone: IconeContas },
-  { para: '/categorias', rotulo: 'Categorias', icone: IconeCategorias },
-  { para: '/dados', rotulo: 'Dados', icone: IconeDados },
-];
+import { IconeMais, IconeOlho } from './icones';
+import { ABAS_DO_CELULAR, GRUPOS, PRIMEIRO, type ItemDeNavegacao } from './navegacao';
 
 /**
  * Casca do app, responsiva de propósito.
@@ -163,23 +120,20 @@ function BarraLateral({
         <Marca />
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
-        {[...PRINCIPAIS, ...SECUNDARIOS].map((item) => (
-          <NavLink
-            key={item.para}
-            to={item.para}
-            end={item.para === '/'}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                isActive
-                  ? 'bg-superficie-alta font-medium text-slate-100'
-                  : 'text-slate-400 hover:bg-superficie-alta/60 hover:text-slate-200'
-              }`
-            }
-          >
-            <item.icone />
-            {item.rotulo}
-          </NavLink>
+      {/* Rolagem própria: com os títulos de grupo a lista passa da altura da
+          tela em telas baixas, e sem isto o rodapé sairia por baixo. */}
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        <LinkDaLateral item={PRIMEIRO} />
+
+        {GRUPOS.map((grupo) => (
+          <div key={grupo.titulo} className="mt-5">
+            <p className="mb-1 px-3 text-[10px] uppercase tracking-wider text-slate-600">
+              {grupo.titulo}
+            </p>
+            {grupo.itens.map((item) => (
+              <LinkDaLateral key={item.para} item={item} />
+            ))}
+          </div>
         ))}
       </nav>
 
@@ -190,6 +144,26 @@ function BarraLateral({
         </NavLink>
       </div>
     </aside>
+  );
+}
+
+function LinkDaLateral({ item }: { item: ItemDeNavegacao }) {
+  return (
+    <NavLink
+      to={item.para}
+      end={item.para === '/'}
+      title={item.descricao}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition ${
+          isActive
+            ? 'bg-superficie-alta font-medium text-slate-100'
+            : 'text-slate-400 hover:bg-superficie-alta/60 hover:text-slate-200'
+        }`
+      }
+    >
+      <item.icone />
+      {item.rotulo}
+    </NavLink>
   );
 }
 
@@ -209,7 +183,10 @@ function CabecalhoCelular({
 }
 
 function BarraInferior() {
-  const abas: Item[] = [...PRINCIPAIS, { para: '/mais', rotulo: 'Mais', icone: IconeMais }];
+  const abas = [
+    ...ABAS_DO_CELULAR,
+    { para: '/mais', rotulo: 'Mais', descricao: 'O resto do app', icone: IconeMais },
+  ];
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-borda bg-superficie/95 backdrop-blur md:hidden">
