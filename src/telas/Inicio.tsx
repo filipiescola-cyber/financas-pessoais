@@ -8,6 +8,8 @@ import { usarContasComSaldo } from '../dados/usarContas';
 import { usarTransacoes } from '../dados/usarTransacoes';
 import { usarCartoes } from '../dados/usarCartoes';
 import { proximosVencimentos } from '../dados/projecao';
+import { montarEntradaDosAlertas } from '../dados/alertas';
+import { gerarAlertas, ordenarPorGravidade } from '../dominio/alertas';
 import { totalDaFatura } from '../dados/faturas';
 import { formatarBR } from '../dominio/datas';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Pagina, Secao, Vazio } from '../ui/base';
@@ -29,6 +31,19 @@ export function Inicio() {
   const onboarding = useQuery({ queryKey: ['onboarding'], queryFn: lerStatusOnboarding });
   const vencimentos = useQuery({ queryKey: ['vencimentos'], queryFn: () => proximosVencimentos() });
   const cartoes = usarCartoes();
+  const entradaDosAlertas = useQuery({
+    queryKey: ['alertas'],
+    queryFn: () => montarEntradaDosAlertas(),
+  });
+
+  const alertas = entradaDosAlertas.data
+    ? ordenarPorGravidade(gerarAlertas(entradaDosAlertas.data))
+    : [];
+
+  // O fechamento é do dia 1º (§8.7). O lembrete some depois do dia 7 para não
+  // virar cobrança permanente.
+  const diaDeHoje = Number(hoje().split('-')[2]);
+  const lembrarFechamento = diaDeHoje <= 7;
 
   const lista = contas.data ?? [];
   const disponiveis = lista.filter(entraNoConsolidado);
@@ -73,6 +88,52 @@ export function Inicio() {
             </Link>
           </p>
         </div>
+      )}
+
+      {lembrarFechamento && (
+        <Link
+          to="/fechamento"
+          className="block rounded-xl border border-sky-900/50 bg-sky-950/30 p-4 transition hover:border-sky-800"
+        >
+          <p className="text-sm font-medium text-sky-200">Fechar o mês passado</p>
+          <p className="mt-1 text-xs leading-relaxed text-sky-200/70">
+            Dez minutos: conferir saldos, revisar o que ficou sem categoria, ver como foi o mês e
+            preparar o novo. É o ritual que mantém o app confiável.
+          </p>
+        </Link>
+      )}
+
+      {alertas.length > 0 && (
+        <Secao titulo="Vale olhar">
+          <div className="space-y-2">
+            {alertas.map((alerta) => (
+              <Link
+                key={alerta.id}
+                to={alerta.destino ?? '/'}
+                className={`block rounded-xl border p-4 transition ${
+                  alerta.gravidade === 'urgente'
+                    ? 'border-red-900/50 bg-red-950/25 hover:border-red-800'
+                    : alerta.gravidade === 'atencao'
+                      ? 'border-amber-800/40 bg-amber-950/20 hover:border-amber-700'
+                      : 'border-borda bg-superficie hover:border-borda-forte'
+                }`}
+              >
+                <p
+                  className={`text-sm font-medium ${
+                    alerta.gravidade === 'urgente'
+                      ? 'text-red-200'
+                      : alerta.gravidade === 'atencao'
+                        ? 'text-amber-200'
+                        : 'text-slate-200'
+                  }`}
+                >
+                  {alerta.titulo}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">{alerta.detalhe}</p>
+              </Link>
+            ))}
+          </div>
+        </Secao>
       )}
 
       {contas.isError && (

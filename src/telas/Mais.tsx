@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 
 const ITENS = [
+  { para: '/fechamento', titulo: 'Fechamento mensal', descricao: 'O ritual de 10 minutos, uma vez por mês' },
   { para: '/orcamento', titulo: 'Orçamento', descricao: 'Teto por categoria, planejado x realizado' },
   { para: '/metas', titulo: 'Metas e reserva', descricao: 'Objetivos e meses de custo fixo cobertos' },
   { para: '/investimentos', titulo: 'Investimentos', descricao: 'Rendimento diário, bruto x líquido' },

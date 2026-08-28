@@ -11,6 +11,7 @@ import { Conferencia } from './telas/Conferencia';
 import { Contas } from './telas/Contas';
 import { Faturas } from './telas/Faturas';
 import { Dados } from './telas/Dados';
+import { Fechamento } from './telas/Fechamento';
 import { FluxoDeCaixa } from './telas/FluxoDeCaixa';
 import { Importar } from './telas/Importar';
 import { Investimentos } from './telas/Investimentos';
@@ -57,6 +58,7 @@ export function App() {
               <Route path="/investimentos" element={<Investimentos />} />
               <Route path="/conferencia" element={<Conferencia />} />
               <Route path="/fluxo" element={<FluxoDeCaixa />} />
+              <Route path="/fechamento" element={<Fechamento />} />
               <Route path="/simulador" element={<Simulador />} />
               <Route path="/lote" element={<Lote />} />
               <Route path="/importar" element={<Importar />} />

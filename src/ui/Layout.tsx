@@ -33,6 +33,7 @@ const PRINCIPAIS: Item[] = [
 ];
 
 const SECUNDARIOS: Item[] = [
+  { para: '/fechamento', rotulo: 'Fechamento', icone: IconeConferencia },
   { para: '/orcamento', rotulo: 'Orçamento', icone: IconeOrcamento },
   { para: '/metas', rotulo: 'Metas', icone: IconeMetas },
   { para: '/investimentos', rotulo: 'Investimentos', icone: IconeInvestimentos },
