@@ -30,7 +30,7 @@ import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
-import { previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
+import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { IconeConfere, IconeRelogio } from '../ui/icones';
@@ -69,6 +69,19 @@ export function Transacoes() {
   // hoje. Sem isto, um mês futuro aparece vazio mesmo com salário e aluguel
   // cadastrados — que é o oposto do que a tela deveria responder.
   const recorrencias = usarRecorrencias();
+
+  // O filtro de conta é aplicado na fonte: ele vale tanto para as linhas
+  // previstas do mês quanto para a ponte que abre o saldo dos meses distantes.
+  const recorrenciasPrevistas = (recorrencias.data ?? [])
+    .filter((r) => contaId === null || r.contaId === contaId)
+    .map((r) => ({
+      id: r.id,
+      descricao: r.descricao,
+      tipo: r.tipo,
+      valorPrevisto: r.valorPrevisto,
+      dia: r.dia,
+    }));
+
   const geradas = useQuery({
     queryKey: ['ocorrencias-geradas', mes],
     queryFn: () => ocorrenciasJaGeradas(mes, ultimoDiaDoMes(mes)),
@@ -76,25 +89,9 @@ export function Transacoes() {
 
   const previstos =
     recorrencias.data && geradas.data
-      ? previstoDoMes(
-          recorrencias.data.map((r) => ({
-            id: r.id,
-            descricao: r.descricao,
-            tipo: r.tipo,
-            valorPrevisto: r.valorPrevisto,
-            dia: r.dia,
-          })),
-          geradas.data,
-          mes,
-          hoje(),
+      ? previstoDoMes(recorrenciasPrevistas, geradas.data, mes, hoje()).filter(
+          (p) => p.situacao !== 'lancado',
         )
-          .filter((p) => p.situacao !== 'lancado')
-          // O filtro de conta vale para o previsto também.
-          .filter(
-            (p) =>
-              contaId === null ||
-              recorrencias.data?.find((r) => r.id === p.recorrenciaId)?.contaId === contaId,
-          )
       : [];
 
   const porDia = agruparPorDia(lista, previstos);
@@ -110,6 +107,30 @@ export function Transacoes() {
     queryKey: ['saldo-abertura', inicio, contaId],
     queryFn: () => saldoAte(somarDias(inicio, -1), contaId),
   });
+
+  // A ponte entre hoje e um mês distante.
+  //
+  // O acumulado vem do banco, e no banco não existe nenhuma recorrência de mês
+  // futuro: a geração só cria até hoje. Então o saldo até 30/09 é idêntico ao
+  // de hoje, e outubro abria com o saldo de setembro — como se setembro
+  // inteiro não tivesse acontecido. O mês seguinte parecia certo só porque a
+  // ponte até ele tem zero mês de comprimento.
+  const mesCorrente = primeiroDiaDoMes(hoje());
+  const precisaDePonte = mes > mesCorrente;
+
+  const geradasDaPonte = useQuery({
+    queryKey: ['ocorrencias-geradas', 'ponte', mesCorrente, mes, contaId],
+    queryFn: () => ocorrenciasJaGeradas(mesCorrente, somarDias(mes, -1)),
+    enabled: precisaDePonte,
+  });
+
+  // `null` enquanto carrega: melhor a linha aparecer um instante depois do que
+  // aparecer com um número que muda sozinho na frente do usuário.
+  const previstoDaPonte = !precisaDePonte
+    ? 0
+    : recorrencias.data && geradasDaPonte.data
+      ? previstoAteOMes(recorrenciasPrevistas, geradasDaPonte.data, mesCorrente, mes, hoje())
+      : null;
 
   const movimentos = useQuery({
     queryKey: ['movimentos-caixa', inicio, fim, contaId, elegiveis.length],
@@ -130,9 +151,9 @@ export function Transacoes() {
     }));
 
   const saldosDoDia =
-    abertura.data !== undefined && movimentos.data
+    abertura.data !== undefined && movimentos.data && previstoDaPonte !== null
       ? saldosAoFimDoDia(
-          abertura.data,
+          abertura.data + previstoDaPonte,
           [...movimentos.data, ...movimentosPrevistos],
           porDia.map(([dia]) => dia),
         )

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chaveDaOcorrencia,
+  previstoAteOMes,
   previstoDoMes,
   resumirPrevisto,
   type RecorrenciaPrevista,
@@ -87,5 +88,45 @@ describe('resumo do previsto', () => {
     const resumo = resumirPrevisto(previstoDoMes([variavel], new Set(), MES, '2026-08-28'));
     expect(resumo.faltaEntrar).toBe(0);
     expect(resumo.atrasados).toBe(1);
+  });
+});
+
+describe('previsto acumulado entre meses', () => {
+  // O bug que isto fecha: nenhum mês futuro tem recorrência gravada no banco,
+  // então o acumulado até 30/09 era igual ao de hoje e outubro abria com o
+  // saldo de setembro. O mês seguinte parecia certo só porque a ponte entre
+  // ele e hoje tem zero mês de comprimento.
+  it('nao soma nada quando o mes pedido e o proprio mes corrente', () => {
+    expect(previstoAteOMes([salario, aluguel], new Set(), MES, MES, '2026-08-28')).toBe(0);
+  });
+
+  it('soma um mes de ponte com sinal: receita entra, despesa sai', () => {
+    // Agosto inteiro: +6.000 de salario, -1.500 de aluguel.
+    expect(previstoAteOMes([salario, aluguel], new Set(), MES, '2026-09-01', '2026-08-28')).toBe(
+      450000,
+    );
+  });
+
+  it('acumula todos os meses da ponte, nao so o ultimo', () => {
+    // Agosto + setembro + outubro para abrir novembro.
+    expect(previstoAteOMes([salario, aluguel], new Set(), MES, '2026-11-01', '2026-08-28')).toBe(
+      1350000,
+    );
+  });
+
+  it('nao conta de novo o que ja foi gerado no banco', () => {
+    const jaLancadas = new Set([chaveDaOcorrencia('r1', '2026-08-27')]);
+    expect(previstoAteOMes([salario, aluguel], jaLancadas, MES, '2026-09-01', '2026-08-28')).toBe(
+      -150000,
+    );
+  });
+
+  it('recorrencia de valor variavel nao empurra o saldo', () => {
+    const variavel: RecorrenciaPrevista = { ...salario, valorPrevisto: null };
+    expect(previstoAteOMes([variavel], new Set(), MES, '2026-10-01', '2026-08-28')).toBe(0);
+  });
+
+  it('mes pedido no passado nao soma nada em vez de girar sem parar', () => {
+    expect(previstoAteOMes([salario], new Set(), MES, '2026-06-01', '2026-08-28')).toBe(0);
   });
 });

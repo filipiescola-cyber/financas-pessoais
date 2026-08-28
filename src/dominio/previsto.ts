@@ -11,7 +11,7 @@
 // o que já entrou e o que falta, e o lançamento ser uma decisão sua.
 
 import type { Centavos } from './dinheiro';
-import { diaNoMes, type DataISO } from './datas';
+import { diaNoMes, somarMeses, type DataISO } from './datas';
 
 export type SituacaoPrevista = 'lancado' | 'atrasado' | 'aguardando';
 
@@ -115,4 +115,37 @@ export function resumirPrevisto(itens: readonly ItemPrevisto[]): ResumoDoPrevist
   }
 
   return resumo;
+}
+
+/**
+ * Soma, com sinal, do previsto ainda não lançado nos meses `[deMes, ateMes)`.
+ *
+ * Existe por causa de um buraco no saldo de abertura de meses distantes. A
+ * geração de recorrência só cria lançamento até hoje, então nenhum mês futuro
+ * tem salário ou aluguel gravado no banco. O acumulado do banco até o dia 30/09
+ * é, portanto, igual ao de hoje — e outubro abria com o mesmo saldo de
+ * setembro, como se setembro inteiro não tivesse acontecido.
+ *
+ * O mês seguinte parecia certo só porque o buraco tem o tamanho de zero mês.
+ *
+ * Recorrência sem valor previsto fica de fora, pela mesma razão do resumo:
+ * somar zero por ela empurraria o saldo para um número que ninguém prometeu.
+ */
+export function previstoAteOMes(
+  recorrencias: readonly RecorrenciaPrevista[],
+  jaLancadas: ReadonlySet<string>,
+  deMes: DataISO,
+  ateMes: DataISO,
+  hoje: DataISO,
+): Centavos {
+  let total = 0;
+
+  for (let mes = deMes; mes < ateMes; mes = somarMeses(mes, 1)) {
+    for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje)) {
+      if (item.situacao === 'lancado' || item.valor === null) continue;
+      total += item.tipo === 'receita' ? item.valor : -item.valor;
+    }
+  }
+
+  return total;
 }
