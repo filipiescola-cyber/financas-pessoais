@@ -4,7 +4,7 @@ import { useAutenticacao } from '../dados/autenticacao';
 
 // Login e nada mais. Não existe tela de cadastro de propósito: o app é de um
 // usuário só e o signup público fica DESLIGADO no painel do Supabase — é o que
-// sustenta a política de RLS "using (true)" (ver 012_rls.sql).
+// sustenta a política de RLS "using (true)" (ver a migration ..._rls.sql).
 export function Login() {
   const { sessao, carregando, entrar } = useAutenticacao();
   const [email, setEmail] = useState('');

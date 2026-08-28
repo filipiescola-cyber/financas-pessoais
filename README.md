@@ -41,7 +41,7 @@ npx supabase link --project-ref SEU_PROJECT_REF
 npx supabase db push
 ```
 
-As migrations estão em `supabase/migrations`, numeradas de 001 a 013.
+As migrations estão em `supabase/migrations`, com prefixo de timestamp, na ordem em que devem ser aplicadas.
 **Nunca alterar schema pelo painel** — tudo por migration versionada (§13.6).
 
 ### 3. Criar o usuário e DESLIGAR o cadastro público
@@ -55,7 +55,7 @@ Este é o item de segurança crítico da fase.
 
 O schema não tem coluna de dono (o app é de um CPF só), então a política de RLS é
 "qualquer usuário autenticado vê tudo". Com o signup aberto, qualquer pessoa cria
-uma conta e lê o banco inteiro. Detalhes em `supabase/migrations/012_rls.sql`.
+uma conta e lê o banco inteiro. Detalhes em `supabase/migrations/…_rls.sql`.
 
 ### 4. Rodar localmente
 

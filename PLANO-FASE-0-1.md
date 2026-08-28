@@ -58,19 +58,19 @@ Todo o schema do §3 entra agora, inclusive as tabelas que só serão usadas lá
 
 | Arquivo | Conteúdo |
 |---|---|
-| `001_extensoes.sql` | `pgcrypto` (para `gen_random_uuid()`) |
-| `002_contas.sql` | `contas`, `cartoes` |
-| `003_categorias.sql` | `categorias` (auto-referência `categoria_pai_id`) |
-| `004_transacoes.sql` | `transacoes` + índices (abaixo) |
-| `005_faturas.sql` | `faturas` |
-| `006_recorrencias.sql` | `recorrencias` |
-| `007_atalhos.sql` | `modelos`, `memoria_descricao`, `config` |
-| `008_orcamento_metas.sql` | `orcamentos`, `metas` — dormentes até a Fase 7 |
-| `009_importacao.sql` | `importacoes`, `perfis_importacao` — dormentes até a Fase 4 |
-| `010_investimentos.sql` | `investimentos`, `movimentacoes_investimento`, `indexadores`, `rendimentos`, `aliquotas_ir`, `feriados` — dormentes até a Fase 9 |
-| `011_views.sql` | view `saldos_contas` (§0.5) |
-| `012_rls.sql` | RLS em todas as tabelas |
-| `013_seed.sql` | categorias padrão (§4.3), faixas de `aliquotas_ir` (§7.2), `config` inicial |
+| `…_extensoes.sql` | `pgcrypto` (para `gen_random_uuid()`) |
+| `…_contas.sql` | `contas`, `cartoes` |
+| `…_categorias.sql` | `categorias` (auto-referência `categoria_pai_id`) |
+| `…_transacoes.sql` | `transacoes` + índices (abaixo) |
+| `…_faturas.sql` | `faturas` |
+| `…_recorrencias.sql` | `recorrencias` |
+| `…_atalhos.sql` | `modelos`, `memoria_descricao`, `config` |
+| `…_orcamento_metas.sql` | `orcamentos`, `metas` — dormentes até a Fase 7 |
+| `…_importacao.sql` | `importacoes`, `perfis_importacao` — dormentes até a Fase 4 |
+| `…_investimentos.sql` | `investimentos`, `movimentacoes_investimento`, `indexadores`, `rendimentos`, `aliquotas_ir`, `feriados` — dormentes até a Fase 9 |
+| `…_views.sql` | view `saldos_contas` (§0.5) |
+| `…_rls.sql` | RLS em todas as tabelas |
+| `…_seed.sql` | categorias padrão (§4.3), faixas de `aliquotas_ir` (§7.2), `config` inicial |
 
 Regras ao escrever as migrations:
 
