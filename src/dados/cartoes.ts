@@ -20,6 +20,7 @@ export type NovoCartao = {
   limite: Centavos | null;
   diaFechamento: number;
   diaVencimento: number;
+  contaPagamentoId?: string | null;
 };
 
 function montar(conta: LinhaConta, cartao: LinhaCartao): CartaoComConta {
@@ -28,6 +29,7 @@ function montar(conta: LinhaConta, cartao: LinhaCartao): CartaoComConta {
     limite: cartao.limite === null ? null : paraCentavos(cartao.limite),
     diaFechamento: cartao.dia_fechamento,
     diaVencimento: cartao.dia_vencimento,
+    contaPagamentoId: cartao.conta_pagamento_id,
     conta: {
       id: conta.id,
       nome: conta.nome,
@@ -92,6 +94,7 @@ export async function criarCartao(novo: NovoCartao): Promise<CartaoComConta> {
       limite: novo.limite === null ? null : paraNumerico(novo.limite),
       dia_fechamento: novo.diaFechamento,
       dia_vencimento: novo.diaVencimento,
+      conta_pagamento_id: novo.contaPagamentoId ?? null,
     })
     .select()
     .single();
@@ -132,6 +135,9 @@ export async function atualizarCartao(
   }
   if (campos.diaFechamento !== undefined) doCartao.dia_fechamento = campos.diaFechamento;
   if (campos.diaVencimento !== undefined) doCartao.dia_vencimento = campos.diaVencimento;
+  if (campos.contaPagamentoId !== undefined) {
+    doCartao.conta_pagamento_id = campos.contaPagamentoId;
+  }
 
   if (Object.keys(doCartao).length > 0) {
     const { error } = await supabase.from('cartoes').update(doCartao).eq('conta_id', contaId);

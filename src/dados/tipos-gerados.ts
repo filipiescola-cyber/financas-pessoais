@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -63,18 +63,21 @@ export type Database = {
       cartoes: {
         Row: {
           conta_id: string
+          conta_pagamento_id: string | null
           dia_fechamento: number
           dia_vencimento: number
           limite: number | null
         }
         Insert: {
           conta_id: string
+          conta_pagamento_id?: string | null
           dia_fechamento: number
           dia_vencimento: number
           limite?: number | null
         }
         Update: {
           conta_id?: string
+          conta_pagamento_id?: string | null
           dia_fechamento?: number
           dia_vencimento?: number
           limite?: number | null
@@ -91,6 +94,20 @@ export type Database = {
             foreignKeyName: "cartoes_conta_id_fkey"
             columns: ["conta_id"]
             isOneToOne: true
+            referencedRelation: "saldos_contas"
+            referencedColumns: ["conta_id"]
+          },
+          {
+            foreignKeyName: "cartoes_conta_pagamento_id_fkey"
+            columns: ["conta_pagamento_id"]
+            isOneToOne: false
+            referencedRelation: "contas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartoes_conta_pagamento_id_fkey"
+            columns: ["conta_pagamento_id"]
+            isOneToOne: false
             referencedRelation: "saldos_contas"
             referencedColumns: ["conta_id"]
           },

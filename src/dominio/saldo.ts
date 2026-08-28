@@ -45,6 +45,20 @@ export type ContaParaSaldo = {
  * `divida`: saldo devedor, não caixa (§4.7).
  * `cartao_credito`: fatura em aberto é compromisso, não conta com saldo próprio (§2.1).
  */
+/**
+ * De onde uma fatura pode ser paga (§2.1).
+ *
+ * Pagamento de fatura é transferência, e a origem precisa ser dinheiro de
+ * verdade: cartão não paga cartão, investimento precisa ser resgatado antes, e
+ * Empresa e dívida não são caixa disponível (§2.6, §4.7). Fica aqui, e não em
+ * cada tela, para o cadastro do cartão e a tela de pagamento oferecerem
+ * exatamente as mesmas contas — divergir seria oferecer um padrão que o
+ * pagamento depois não aceita.
+ */
+export function podePagarFatura(conta: { tipo: TipoDeConta }): boolean {
+  return conta.tipo === 'corrente' || conta.tipo === 'poupanca' || conta.tipo === 'carteira';
+}
+
 export const TIPOS_FORA_DO_CONSOLIDADO: readonly TipoDeConta[] = [
   'empresa',
   'divida',

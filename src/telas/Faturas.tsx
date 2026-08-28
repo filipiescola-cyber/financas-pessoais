@@ -6,6 +6,7 @@ import { descreverFatura, faturaDoMes } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
+import { podePagarFatura } from '../dominio/saldo';
 import { usarContas } from '../dados/usarContas';
 import { listarFaturas, pagarFatura, totalDaFatura, type Fatura } from '../dados/faturas';
 import { listarTransacoesDaFatura } from '../dados/transacoes';
@@ -252,6 +253,7 @@ function PagamentoDeFatura({
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
   const contas = usarContas();
+  const cartoes = usarCartoes();
   const [aberto, setAberto] = useState(false);
   const [valor, setValor] = useState<Centavos>(total);
   const [contaOrigemId, setContaOrigemId] = useState<string | null>(null);
@@ -259,13 +261,18 @@ function PagamentoDeFatura({
 
   useEffect(() => setValor(total), [total]);
 
-  const origens = (contas.data ?? []).filter((c) =>
-    ['corrente', 'poupanca', 'carteira'].includes(c.tipo),
-  );
+  const origens = (contas.data ?? []).filter(podePagarFatura);
+
+  // A conta cadastrada no cartão é o padrão. Sem ela sobra a primeira da lista,
+  // que é uma escolha arbitrária — e pagar da conta errada custa dois
+  // lançamentos espelhados para desfazer.
+  const padrao = (cartoes.data ?? []).find((c) => c.contaId === cartaoId)?.contaPagamentoId ?? null;
 
   useEffect(() => {
-    if (contaOrigemId === null && origens.length > 0) setContaOrigemId(origens[0]?.id ?? null);
-  }, [origens, contaOrigemId]);
+    if (contaOrigemId !== null || origens.length === 0) return;
+    const cadastrada = padrao !== null && origens.some((c) => c.id === padrao) ? padrao : null;
+    setContaOrigemId(cadastrada ?? origens[0]?.id ?? null);
+  }, [origens, contaOrigemId, padrao]);
 
   const pagar = useMutation({
     mutationFn: () =>

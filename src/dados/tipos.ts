@@ -39,6 +39,12 @@ export type Cartao = {
   limite: Centavos | null;
   diaFechamento: number;
   diaVencimento: number;
+  /**
+   * Conta de onde a fatura costuma ser paga (§2.1). É um padrão para a tela de
+   * pagamento, não fonte de verdade: a origem real de cada pagamento é a que
+   * ficou gravada na transferência daquele mês.
+   */
+  contaPagamentoId: string | null;
 };
 
 export type CartaoComConta = Cartao & { conta: Conta };

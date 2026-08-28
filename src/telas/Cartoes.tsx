@@ -6,14 +6,21 @@ import { CampoValor } from '../ui/CampoValor';
 import { Botao, Pagina } from '../ui/base';
 import {
   usarArquivarCartao,
+  usarAtualizarCartao,
   usarCartoes,
   usarCriarCartao,
   usarDesarquivarCartao,
 } from '../dados/usarCartoes';
+import { usarContas } from '../dados/usarContas';
+import { podePagarFatura } from '../dominio/saldo';
 
 export function Cartoes() {
   const cartoes = usarCartoes(true);
+  const contas = usarContas();
+  const atualizar = usarAtualizarCartao();
   const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
+
+  const pagadoras = (contas.data ?? []).filter(podePagarFatura);
 
   if (cartoes.isPending) return <p className="p-6 text-slate-400">Carregando cartões…</p>;
   if (cartoes.isError) {
@@ -69,15 +76,24 @@ export function Cartoes() {
               <p className="mt-3 rounded-md bg-superficie-alta px-3 py-2 text-xs text-slate-300">
                 {descreverFatura(fatura)}
               </p>
+              <div className="mt-3">
+                <ContaQuePaga
+                  contas={pagadoras}
+                  selecionada={cartao.contaPagamentoId}
+                  aoEscolher={(contaPagamentoId) =>
+                    atualizar.mutate({ contaId: cartao.contaId, campos: { contaPagamentoId } })
+                  }
+                />
+              </div>
             </article>
           );
         })}
       </section>
 
       <p className="rounded-lg border border-borda px-4 py-3 text-xs text-slate-500">
-        As faturas ainda não são geradas: agrupamento, fechamento e pagamento são a Fase 2. Até lá,
-        uma compra no cartão é lançada e aparece normalmente na lista, só não fica agrupada em
-        fatura.
+        A conta que paga é só o padrão da tela de pagamento — na hora de registrar dá para pagar de
+        outra. O que sai no relatório é sempre a conta que ficou gravada na transferência daquele
+        mês, não esta.
       </p>
 
       {arquivados.length > 0 && (
@@ -131,6 +147,8 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
   const [limite, setLimite] = useState<Centavos>(0);
   const [diaFechamento, setDiaFechamento] = useState('');
   const [diaVencimento, setDiaVencimento] = useState('');
+  const [contaPagamentoId, setContaPagamentoId] = useState<string | null>(null);
+  const contas = usarContas();
 
   const fechamento = Number(diaFechamento);
   const vencimento = Number(diaVencimento);
@@ -153,6 +171,7 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
       limite: limite === 0 ? null : limite,
       diaFechamento: fechamento,
       diaVencimento: vencimento,
+      contaPagamentoId,
     });
     aoTerminar();
   }
@@ -203,6 +222,15 @@ function FormularioCartao({ aoTerminar }: { aoTerminar: () => void }) {
 
       <CampoValor valor={limite} aoMudar={setLimite} rotulo="Limite (opcional)" />
 
+      <div>
+        <label className="mb-1 block text-sm text-slate-400">Conta que paga (opcional)</label>
+        <ContaQuePaga
+          contas={(contas.data ?? []).filter(podePagarFatura)}
+          selecionada={contaPagamentoId}
+          aoEscolher={setContaPagamentoId}
+        />
+      </div>
+
       {criar.isError && <p className="text-sm text-red-400">{(criar.error as Error).message}</p>}
 
       <div className="flex gap-2">
@@ -244,6 +272,55 @@ function CampoDia({
         placeholder="1 a 31"
         className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
       />
+    </div>
+  );
+}
+
+/**
+ * De qual conta a fatura deste cartão costuma sair (§2.1).
+ *
+ * Opcional de propósito. Quem paga de um lugar diferente a cada mês continua
+ * escolhendo na hora, e o que ficar gravado na transferência é que vale. O
+ * campo existe só para a tela de pagamento parar de marcar a primeira conta da
+ * lista — que não é escolha nenhuma, é ordem alfabética.
+ *
+ * Só aparecem contas de onde dá para pagar de fato: cartão não paga cartão, e
+ * Empresa e dívida não são caixa disponível (§2.6, §4.7).
+ */
+function ContaQuePaga({
+  contas,
+  selecionada,
+  aoEscolher,
+}: {
+  contas: readonly { id: string; nome: string }[];
+  selecionada: string | null;
+  aoEscolher: (contaId: string | null) => void;
+}) {
+  if (contas.length === 0) {
+    return (
+      <p className="text-xs text-slate-600">
+        Nenhuma conta corrente, poupança ou carteira cadastrada ainda.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[11px] uppercase tracking-wider text-slate-600">paga de</span>
+      {contas.map((conta) => (
+        <button
+          key={conta.id}
+          type="button"
+          onClick={() => aoEscolher(selecionada === conta.id ? null : conta.id)}
+          className={`rounded-full px-2.5 py-1 text-xs transition ${
+            selecionada === conta.id
+              ? 'bg-sky-900/60 text-sky-200'
+              : 'border border-borda text-slate-500 hover:border-borda-forte'
+          }`}
+        >
+          {conta.nome}
+        </button>
+      ))}
     </div>
   );
 }
