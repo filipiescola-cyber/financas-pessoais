@@ -8,11 +8,13 @@ import {
   IconeContas,
   IconeDados,
   IconeFaturas,
+  IconeFluxo,
   IconeImportar,
   IconeInicio,
   IconeLancamentos,
   IconeMais,
   IconeRelatorios,
+  IconeSimulador,
   IconeOlho,
 } from './icones';
 
@@ -26,6 +28,8 @@ const PRINCIPAIS: Item[] = [
 ];
 
 const SECUNDARIOS: Item[] = [
+  { para: '/fluxo', rotulo: 'Fluxo de caixa', icone: IconeFluxo },
+  { para: '/simulador', rotulo: 'Simulador', icone: IconeSimulador },
   { para: '/relatorios', rotulo: 'Relatórios', icone: IconeRelatorios },
   { para: '/faturas', rotulo: 'Faturas', icone: IconeFaturas },
   { para: '/lote', rotulo: 'Em lote', icone: IconeLancamentos },

@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 
 const ITENS = [
+  { para: '/fluxo', titulo: 'Fluxo de caixa', descricao: 'Projeção de 12 meses em três cenários' },
+  { para: '/simulador', titulo: 'Simulador de compra', descricao: 'O que uma compra faz com os próximos meses' },
   { para: '/relatorios', titulo: 'Relatórios', descricao: 'Por categoria, por natureza e evolução mensal' },
   { para: '/importar', titulo: 'Importar extrato', descricao: 'OFX de conta corrente, com conciliação' },
   { para: '/lote', titulo: 'Lançamento em lote', descricao: 'Vários de uma vez, em tabela' },

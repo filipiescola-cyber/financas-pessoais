@@ -6,6 +6,10 @@ import { entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { ADIAVEIS, lerStatusOnboarding, PASSOS } from '../dados/config';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { usarTransacoes } from '../dados/usarTransacoes';
+import { usarCartoes } from '../dados/usarCartoes';
+import { proximosVencimentos } from '../dados/projecao';
+import { totalDaFatura } from '../dados/faturas';
+import { formatarBR } from '../dominio/datas';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Pagina, Secao, Vazio } from '../ui/base';
 
 const MESES = [
@@ -23,6 +27,8 @@ export function Inicio() {
   const mes = primeiroDiaDoMes(hoje());
   const transacoes = usarTransacoes({ de: mes, ate: ultimoDiaDoMes(mes) });
   const onboarding = useQuery({ queryKey: ['onboarding'], queryFn: lerStatusOnboarding });
+  const vencimentos = useQuery({ queryKey: ['vencimentos'], queryFn: () => proximosVencimentos() });
+  const cartoes = usarCartoes();
 
   const lista = contas.data ?? [];
   const disponiveis = lista.filter(entraNoConsolidado);
@@ -141,13 +147,73 @@ export function Inicio() {
         </Secao>
       )}
 
+      {(vencimentos.data ?? []).length > 0 && (
+        <Secao
+          titulo="Faturas a vencer"
+          acao={
+            <Link to="/faturas" className="text-xs text-emerald-400 hover:text-emerald-300">
+              ver faturas
+            </Link>
+          }
+        >
+          <Cartao>
+            <ul className="divide-y divide-borda">
+              {(vencimentos.data ?? []).map((fatura) => (
+                <LinhaDeFatura
+                  key={fatura.id}
+                  faturaId={fatura.id}
+                  nome={
+                    cartoes.data?.find((c) => c.contaId === fatura.cartaoId)?.conta.nome ?? 'Cartão'
+                  }
+                  vencimento={fatura.vencimento}
+                  vencida={fatura.vencida}
+                />
+              ))}
+            </ul>
+          </Cartao>
+        </Secao>
+      )}
+
       <Cartao className="p-4">
         <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Em construção</p>
         <p className="mt-2 text-xs leading-relaxed text-slate-500">
-          Gastos por categoria, evolução mensal e projeção são das Fases 5 e 6. Até lá esta tela
-          mostra só o que já dá para afirmar com certeza.
+          O fechamento mensal guiado e os alertas ainda não existem. Relatórios, fluxo de caixa e
+          simulador já estão em Mais.
         </p>
       </Cartao>
     </Pagina>
+  );
+}
+
+/**
+ * Linha de fatura a vencer. O total é somado das transações, não lido de
+ * `valor_total`: enquanto a fatura está aberta ela muda a cada lançamento (§13.2).
+ */
+function LinhaDeFatura({
+  faturaId,
+  nome,
+  vencimento,
+  vencida,
+}: {
+  faturaId: string;
+  nome: string;
+  vencimento: string;
+  vencida: boolean;
+}) {
+  const total = useQuery({
+    queryKey: ['fatura-total', faturaId],
+    queryFn: () => totalDaFatura(faturaId),
+  });
+
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm text-slate-200">{nome}</p>
+        <p className={`text-xs ${vencida ? 'text-amber-400' : 'text-slate-500'}`}>
+          {vencida ? 'venceu' : 'vence'} em {formatarBR(vencimento)}
+        </p>
+      </div>
+      <Dinheiro centavos={Math.abs(total.data ?? 0)} className="shrink-0 text-sm text-slate-200" />
+    </li>
   );
 }

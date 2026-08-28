@@ -58,6 +58,24 @@ export function IconeFaturas(p: Props) {
   );
 }
 
+export function IconeFluxo(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M3 16.5 8 11l4 3.5L21 6" />
+      <path d="M21 11V6h-5" />
+    </Svg>
+  );
+}
+
+export function IconeSimulador(p: Props) {
+  return (
+    <Svg {...p}>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" />
+    </Svg>
+  );
+}
+
 export function IconeRelatorios(p: Props) {
   return (
     <Svg {...p}>
