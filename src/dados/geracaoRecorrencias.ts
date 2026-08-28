@@ -101,3 +101,86 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
 
   return geradas;
 }
+
+/**
+ * Gera UMA ocorrência, sob comando do usuário.
+ *
+ * A geração automática não cria vencimento anterior à data em que a recorrência
+ * foi cadastrada — senão cadastrar uma conta antiga despejaria meses de
+ * lançamentos que ninguém pediu. Esta função é a saída para o outro lado desse
+ * cuidado: o salário que venceu ontem e foi cadastrado hoje, que o usuário vê
+ * como pendência e decide lançar.
+ *
+ * Continua idempotente: se aquela ocorrência já existe, não cria a segunda.
+ */
+export async function gerarUmaOcorrencia(
+  recorrenciaId: string,
+  competencia: DataISO,
+): Promise<'criada' | 'ja-existia'> {
+  const { count, error: erroBusca } = await supabase
+    .from('transacoes')
+    .select('id', { count: 'exact', head: true })
+    .eq('recorrencia_id', recorrenciaId)
+    .eq('data_competencia', competencia);
+  if (erroBusca) throw erroBusca;
+  if ((count ?? 0) > 0) return 'ja-existia';
+
+  const { data: recorrencia, error } = await supabase
+    .from('recorrencias')
+    .select('*')
+    .eq('id', recorrenciaId)
+    .single();
+  if (error) throw new Error(error.message);
+
+  const { data: cartao } = await supabase
+    .from('cartoes')
+    .select('*')
+    .eq('conta_id', recorrencia.conta_id)
+    .maybeSingle();
+
+  const configuracao = cartao
+    ? { diaFechamento: cartao.dia_fechamento, diaVencimento: cartao.dia_vencimento }
+    : null;
+
+  const ehReceita = recorrencia.tipo === 'receita';
+  const valorPrevisto = recorrencia.valor_previsto;
+  const valor = valorPrevisto === null ? 0 : (ehReceita ? 1 : -1) * Math.abs(valorPrevisto);
+
+  const linha: InsercaoTransacao = {
+    conta_id: recorrencia.conta_id,
+    categoria_id: recorrencia.categoria_id,
+    descricao: recorrencia.descricao,
+    valor,
+    tipo: ehReceita ? 'receita' : 'despesa',
+    data_competencia: competencia,
+    data_caixa: configuracao
+      ? faturaDeReferencia(competencia, configuracao).dataVencimento
+      : competencia,
+    fatura_id: configuracao
+      ? await idDaFatura(recorrencia.conta_id, competencia, configuracao)
+      : null,
+    recorrencia_id: recorrencia.id,
+    natureza: recorrencia.natureza,
+    origem: 'recorrencia',
+    revisado: valorPrevisto !== null,
+  };
+
+  const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);
+  if (erroInsercao) throw new Error(erroInsercao.message);
+  return 'criada';
+}
+
+/** O que já foi gerado no período, para saber o que ainda falta. */
+export async function ocorrenciasJaGeradas(de: DataISO, ate: DataISO): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('recorrencia_id, data_competencia')
+    .not('recorrencia_id', 'is', null)
+    .gte('data_competencia', de)
+    .lte('data_competencia', ate);
+  if (error) throw error;
+
+  return new Set(
+    (data ?? []).map((linha) => `${linha.recorrencia_id}|${linha.data_competencia}`),
+  );
+}

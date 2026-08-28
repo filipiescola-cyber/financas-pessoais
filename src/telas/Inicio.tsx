@@ -12,6 +12,12 @@ import { montarEntradaDosAlertas } from '../dados/alertas';
 import { gerarAlertas, ordenarPorGravidade } from '../dominio/alertas';
 import { totalDaFatura } from '../dados/faturas';
 import { formatarBR } from '../dominio/datas';
+import { useMutation } from '@tanstack/react-query';
+import { previstoDoMes, resumirPrevisto, type ItemPrevisto } from '../dominio/previsto';
+import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
+import { usarRecorrencias } from '../dados/usarModelos';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
+import { usarAviso } from '../ui/Aviso';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Pagina, Secao, Vazio } from '../ui/base';
 
 const MESES = [
@@ -212,6 +218,8 @@ export function Inicio() {
         </Secao>
       )}
 
+      <PrevistoDoMes mes={mes} />
+
       {(vencimentos.data ?? []).length > 0 && (
         <Secao
           titulo="Faturas a vencer"
@@ -279,6 +287,145 @@ function LinhaDeFatura({
         </p>
       </div>
       <Dinheiro centavos={Math.abs(total.data ?? 0)} className="shrink-0 text-sm text-slate-200" />
+    </li>
+  );
+}
+
+/**
+ * O previsto do mês (§5.2).
+ *
+ * Duas perguntas que a tela inicial precisava responder e não respondia: o que
+ * já entrou e o que ainda falta. E, principalmente: o que era para ter
+ * acontecido e não aconteceu.
+ *
+ * O lançamento é sob comando — "eu reviso e lanço". A geração automática cobre
+ * o caminho normal; isto cobre o que ela deliberadamente não faz, que é criar
+ * vencimento anterior à data em que a recorrência foi cadastrada.
+ */
+function PrevistoDoMes({ mes }: { mes: string }) {
+  const recorrencias = usarRecorrencias();
+  const invalidar = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+
+  const geradas = useQuery({
+    queryKey: ['ocorrencias-geradas', mes],
+    queryFn: () => ocorrenciasJaGeradas(mes, ultimoDiaDoMes(mes)),
+  });
+
+  const lancar = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: string }) => gerarUmaOcorrencia(id, data),
+    onSuccess: async (resultado) => {
+      await invalidar();
+      mostrar(
+        resultado === 'criada'
+          ? 'Lançado. Dá para ajustar o valor na lista, se veio diferente.'
+          : 'Esse já estava lançado.',
+      );
+    },
+  });
+
+  if (!recorrencias.data || recorrencias.data.length === 0 || !geradas.data) return null;
+
+  const itens = previstoDoMes(
+    recorrencias.data.map((r) => ({
+      id: r.id,
+      descricao: r.descricao,
+      tipo: r.tipo,
+      valorPrevisto: r.valorPrevisto,
+      dia: r.dia,
+    })),
+    geradas.data,
+    mes,
+    hoje(),
+  );
+
+  const resumo = resumirPrevisto(itens);
+  const pendentes = itens.filter((i) => i.situacao !== 'lancado');
+
+  return (
+    <Secao
+      titulo="Previsto para o mês"
+      acao={
+        resumo.atrasados > 0 ? (
+          <span className="text-xs text-amber-400">
+            {resumo.atrasados} esperando você
+          </span>
+        ) : undefined
+      }
+    >
+      {(resumo.faltaEntrar > 0 || resumo.faltaSair > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Cartao className="p-4">
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Ainda falta entrar</p>
+            <Dinheiro centavos={resumo.faltaEntrar} className="mt-1 block text-xl text-slate-100" />
+          </Cartao>
+          <Cartao className="p-4">
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Ainda falta sair</p>
+            <Dinheiro centavos={resumo.faltaSair} className="mt-1 block text-xl text-slate-100" />
+          </Cartao>
+        </div>
+      )}
+
+      {pendentes.length === 0 ? (
+        <Cartao className="p-4">
+          <p className="text-sm text-slate-400">
+            Tudo que era previsto para este mês já foi lançado.
+          </p>
+        </Cartao>
+      ) : (
+        <Cartao>
+          <ul className="divide-y divide-borda">
+            {pendentes.map((item) => (
+              <LinhaPrevista
+                key={`${item.recorrenciaId}-${item.dataPrevista}`}
+                item={item}
+                lancando={lancar.isPending}
+                aoLancar={() =>
+                  lancar.mutate({ id: item.recorrenciaId, data: item.dataPrevista })
+                }
+              />
+            ))}
+          </ul>
+        </Cartao>
+      )}
+    </Secao>
+  );
+}
+
+function LinhaPrevista({
+  item,
+  lancando,
+  aoLancar,
+}: {
+  item: ItemPrevisto;
+  lancando: boolean;
+  aoLancar: () => void;
+}) {
+  const atrasado = item.situacao === 'atrasado';
+
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm text-slate-100">{item.descricao}</p>
+        <p className={`text-xs ${atrasado ? 'text-amber-400' : 'text-slate-500'}`}>
+          {atrasado ? 'era para ter acontecido em ' : 'previsto para '}
+          {formatarBR(item.dataPrevista)}
+          {item.valor === null && ' · valor varia'}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        {item.valor !== null && (
+          <Dinheiro
+            centavos={item.tipo === 'receita' ? item.valor : -item.valor}
+            className={`text-sm ${item.tipo === 'receita' ? 'text-emerald-400' : 'text-slate-300'}`}
+          />
+        )}
+        {atrasado && (
+          <Botao tipo="secundario" aoClicar={aoLancar} desabilitado={lancando} className="px-3 py-1.5">
+            lançar
+          </Botao>
+        )}
+      </div>
     </li>
   );
 }

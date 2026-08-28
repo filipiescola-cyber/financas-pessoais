@@ -51,5 +51,7 @@ export const DERIVADO_DE_TRANSACAO: readonly (readonly string[])[] = [
   ['alertas'],
   ['orcamentos'],
   ['categorias-mais-usadas'],
+  ['ocorrencias-geradas'],
+  ['recorrencias'],
   ['investimentos'],
 ];
