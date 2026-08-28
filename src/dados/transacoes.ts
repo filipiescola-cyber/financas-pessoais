@@ -11,10 +11,10 @@
 // que uma compra no cartão não derruba o saldo da conta corrente hoje.
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
-import type { DataISO } from '../dominio/datas';
+import { hoje as hojeISO, type DataISO } from '../dominio/datas';
 import { faturaDeReferencia, type ConfiguracaoDoCartao } from '../dominio/fatura';
 import { gerarParcelas, gerarParcelasRestantes } from '../dominio/parcelas';
-import { idsDasFaturas } from './faturas';
+import { idDaFatura, idsDasFaturas } from './faturas';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -468,4 +468,36 @@ export async function listarTransacoesDaFatura(faturaId: string): Promise<Transa
     .order('data_competencia', { ascending: false });
   if (error) throw error;
   return (data ?? []).map(daLinha);
+}
+
+/**
+ * Duplicar (§5.2): repete um lançamento com a data de hoje. Dois toques.
+ *
+ * Não copia o que é identidade do lançamento original: parcelamento,
+ * recorrência, fatura e vínculo de transferência ficam de fora. Duplicar a
+ * parcela 3/12 cria um gasto avulso, não uma décima terceira parcela.
+ */
+export async function duplicarTransacao(
+  transacao: Transacao,
+  cartao?: ConfiguracaoDoCartao | null,
+): Promise<string[]> {
+  const data = hojeISO();
+
+  const linha: InsercaoTransacao = {
+    conta_id: transacao.contaId,
+    categoria_id: transacao.categoriaId,
+    descricao: transacao.descricao,
+    valor: paraNumerico(transacao.valor),
+    tipo: transacao.tipo,
+    data_competencia: data,
+    data_caixa: dataDeCaixa(data, cartao),
+    fatura_id: cartao ? await idDaFatura(transacao.contaId, data, cartao) : null,
+    natureza: null,
+    origem: 'manual',
+    revisado: true,
+  };
+
+  const { data: criadas, error } = await supabase.from('transacoes').insert(linha).select('id');
+  if (error) throw new Error(error.message);
+  return (criadas ?? []).map((l) => l.id);
 }

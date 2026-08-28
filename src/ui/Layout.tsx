@@ -25,6 +25,8 @@ const PRINCIPAIS: Item[] = [
 
 const SECUNDARIOS: Item[] = [
   { para: '/faturas', rotulo: 'Faturas', icone: IconeFaturas },
+  { para: '/lote', rotulo: 'Em lote', icone: IconeLancamentos },
+  { para: '/atalhos', rotulo: 'Atalhos', icone: IconeCategorias },
   { para: '/cartoes', rotulo: 'Cartões', icone: IconeContas },
   { para: '/categorias', rotulo: 'Categorias', icone: IconeCategorias },
   { para: '/dados', rotulo: 'Dados', icone: IconeDados },

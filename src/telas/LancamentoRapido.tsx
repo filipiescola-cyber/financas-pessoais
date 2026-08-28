@@ -12,6 +12,7 @@ import {
   usarCriarTransferencia,
   usarDesfazer,
 } from '../dados/usarTransacoes';
+import { usarModelos, usarSugestoesDeDescricao } from '../dados/usarModelos';
 import type { MotivoEmpresa, TipoDeLancamento } from '../dados/transacoes';
 
 type Modo = TipoDeLancamento | 'transferencia';
@@ -37,6 +38,7 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
   const criar = usarCriarLancamento();
   const transferir = usarCriarTransferencia();
   const desfazer = usarDesfazer();
+  const modelos = usarModelos();
   const { mostrar } = usarAviso();
 
   const [modo, setModo] = useState<Modo>('despesa');
@@ -49,6 +51,9 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
   const [parcelas, setParcelas] = useState(1);
   const [motivoEmpresa, setMotivoEmpresa] = useState<MotivoEmpresa | null>(null);
   const [verTodasCategorias, setVerTodasCategorias] = useState(false);
+  const [descricaoEmFoco, setDescricaoEmFoco] = useState(false);
+
+  const sugestoes = usarSugestoesDeDescricao(descricao);
 
   const tipoParaCategorias: TipoDeLancamento = modo === 'receita' ? 'receita' : 'despesa';
   const { sugeridas, todas } = usarCategoriasSugeridas(tipoParaCategorias);
@@ -139,6 +144,29 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
     <BottomSheet aberto={aberto} aoFechar={aoFechar}>
       <div className="space-y-4">
         <SeletorDeModo modo={modo} aoMudar={setModo} />
+
+        {modo !== 'transferencia' && (modelos.data ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {(modelos.data ?? [])
+              .filter((m) => m.tipo === modo)
+              .map((modelo) => (
+                <button
+                  key={modelo.id}
+                  type="button"
+                  onClick={() => {
+                    // Um toque preenche categoria, conta e tipo. Só falta o valor.
+                    if (modelo.categoriaId) setCategoriaId(modelo.categoriaId);
+                    if (modelo.contaId) setContaId(modelo.contaId);
+                    if (modelo.valorPadrao !== null) setValor(modelo.valorPadrao);
+                    if (!descricao) setDescricao(modelo.nome);
+                  }}
+                  className="rounded-full border border-emerald-800/60 bg-emerald-950/30 px-3 py-1.5 text-sm text-emerald-200 transition hover:border-emerald-700"
+                >
+                  {modelo.nome}
+                </button>
+              ))}
+          </div>
+        )}
 
         <CampoValor valor={valor} aoMudar={setValor} autoFocus />
 
@@ -267,13 +295,44 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
           </div>
         )}
 
-        <div>
+        <div className="relative">
           <label className="mb-1 block text-sm text-slate-400">Descrição (opcional)</label>
           <input
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
+            onFocus={() => setDescricaoEmFoco(true)}
+            // O clique numa sugestão precisa acontecer antes do blur fechar a lista.
+            onBlur={() => window.setTimeout(() => setDescricaoEmFoco(false), 150)}
+            autoComplete="off"
             className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
+
+          {descricaoEmFoco && (sugestoes.data ?? []).length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-borda-forte bg-superficie-alta shadow-xl">
+              {(sugestoes.data ?? []).map((sugestao) => (
+                <li key={sugestao.descricao}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Traz junto a categoria e a conta da última vez (§5.2).
+                      setDescricao(sugestao.descricao);
+                      if (sugestao.categoriaId) setCategoriaId(sugestao.categoriaId);
+                      if (sugestao.contaId && modo !== 'transferencia') {
+                        setContaId(sugestao.contaId);
+                      }
+                      setDescricaoEmFoco(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-superficie"
+                  >
+                    <span className="truncate">{sugestao.descricao}</span>
+                    <span className="ml-3 shrink-0 text-xs text-slate-500">
+                      {sugestao.vezesUsada}x
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {erro && <p className="text-sm text-red-400">{erro.message}</p>}

@@ -4,6 +4,7 @@ import { ProvedorAviso } from './ui/Aviso';
 import { ProvedorPrivacidade } from './ui/Privacidade';
 import { Layout } from './ui/Layout';
 import { RotaProtegida } from './ui/RotaProtegida';
+import { Atalhos } from './telas/Atalhos';
 import { Cartoes } from './telas/Cartoes';
 import { Categorias } from './telas/Categorias';
 import { Contas } from './telas/Contas';
@@ -11,6 +12,7 @@ import { Faturas } from './telas/Faturas';
 import { Dados } from './telas/Dados';
 import { Inicio } from './telas/Inicio';
 import { Login } from './telas/Login';
+import { Lote } from './telas/Lote';
 import { Mais } from './telas/Mais';
 import { Onboarding } from './telas/Onboarding';
 import { Transacoes } from './telas/Transacoes';
@@ -41,6 +43,8 @@ export function App() {
             >
               <Route path="/" element={<Inicio />} />
               <Route path="/transacoes" element={<Transacoes />} />
+              <Route path="/lote" element={<Lote />} />
+              <Route path="/atalhos" element={<Atalhos />} />
               <Route path="/contas" element={<Contas />} />
               <Route path="/cartoes" element={<Cartoes />} />
               <Route path="/faturas" element={<Faturas />} />

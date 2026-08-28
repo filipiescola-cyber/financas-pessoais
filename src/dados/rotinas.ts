@@ -9,11 +9,13 @@
 import { hoje } from '../dominio/datas';
 import { gravarConfig, lerConfig } from './config';
 import { backfillFaturas, fecharFaturasVencidas, garantirFaturas } from './faturas';
+import { gerarRecorrenciasPendentes } from './geracaoRecorrencias';
 import { supabase } from './supabase';
 
 export type ResultadoDasRotinas = {
   faturasFechadas: number;
   transacoesVinculadas: number;
+  recorrenciasGeradas: number;
   executadaEm: string;
 };
 
@@ -47,11 +49,15 @@ export async function rodarRotinasDeAbertura(forcar = false): Promise<ResultadoD
   // 3. Fecha o que já passou da data de fechamento.
   const faturasFechadas = await fecharFaturasVencidas(hojeISO);
 
+  // 4. Gera os lançamentos de recorrência que já venceram e ainda não existem.
+  const recorrenciasGeradas = await gerarRecorrenciasPendentes(hojeISO);
+
   await gravarConfig(CHAVE, { data: hojeISO, em: new Date().toISOString() });
 
   return {
     faturasFechadas,
     transacoesVinculadas: atualizadas,
+    recorrenciasGeradas,
     executadaEm: hojeISO,
   };
 }

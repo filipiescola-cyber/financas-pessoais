@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 
 const ITENS = [
+  { para: '/lote', titulo: 'Lançamento em lote', descricao: 'Vários de uma vez, em tabela' },
+  { para: '/atalhos', titulo: 'Atalhos', descricao: 'Modelos e recorrências' },
   { para: '/faturas', titulo: 'Faturas', descricao: 'Fatura por mês, compras e pagamento' },
   { para: '/cartoes', titulo: 'Cartões', descricao: 'Fechamento, vencimento e limite' },
   { para: '/categorias', titulo: 'Categorias', descricao: 'Natureza fixa, variável e eventual' },

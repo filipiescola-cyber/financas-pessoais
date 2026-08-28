@@ -23,13 +23,19 @@ export function usarRotinasDeAbertura() {
         const resultado = await rodarRotinasDeAbertura();
         if (!resultado) return;
 
-        if (resultado.faturasFechadas > 0 || resultado.transacoesVinculadas > 0) {
+        if (
+          resultado.faturasFechadas > 0 ||
+          resultado.transacoesVinculadas > 0 ||
+          resultado.recorrenciasGeradas > 0
+        ) {
           await cliente.invalidateQueries({ queryKey: ['transacoes'] });
           await cliente.invalidateQueries({ queryKey: ['faturas'] });
           await cliente.invalidateQueries({ queryKey: ['contas'] });
         }
 
-        if (resultado.transacoesVinculadas > 0) {
+        if (resultado.recorrenciasGeradas > 0) {
+          mostrar(`${resultado.recorrenciasGeradas} lançamento(s) recorrente(s) gerado(s).`);
+        } else if (resultado.transacoesVinculadas > 0) {
           mostrar(
             `${resultado.transacoesVinculadas} lançamento(s) de cartão agrupado(s) em fatura.`,
           );

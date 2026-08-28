@@ -12,11 +12,14 @@ import { formatar } from '../dominio/dinheiro';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import {
+  duplicarTransacao,
   excluirParcelamento,
   excluirTransacao,
+  excluirTransacoes,
   type EscopoDeParcelamento,
   type Transacao,
 } from '../dados/transacoes';
+import { usarCartoes } from '../dados/usarCartoes';
 import { chaves } from '../dados/chaves';
 import { usarAviso } from '../ui/Aviso';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
@@ -175,6 +178,7 @@ function ItemDeTransacao({
 }) {
   const [confirmandoParcelamento, setConfirmandoParcelamento] = useState(false);
   const cliente = useQueryClient();
+  const cartoes = usarCartoes();
   const { mostrar } = usarAviso();
 
   const invalidar = async () => {
@@ -188,6 +192,24 @@ function ItemDeTransacao({
     onSuccess: async () => {
       await invalidar();
       mostrar('Lançamento excluído.');
+    },
+  });
+
+  // Duplicar: dois toques para repetir um gasto que se repete (§5.2).
+  const duplicar = useMutation({
+    mutationFn: () =>
+      duplicarTransacao(
+        transacao,
+        cartoes.data?.find((c) => c.contaId === transacao.contaId) ?? null,
+      ),
+    onSuccess: async (ids) => {
+      await invalidar();
+      mostrar('Duplicado para hoje.', {
+        rotulo: 'Desfazer',
+        executar: () => {
+          void excluirTransacoes(ids).then(invalidar);
+        },
+      });
     },
   });
 
@@ -247,6 +269,16 @@ function ItemDeTransacao({
             <button onClick={aoEditar} className="text-xs text-slate-600 transition hover:text-slate-300">
               editar
             </button>
+            {!ehTransferencia && (
+              <button
+                onClick={() => duplicar.mutate()}
+                disabled={duplicar.isPending}
+                title="Repete este lançamento com a data de hoje"
+                className="text-xs text-slate-600 transition hover:text-slate-300"
+              >
+                duplicar
+              </button>
+            )}
             <button
               onClick={() => (ehParcelado ? setConfirmandoParcelamento(true) : excluir.mutate())}
               disabled={excluir.isPending}
