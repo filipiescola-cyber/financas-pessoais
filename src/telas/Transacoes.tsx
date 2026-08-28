@@ -30,6 +30,9 @@ import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
+import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
+import { usarRecorrencias } from '../dados/usarModelos';
 import { IconeConfere, IconeRelogio } from '../ui/icones';
 import { EditarTransacao } from './EditarTransacao';
 
@@ -62,7 +65,39 @@ export function Transacoes() {
   const receitas = lista.filter((t) => t.tipo === 'receita').reduce((s, t) => s + t.valor, 0);
   const despesas = lista.filter((t) => t.tipo === 'despesa').reduce((s, t) => s + t.valor, 0);
 
-  const porDia = agruparPorDia(lista);
+  // Recorrência que ainda não venceu não existe no banco: a geração só cria até
+  // hoje. Sem isto, um mês futuro aparece vazio mesmo com salário e aluguel
+  // cadastrados — que é o oposto do que a tela deveria responder.
+  const recorrencias = usarRecorrencias();
+  const geradas = useQuery({
+    queryKey: ['ocorrencias-geradas', mes],
+    queryFn: () => ocorrenciasJaGeradas(mes, ultimoDiaDoMes(mes)),
+  });
+
+  const previstos =
+    recorrencias.data && geradas.data
+      ? previstoDoMes(
+          recorrencias.data.map((r) => ({
+            id: r.id,
+            descricao: r.descricao,
+            tipo: r.tipo,
+            valorPrevisto: r.valorPrevisto,
+            dia: r.dia,
+          })),
+          geradas.data,
+          mes,
+          hoje(),
+        )
+          .filter((p) => p.situacao !== 'lancado')
+          // O filtro de conta vale para o previsto também.
+          .filter(
+            (p) =>
+              contaId === null ||
+              recorrencias.data?.find((r) => r.id === p.recorrenciaId)?.contaId === contaId,
+          )
+      : [];
+
+  const porDia = agruparPorDia(lista, previstos);
 
   // Saldo diário. Vem por CAIXA, não por competência: é o único que bate com o
   // extrato do banco (§13.2). Sem filtro de conta, usa as mesmas contas que
@@ -82,9 +117,25 @@ export function Transacoes() {
     enabled: contaId !== null || elegiveis.length > 0,
   });
 
+  // O previsto entra no saldo dos dias futuros: um dia mostrando "salário
+  // previsto" ao lado de um saldo que o ignora seria contraditório. Assim que a
+  // ocorrência é gerada ela sai daqui e entra pelos movimentos reais, então não
+  // há risco de contar duas vezes.
+  const movimentosPrevistos = previstos
+    .filter((p) => p.valor !== null)
+    .map((p) => ({
+      valor: p.tipo === 'receita' ? p.valor! : -p.valor!,
+      dataCaixa: p.dataPrevista,
+      transacaoPaiId: null,
+    }));
+
   const saldosDoDia =
     abertura.data !== undefined && movimentos.data
-      ? saldosAoFimDoDia(abertura.data, movimentos.data, porDia.map(([dia]) => dia))
+      ? saldosAoFimDoDia(
+          abertura.data,
+          [...movimentos.data, ...movimentosPrevistos],
+          porDia.map(([dia]) => dia),
+        )
       : null;
 
   const algumAdiado = lista.some((t) => t.dataCaixa > t.dataCompetencia);
@@ -161,7 +212,7 @@ export function Transacoes() {
         <p className="text-red-400">Erro: {(transacoes.error as Error).message}</p>
       )}
 
-      {transacoes.isSuccess && lista.length === 0 && (
+      {transacoes.isSuccess && lista.length === 0 && previstos.length === 0 && (
         <Vazio
           titulo={`Nenhum lançamento em ${nomeDoMes(mes)}`}
           descricao="Use o botão + para lançar. Ele fica visível em todas as telas."
@@ -190,7 +241,9 @@ export function Transacoes() {
                   centavos={saldosDoDia.get(dia)!}
                   className={saldosDoDia.get(dia)! < 0 ? 'text-red-400' : 'text-slate-300'}
                 />
-                {temMovimentoAdiado(doDia) && (
+                {temMovimentoAdiado(
+                  doDia.flatMap((l) => (l.tipo === 'lancamento' ? [l.transacao] : [])),
+                ) && (
                   <span title="Há compra no cartão neste dia: ela só sai do caixa no vencimento da fatura">
                     ·
                   </span>
@@ -201,17 +254,26 @@ export function Transacoes() {
         >
           <Cartao>
             <ul className="divide-y divide-borda">
-              {doDia.map((transacao) => (
-                <ItemDeTransacao
-                  key={transacao.id}
-                  transacao={transacao}
-                  nomeConta={nomeConta.get(transacao.contaId) ?? '—'}
-                  nomeCategoria={
-                    transacao.categoriaId ? (nomeCategoria.get(transacao.categoriaId) ?? null) : null
-                  }
-                  aoEditar={() => setEditando(transacao)}
-                />
-              ))}
+              {doDia.map((linha) =>
+                linha.tipo === 'lancamento' ? (
+                  <ItemDeTransacao
+                    key={linha.transacao.id}
+                    transacao={linha.transacao}
+                    nomeConta={nomeConta.get(linha.transacao.contaId) ?? '—'}
+                    nomeCategoria={
+                      linha.transacao.categoriaId
+                        ? (nomeCategoria.get(linha.transacao.categoriaId) ?? null)
+                        : null
+                    }
+                    aoEditar={() => setEditando(linha.transacao)}
+                  />
+                ) : (
+                  <ItemPrevistoNaLista
+                    key={`${linha.previsto.recorrenciaId}-${linha.previsto.dataPrevista}`}
+                    previsto={linha.previsto}
+                  />
+                ),
+              )}
             </ul>
           </Cartao>
         </Secao>
@@ -222,13 +284,28 @@ export function Transacoes() {
   );
 }
 
-function agruparPorDia(lista: Transacao[]): [DataISO, Transacao[]][] {
-  const mapa = new Map<DataISO, Transacao[]>();
+/** Uma linha da lista: ou um lançamento real, ou uma recorrência ainda por vir. */
+type LinhaDoDia =
+  | { tipo: 'lancamento'; transacao: Transacao }
+  | { tipo: 'previsto'; previsto: ItemPrevisto };
+
+function agruparPorDia(
+  lista: Transacao[],
+  previstos: ItemPrevisto[],
+): [DataISO, LinhaDoDia[]][] {
+  const mapa = new Map<DataISO, LinhaDoDia[]>();
+
+  const adicionar = (dia: DataISO, linha: LinhaDoDia) => {
+    mapa.set(dia, [...(mapa.get(dia) ?? []), linha]);
+  };
+
   for (const transacao of lista) {
-    const atual = mapa.get(transacao.dataCompetencia) ?? [];
-    atual.push(transacao);
-    mapa.set(transacao.dataCompetencia, atual);
+    adicionar(transacao.dataCompetencia, { tipo: 'lancamento', transacao });
   }
+  for (const previsto of previstos) {
+    adicionar(previsto.dataPrevista, { tipo: 'previsto', previsto });
+  }
+
   return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
 
@@ -444,5 +521,71 @@ function Marcador({ futura, revisado }: { futura: boolean; revisado: boolean }) 
       title="Ainda não revisado: veio de importação ou de recorrência de valor variável"
       className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
     />
+  );
+}
+
+/**
+ * Recorrência que ainda não virou lançamento.
+ *
+ * Ela não existe no banco: a geração só cria até a data de hoje. Aparece aqui
+ * para o mês futuro responder "o que vem", e o traço pontilhado marca que é
+ * previsão, não fato — a linha não tem editar nem excluir porque não há o que
+ * editar ainda.
+ *
+ * Quando já venceu e não foi lançada, ganha o botão: é o caso da recorrência
+ * cadastrada depois do vencimento, que a geração automática nunca cria sozinha.
+ */
+function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
+  const invalidar = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+
+  const lancar = useMutation({
+    mutationFn: () => gerarUmaOcorrencia(previsto.recorrenciaId, previsto.dataPrevista),
+    onSuccess: async (resultado) => {
+      await invalidar();
+      mostrar(resultado === 'criada' ? 'Lançado.' : 'Esse já estava lançado.');
+    },
+  });
+
+  const atrasado = previsto.situacao === 'atrasado';
+
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-2.5">
+          <span
+            title="Previsto: recorrência cadastrada que ainda não virou lançamento"
+            className={`mt-0.5 ${atrasado ? 'text-amber-400' : 'text-sky-400/60'}`}
+          >
+            <IconeRelogio className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-slate-400">{previsto.descricao}</p>
+            <p className="truncate text-xs text-slate-600">
+              {atrasado ? 'era para ter acontecido' : 'previsto'}
+              {previsto.valor === null && ' · valor varia'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {previsto.valor !== null && (
+            <Dinheiro
+              centavos={previsto.tipo === 'receita' ? previsto.valor : -previsto.valor}
+              className="text-slate-500"
+            />
+          )}
+          {atrasado && (
+            <button
+              onClick={() => lancar.mutate()}
+              disabled={lancar.isPending}
+              className="text-xs text-emerald-400 transition hover:text-emerald-300"
+            >
+              lançar
+            </button>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
