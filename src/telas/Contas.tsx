@@ -12,6 +12,7 @@ import { empresaComSaldoSuspeito, entraNoConsolidado, rotuloDaContaEmpresa } fro
 import { CampoValor } from '../ui/CampoValor';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import {
+  usarAtualizarConta,
   usarContas,
   usarContasComSaldo,
   usarCriarConta,
@@ -109,6 +110,7 @@ export function Contas() {
                         : ROTULO_TIPO_CONTA[conta.tipo]
                     }
                     cor={conta.cor}
+                    instituicao={conta.instituicao}
                     valor={conta.saldoAtual}
                   />
                 ))}
@@ -117,6 +119,8 @@ export function Contas() {
                     id={empresa.id}
                     nome={empresa.nome}
                     detalhe="Fronteira com o negócio"
+                    cor={empresa.cor}
+                    instituicao={empresa.instituicao}
                     valor={empresa.saldoAtual}
                     neutra
                   />
@@ -137,6 +141,7 @@ function LinhaDeConta({
   nome,
   detalhe,
   cor,
+  instituicao,
   valor,
   neutra = false,
 }: {
@@ -144,10 +149,12 @@ function LinhaDeConta({
   nome: string;
   detalhe: string;
   cor?: string | null;
+  instituicao?: string | null;
   valor: Centavos;
   neutra?: boolean;
 }) {
   const [encerrando, setEncerrando] = useState(false);
+  const [editando, setEditando] = useState(false);
 
   return (
     <li className="px-4 py-3">
@@ -168,7 +175,19 @@ function LinhaDeConta({
             className={neutra ? 'text-slate-300' : valor < 0 ? 'text-red-400' : 'text-slate-100'}
           />
           <button
-            onClick={() => setEncerrando((v) => !v)}
+            onClick={() => {
+              setEditando((v) => !v);
+              setEncerrando(false);
+            }}
+            className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+          >
+            {editando ? 'Fechar' : 'Editar'}
+          </button>
+          <button
+            onClick={() => {
+              setEncerrando((v) => !v);
+              setEditando(false);
+            }}
             title="Encerrar — o histórico é preservado"
             className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
           >
@@ -176,6 +195,16 @@ function LinhaDeConta({
           </button>
         </div>
       </div>
+
+      {editando && (
+        <PainelDeEdicao
+          id={id}
+          nome={nome}
+          instituicao={instituicao ?? ''}
+          cor={cor ?? null}
+          aoTerminar={() => setEditando(false)}
+        />
+      )}
 
       {encerrando && (
         <PainelDeEncerramento id={id} nome={nome} aoTerminar={() => setEncerrando(false)} />
@@ -495,5 +524,82 @@ function FormularioConta({ aoTerminar }: { aoTerminar: () => void }) {
         </div>
       </Cartao>
     </form>
+  );
+}
+
+/**
+ * Nome, instituição e cor de uma conta já criada (§4).
+ *
+ * Faltava a coisa mais simples: uma conta cadastrada errada não tinha como
+ * ser corrigida. Encerrar e criar outra funcionaria, e levaria o histórico
+ * junto para um lugar que ninguém mais olha — arrumar um erro de digitação
+ * não pode custar isso.
+ *
+ * O tipo fica de fora: mudar uma conta corrente para cartão, ou para Empresa,
+ * muda o que os lançamentos dela significam (§2.6, §2.1). Isso não é edição,
+ * é outra conta.
+ */
+function PainelDeEdicao({
+  id,
+  nome,
+  instituicao,
+  cor,
+  aoTerminar,
+}: {
+  id: string;
+  nome: string;
+  instituicao: string;
+  cor: string | null;
+  aoTerminar: () => void;
+}) {
+  const atualizar = usarAtualizarConta();
+  const [novoNome, setNovoNome] = useState(nome);
+  const [novaInstituicao, setNovaInstituicao] = useState(instituicao);
+  const [novaCor, setNovaCor] = useState(cor);
+
+  return (
+    <div className="mt-3 space-y-4 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <Campo rotulo="Nome">
+        <input
+          value={novoNome}
+          onChange={(e) => setNovoNome(e.target.value)}
+          autoFocus
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <CampoInstituicao
+        instituicao={novaInstituicao}
+        cor={novaCor}
+        aoMudar={(nova, corNova) => {
+          setNovaInstituicao(nova);
+          setNovaCor(corNova);
+        }}
+      />
+
+      {atualizar.isError && (
+        <p className="text-sm text-red-400">{(atualizar.error as Error).message}</p>
+      )}
+
+      <div className="flex gap-2">
+        <Botao
+          aoClicar={() =>
+            atualizar.mutate(
+              {
+                id,
+                campos: { nome: novoNome, instituicao: novaInstituicao, cor: novaCor },
+              },
+              { onSuccess: aoTerminar },
+            )
+          }
+          desabilitado={novoNome.trim() === '' || atualizar.isPending}
+        >
+          Salvar
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
+    </div>
   );
 }

@@ -4,10 +4,13 @@ import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import type { Indexador } from '../dominio/rendimento';
 import {
+  arquivarInvestimento,
   atualizarSaldoManual,
   calcularTodos,
   conferirInvestimento,
   criarInvestimento,
+  desarquivarInvestimento,
+  listarInvestimentos,
   ROTULO_TIPO,
   TIPOS_ISENTOS,
   TIPOS_SEM_CALCULO,
@@ -36,6 +39,10 @@ const TIPOS: TipoDeInvestimento[] = ['cdb', 'tesouro', 'lci', 'lca', 'poupanca',
 export function Investimentos() {
   const [criando, setCriando] = useState(false);
   const investimentos = useQuery({ queryKey: ['investimentos'], queryFn: () => calcularTodos() });
+  const arquivados = useQuery({
+    queryKey: ['investimentos', 'arquivados'],
+    queryFn: () => listarInvestimentos(true).then((tudo) => tudo.filter((i) => !i.ativo)),
+  });
   const taxas = useQuery({ queryKey: ['taxas'], queryFn: taxasVigentes });
 
   const lista = investimentos.data ?? [];
@@ -110,6 +117,22 @@ export function Investimentos() {
             </div>
           </Secao>
         </>
+      )}
+
+      {(arquivados.data ?? []).length > 0 && (
+        <Secao titulo="Arquivados">
+          <Cartao>
+            <ul className="divide-y divide-borda">
+              {(arquivados.data ?? []).map((inv) => (
+                <LinhaArquivada key={inv.id} id={inv.id} nome={inv.nome} tipo={inv.tipo} />
+              ))}
+            </ul>
+          </Cartao>
+          <p className="text-xs leading-relaxed text-slate-600">
+            Aplicação arquivada sai do patrimônio e da lista, mas o histórico dela continua inteiro
+            — nada foi apagado.
+          </p>
+        </Secao>
       )}
 
       <Nota tom="atencao">
@@ -221,6 +244,11 @@ function Indicadores() {
 
 function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const cliente = useQueryClient();
+
+  const arquivar = useMutation({
+    mutationFn: () => arquivarInvestimento(item.investimento.id),
+    onSuccess: () => cliente.invalidateQueries({ queryKey: ['investimentos'] }),
+  });
   const { mostrar } = usarAviso();
   const [aberto, setAberto] = useState(false);
   const [saldo, setSaldo] = useState<Centavos>(item.saldoExibido);
@@ -304,12 +332,22 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
         </p>
       )}
 
-      <button
-        onClick={() => setAberto((v) => !v)}
-        className={`mt-3 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-      >
-        {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
-      </button>
+      <div className="mt-3 flex flex-wrap gap-4">
+        <button
+          onClick={() => setAberto((v) => !v)}
+          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
+        </button>
+        <button
+          onClick={() => arquivar.mutate()}
+          disabled={arquivar.isPending}
+          title="Resgatado ou vencido: sai do patrimônio, o histórico fica"
+          className={`text-xs text-slate-600 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          Arquivar
+        </button>
+      </div>
 
       {aberto && (
         <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
@@ -466,5 +504,37 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         registra a aplicação; o movimento de dinheiro é lançado normalmente pela folha.
       </p>
     </Cartao>
+  );
+}
+
+function LinhaArquivada({
+  id,
+  nome,
+  tipo,
+}: {
+  id: string;
+  nome: string;
+  tipo: TipoDeInvestimento;
+}) {
+  const cliente = useQueryClient();
+
+  const reativar = useMutation({
+    mutationFn: () => desarquivarInvestimento(id),
+    onSuccess: () => cliente.invalidateQueries({ queryKey: ['investimentos'] }),
+  });
+
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <span className="min-w-0 truncate text-sm text-slate-500">
+        {nome} · {ROTULO_TIPO[tipo]}
+      </span>
+      <button
+        onClick={() => reativar.mutate()}
+        disabled={reativar.isPending}
+        className={`shrink-0 text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+      >
+        Reativar
+      </button>
+    </li>
   );
 }

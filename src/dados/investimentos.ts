@@ -29,6 +29,7 @@ export type Investimento = {
   saldoManual: Centavos | null;
   saldoConferido: Centavos | null;
   dataConferencia: DataISO | null;
+  ativo: boolean;
 };
 
 /** Isentos de IR para pessoa física (§7.2). */
@@ -49,12 +50,11 @@ export const ROTULO_TIPO: Record<TipoDeInvestimento, string> = {
 /** Renda variável não tem fórmula: o usuário atualiza o saldo na mão (§7.1). */
 export const TIPOS_SEM_CALCULO: TipoDeInvestimento[] = ['acoes', 'cripto', 'fundo'];
 
-export async function listarInvestimentos(): Promise<Investimento[]> {
-  const { data, error } = await supabase
-    .from('investimentos')
-    .select('*')
-    .eq('ativo', true)
-    .order('data_aplicacao');
+export async function listarInvestimentos(incluirArquivados = false): Promise<Investimento[]> {
+  let consulta = supabase.from('investimentos').select('*').order('data_aplicacao');
+  if (!incluirArquivados) consulta = consulta.eq('ativo', true);
+
+  const { data, error } = await consulta;
   if (error) throw error;
 
   return (data ?? []).map((linha) => ({
@@ -74,6 +74,7 @@ export async function listarInvestimentos(): Promise<Investimento[]> {
     saldoManual: linha.saldo_manual === null ? null : paraCentavos(linha.saldo_manual),
     saldoConferido: linha.saldo_conferido === null ? null : paraCentavos(linha.saldo_conferido),
     dataConferencia: linha.data_conferencia,
+    ativo: linha.ativo,
   }));
 }
 
@@ -130,8 +131,20 @@ export async function conferirInvestimento(id: string, saldoReal: Centavos): Pro
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Arquiva, nunca exclui (§4.8).
+ *
+ * Aplicação resgatada não deixa de ter existido: o histórico de rendimento
+ * dela e os aportes ligados ao caixa continuam valendo. Arquivar tira do
+ * patrimônio e da lista; apagar reescreveria meses fechados.
+ */
 export async function arquivarInvestimento(id: string): Promise<void> {
   const { error } = await supabase.from('investimentos').update({ ativo: false }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function desarquivarInvestimento(id: string): Promise<void> {
+  const { error } = await supabase.from('investimentos').update({ ativo: true }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
