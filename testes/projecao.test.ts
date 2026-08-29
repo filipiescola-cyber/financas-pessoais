@@ -253,3 +253,56 @@ describe('compromisso já assumido (§8.5)', () => {
     expect(mesEmQueOCompromissoAcaba({})).toBeNull();
   });
 });
+
+describe('as duas projeções do simulador', () => {
+  const entrada = {
+    saldoAtual: 500000,
+    aPartirDe: '2026-09-01',
+    horizonteEmMeses: 6,
+    renda: {
+      pessimista: 300000,
+      provavel: 300000,
+      otimista: 300000,
+      origem: 'historico' as const,
+      mesesDeHistorico: 6,
+    },
+    fixasMensais: 100000,
+    provisaoEventualMensal: 0,
+    medianaDasVariaveis: 0,
+    jaLancadoPorMes: {},
+  };
+
+  it('devolve os dois cenários com os mesmos meses, na mesma ordem', () => {
+    const impacto = simularCompra(entrada, 'provavel', {
+      valor: 120000,
+      parcelas: 3,
+      primeiroMes: '2026-09-01',
+    });
+    expect(impacto.antes.map((m) => m.mes)).toEqual(impacto.depois.map((m) => m.mes));
+    expect(impacto.antes).toHaveLength(6);
+  });
+
+  it('depois nunca fica acima de antes: comprar não cria dinheiro', () => {
+    const impacto = simularCompra(entrada, 'provavel', {
+      valor: 120000,
+      parcelas: 3,
+      primeiroMes: '2026-09-01',
+    });
+    for (let i = 0; i < impacto.antes.length; i += 1) {
+      expect(impacto.depois[i]!.saldoFinal).toBeLessThanOrEqual(impacto.antes[i]!.saldoFinal);
+    }
+  });
+
+  it('depois da última parcela, a distância entre os dois para de crescer', () => {
+    // É o que separa "aperta e passa" de "baixa o saldo para sempre" — e é
+    // justamente o que o pior mês sozinho não mostra.
+    const impacto = simularCompra(entrada, 'provavel', {
+      valor: 120000,
+      parcelas: 2,
+      primeiroMes: '2026-09-01',
+    });
+    const distancia = impacto.antes.map((m, i) => m.saldoFinal - impacto.depois[i]!.saldoFinal);
+    expect(distancia[1]).toBe(120000);
+    expect(distancia[5]).toBe(120000);
+  });
+});

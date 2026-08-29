@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
-import { ROTULO_CENARIO, simularCompra, type Cenario } from '../dominio/projecao';
+import {
+  ROTULO_CENARIO,
+  simularCompra,
+  type Cenario,
+  type ImpactoDaCompra,
+} from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { CampoValor } from '../ui/CampoValor';
 import { Link } from 'react-router-dom';
@@ -175,7 +180,12 @@ export function Simulador() {
             </Nota>
           )}
 
-          {/* 3º: compromisso mensal depois da compra. */}
+          {/* 3º: o formato do estrago, mês a mês. */}
+          <Secao titulo="Mês a mês, antes e depois">
+            <MiniFluxo impacto={impacto} />
+          </Secao>
+
+          {/* 4º: compromisso mensal depois da compra. */}
           <Secao titulo="Compromisso mensal">
             <Cartao className="p-4">
               <p className="text-sm text-slate-300">
@@ -206,5 +216,90 @@ export function Simulador() {
         </>
       )}
     </Pagina>
+  );
+}
+
+/**
+ * O antes e o depois, mês a mês.
+ *
+ * O pior mês responde "dá ou não dá", mas não mostra o FORMATO do aperto: uma
+ * compra que segura três meses e passa e outra que baixa o saldo para sempre
+ * podem ter exatamente o mesmo pior mês. A distância entre as duas barras
+ * parando — ou não — de crescer é o que separa as duas.
+ *
+ * Sem moralizar (§8.4): a barra mostra o tamanho, não opina sobre ele.
+ */
+function MiniFluxo({ impacto }: { impacto: ImpactoDaCompra }) {
+  // Uma escala só para os doze meses, senão cada barra mediria uma coisa e a
+  // comparação — que é o ponto — não existiria.
+  const escala = Math.max(
+    ...impacto.antes.map((m) => Math.abs(m.saldoFinal)),
+    ...impacto.depois.map((m) => Math.abs(m.saldoFinal)),
+    1,
+  );
+  const largura = (valor: Centavos) => `${(Math.abs(valor) / escala) * 100}%`;
+
+  const temNegativo = impacto.depois.some((m) => m.saldoFinal < 0);
+
+  return (
+    <Cartao className="p-4">
+      <ul className="space-y-2.5">
+        {impacto.antes.map((mes, i) => {
+          const depois = impacto.depois[i]!;
+          const comeu = mes.saldoFinal - depois.saldoFinal;
+          const negativo = depois.saldoFinal < 0;
+
+          return (
+            <li key={mes.mes}>
+              <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
+                <span className="text-slate-400">{mesCurto(mes.mes)}</span>
+                <span className="flex items-baseline gap-1.5">
+                  <span className="numero dinheiro text-slate-500">{formatar(mes.saldoFinal)}</span>
+                  <span className="text-slate-600">→</span>
+                  <span
+                    className={`numero dinheiro ${negativo ? 'text-red-400' : 'text-slate-200'}`}
+                  >
+                    {formatar(depois.saldoFinal)}
+                  </span>
+                </span>
+              </div>
+
+              <div className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-superficie-alta">
+                {negativo ? (
+                  <div className="h-full rounded-full bg-red-500" style={{ width: largura(depois.saldoFinal) }} />
+                ) : (
+                  <>
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{ width: largura(depois.saldoFinal) }}
+                    />
+                    {comeu > 0 && (
+                      <div
+                        className="h-full rounded-full bg-amber-500/60"
+                        style={{ width: largura(comeu) }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-4 rounded-full bg-emerald-500" /> O que sobra
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-4 rounded-full bg-amber-500/60" /> O que a compra levou
+        </span>
+        {temNegativo && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-4 rounded-full bg-red-500" /> O tamanho do buraco
+          </span>
+        )}
+      </p>
+    </Cartao>
   );
 }

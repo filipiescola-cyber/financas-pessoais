@@ -204,6 +204,15 @@ export type ImpactoDaCompra = {
   /** Último mês em que a compra ainda pesa. */
   ultimaParcela: DataISO | null;
   valorDaParcela: Centavos;
+  /**
+   * As duas projeções inteiras, mês a mês e na mesma ordem.
+   *
+   * O pior mês responde "dá ou não dá", mas não mostra o formato do estrago:
+   * uma compra que aperta três meses e passa é diferente de uma que baixa o
+   * saldo para sempre, e as duas podem ter o mesmo pior mês.
+   */
+  antes: MesProjetado[];
+  depois: MesProjetado[];
 };
 
 /**
@@ -251,6 +260,8 @@ export function simularCompra(
     compromissoDepois: compromissoMensal(comCompra, entrada.aPartirDe),
     ultimaParcela,
     valorDaParcela,
+    antes,
+    depois,
   };
 }
 
