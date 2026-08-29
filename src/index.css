@@ -48,23 +48,43 @@
   --color-slate-900: #f1f5f9;
   --color-slate-950: #f8fafc;
 
+  /* Os tons baixos (100-300) são TEXTO no tema escuro e precisam escurecer
+     para continuar legíveis sobre branco. Os altos (800-950) são fundo e borda
+     sutis, e clareiam pelo mesmo motivo, ao contrário.
+
+     De 500 a 700 fica tudo como está: são preenchimento sólido com texto
+     branco por cima — o verde de salvar, o vermelho de apagar — e funcionam
+     igual nos dois temas. */
+  --color-emerald-100: #065f46;
+  --color-emerald-200: #065f46;
   --color-emerald-300: #047857;
   --color-emerald-400: #059669;
+  --color-emerald-800: #a7f3d0;
   --color-emerald-950: #a7f3d0;
 
+  --color-sky-800: #bae6fd;
   --color-sky-200: #075985;
   --color-sky-300: #0369a1;
   --color-sky-400: #0284c7;
   --color-sky-900: #bfdbfe;
   --color-sky-950: #dbeafe;
 
+  --color-amber-800: #fde68a;
   --color-amber-200: #92400e;
   --color-amber-300: #b45309;
   --color-amber-400: #b45309;
   --color-amber-900: #f0b429;
   --color-amber-950: #fdeec4;
 
+  /* O vermelho tinha só o 400, e a tela de Dados usa a escala inteira: texto
+     em red-200 sobre fundo red-950 virava vermelho claro sobre rosa claro, e o
+     bloco de "recomeçar do zero" ficava ilegível no tema claro. */
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
   --color-red-400: #dc2626;
+  --color-red-800: #fecaca;
+  --color-red-900: #fca5a5;
+  --color-red-950: #fee2e2;
 }
 
 body {
