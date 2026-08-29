@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { formatarBR, hoje, primeiroDiaDoMes, type DataISO } from '../dominio/datas';
+import { formatarBR, hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar } from '../dominio/dinheiro';
 import {
   compromissoMensal,
@@ -52,8 +52,15 @@ export function FluxoDeCaixa() {
   }
 
   const entrada = {
-    saldoAtual: dados.data.saldoAtual,
-    aPartirDe: primeiroDiaDoMes(hoje()),
+    // A projeção começa no MÊS QUE VEM (§8.2: "para cada mês futuro"), e parte
+    // do saldo previsto para o fim deste mês — não do de hoje.
+    //
+    // Somar a renda inteira de agosto por cima de um saldo de 29 de agosto
+    // contava duas vezes o salário que já caiu: o número crescia sozinho e não
+    // batia com nada. O mês corrente já é respondido por Lançamentos, com o
+    // saldo dia a dia.
+    saldoAtual: dados.data.saldoAtual + dados.data.aindaNesteMes,
+    aPartirDe: primeiroDiaDoMes(somarMeses(hoje(), 1)),
     horizonteEmMeses: HORIZONTE,
     renda: dados.data.renda,
     fixasMensais: dados.data.fixasMensais,
@@ -129,6 +136,15 @@ export function FluxoDeCaixa() {
       </div>
 
       <Secao titulo="Mês a mês">
+        {/* De onde a primeira linha parte. Sem isto o número aparece do nada, e
+            um saldo projetado que ninguém consegue conferir não serve. */}
+        <p className="text-xs leading-relaxed text-slate-500">
+          Começa no mês que vem, partindo de{' '}
+          <Dinheiro centavos={entrada.saldoAtual} className="text-slate-300" /> — o saldo de hoje
+          mais o que ainda falta acontecer em {mesCurto(primeiroDiaDoMes(hoje()))}. O mês corrente
+          está em Lançamentos, com o saldo dia a dia.
+        </p>
+
         <Cartao>
           <ul className="divide-y divide-borda">
             {projecao.map((mes) => (

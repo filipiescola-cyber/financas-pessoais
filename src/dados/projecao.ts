@@ -22,6 +22,8 @@ import { mediana, projetarRenda, type RendaProjetada } from '../dominio/projecao
 import { entraNaProjecaoDeRenda, type Natureza } from '../dominio/natureza';
 import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
 import { lerConfig } from './config';
+import { previstoDoMes, resumirPrevisto } from '../dominio/previsto';
+import { ocorrenciasJaGeradas } from './geracaoRecorrencias';
 import { supabase } from './supabase';
 
 const JANELA_DE_HISTORICO = 12;
@@ -34,6 +36,16 @@ export type DadosDaProjecao = {
   medianaDasVariaveis: Centavos;
   jaLancadoPorMes: Record<DataISO, Centavos>;
   mesesDeHistorico: number;
+  /**
+   * O que ainda falta acontecer no mês corrente, líquido: positivo se sobra a
+   * entrar, negativo se sobra a sair.
+   *
+   * Existe porque a projeção começa no MÊS QUE VEM (§8.2 fala em "cada mês
+   * futuro"), e o ponto de partida dela é o saldo no fim deste mês — não o de
+   * hoje. Sem isto, o que ainda vai acontecer em agosto não seria contado em
+   * lugar nenhum.
+   */
+  aindaNesteMes: Centavos;
 };
 
 type LinhaDeTransacao = {
@@ -55,7 +67,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       .from('transacoes')
       .select('valor, tipo, data_competencia, data_caixa, categoria_id, natureza')
       .gte('data_competencia', inicioDoHistorico),
-    supabase.from('recorrencias').select('valor_previsto, tipo, natureza').eq('ativo', true),
+    supabase.from('recorrencias').select('id, descricao, dia, valor_previsto, tipo, natureza').eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
   ]);
 
@@ -166,6 +178,46 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     jaLancadoPorMes[mes] = (jaLancadoPorMes[mes] ?? 0) + Math.abs(paraCentavos(linha.valor));
   }
 
+  // --- o que ainda falta acontecer neste mês -----------------------------
+  //
+  // Duas metades, e elas não se sobrepõem: o que já está gravado com data à
+  // frente (parcela, fatura, recorrência já gerada) e o que ainda nem virou
+  // lançamento (recorrência cujo dia não chegou). `previstoDoMes` marca a
+  // primeira como `lancado` e a tira da conta, então somar as duas não conta
+  // nada duas vezes.
+  // Cuidado: o `mesCorrente` lá de cima é "AAAA-MM", para comparar meses das
+  // medianas. Aqui é preciso a data do dia 1º, que é o que as funções de
+  // previsto esperam.
+  const primeiroDiaDesteMes = primeiroDiaDoMes(referencia);
+
+  const jaGravadoAindaNesteMes = (futuras ?? [])
+    .filter((linha) => primeiroDiaDoMes(linha.data_caixa) === primeiroDiaDesteMes)
+    .reduce(
+      (total, linha) =>
+        total + (linha.tipo === 'despesa' ? -Math.abs(paraCentavos(linha.valor)) : Math.abs(paraCentavos(linha.valor))),
+      0,
+    );
+
+  const geradas = await ocorrenciasJaGeradas(primeiroDiaDesteMes, ultimoDiaDoMes(referencia));
+
+  const resumoDoPrevisto = resumirPrevisto(
+    previstoDoMes(
+      (recorrencias.data ?? []).map((r) => ({
+        id: r.id,
+        descricao: r.descricao,
+        tipo: r.tipo as 'receita' | 'despesa',
+        valorPrevisto: r.valor_previsto === null ? null : paraCentavos(r.valor_previsto),
+        dia: r.dia,
+      })),
+      geradas,
+      primeiroDiaDesteMes,
+      referencia,
+    ),
+  );
+
+  const aindaNesteMes =
+    jaGravadoAindaNesteMes + resumoDoPrevisto.faltaEntrar - resumoDoPrevisto.faltaSair;
+
   return {
     saldoAtual,
     renda: projetarRenda(
@@ -176,6 +228,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     fixasMensais,
     provisaoEventualMensal,
     medianaDasVariaveis: mediana(historicoDeVariaveis) ?? 0,
+    aindaNesteMes,
     jaLancadoPorMes,
     mesesDeHistorico: historicoDeRenda.length,
   };

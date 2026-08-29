@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { hoje, primeiroDiaDoMes, type DataISO } from '../dominio/datas';
+import { hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { ROTULO_CENARIO, simularCompra, type Cenario } from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
@@ -71,8 +71,15 @@ export function Simulador() {
   }
 
   const entrada = {
-    saldoAtual: dados.data.saldoAtual,
-    aPartirDe: primeiroDiaDoMes(hoje()),
+    // A projeção começa no MÊS QUE VEM (§8.2: "para cada mês futuro"), e parte
+    // do saldo previsto para o fim deste mês — não do de hoje.
+    //
+    // Somar a renda inteira de agosto por cima de um saldo de 29 de agosto
+    // contava duas vezes o salário que já caiu: o número crescia sozinho e não
+    // batia com nada. O mês corrente já é respondido por Lançamentos, com o
+    // saldo dia a dia.
+    saldoAtual: dados.data.saldoAtual + dados.data.aindaNesteMes,
+    aPartirDe: primeiroDiaDoMes(somarMeses(hoje(), 1)),
     horizonteEmMeses: HORIZONTE,
     renda: dados.data.renda,
     fixasMensais: dados.data.fixasMensais,

@@ -57,8 +57,11 @@ export async function montarEntradaDosAlertas(
   // --- projeção ficando negativa ----------------------------------------
   const fluxo = projetarFluxo(
     {
-      saldoAtual: projecao.saldoAtual,
-      aPartirDe: mes,
+      // Mesma convenção da tela de fluxo: parte do fim deste mês e projeta os
+      // seguintes. Um alerta de "mês negativo" calculado com o salário contado
+      // duas vezes nunca dispararia.
+      saldoAtual: projecao.saldoAtual + projecao.aindaNesteMes,
+      aPartirDe: primeiroDiaDoMes(somarMeses(mes, 1)),
       horizonteEmMeses: 12,
       renda: projecao.renda,
       fixasMensais: projecao.fixasMensais,
