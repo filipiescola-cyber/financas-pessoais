@@ -4,7 +4,11 @@
 
 ## 1. Contexto
 
-App **pessoal** de gestão financeira, uso individual (um único CPF).
+App **pessoal** de gestão financeira. Nasceu para um único CPF e passou a
+suportar mais de uma pessoa — cada uma com os próprios dados, isolados no banco
+por dono (§3, §10.1). Continua sendo um app *pessoal*: o que mudou é caber mais
+de uma pessoa na mesma instalação, não as finanças de duas pessoas se
+misturarem. Não há dado compartilhado entre contas.
 Projeto **totalmente separado** do sistema de gestão do negócio (MEI). Não compartilha banco de dados, não compartilha deploy, não compartilha repositório.
 
 **Motivo da separação:** finanças de pessoa física e de pessoa jurídica precisam ficar apartadas. Misturar as duas em um mesmo banco cria confusão contábil e dificulta o pró-labore.
@@ -401,7 +405,27 @@ feriados (
 )
 ```
 
-**RLS:** ativar em todas as tabelas. Mesmo sendo usuário único, sem RLS a `anon key` exposta no front dá acesso total ao banco.
+**RLS:** ativa em todas as tabelas, filtrando **por dono**. A `anon key` do
+Supabase é pública por natureza — sem RLS, qualquer um com a URL lê tudo.
+
+**`usuario_id uuid not null default auth.uid()`** em toda tabela de dado
+pessoal, com política `using (usuario_id = auth.uid())`. O default existe para
+o código da aplicação não precisar passar o dono em lugar nenhum: esquecer de
+filtrar deixa de ser possível, porque quem filtra é o banco.
+
+Três tabelas ficam **globais** de propósito — `feriados`, `aliquotas_ir` e
+`indexadores`. São o calendário nacional, a tabela do governo e o CDI: iguais
+para todo mundo. Duplicá-las por pessoa seria guardar a mesma verdade N vezes e
+deixar N cópias divergirem.
+
+**Restrição única precisa incluir o dono.** Sem isso, duas pessoas não podem ter
+cada uma a sua categoria "Alimentação", a sua conta Empresa, o seu "Uber" na
+memória de autocomplete — nem o seu próprio estado de onboarding, porque
+`config` tem `chave` na chave primária.
+
+**View e função precisam de `security invoker`.** É o ponto onde um vazamento
+passa despercebido: view criada sem `security_invoker = on` roda com as
+permissões de quem a criou e devolve os dados de todo mundo, sem erro nenhum.
 
 **Índice obrigatório:** `UNIQUE (conta_id, fitid) WHERE fitid IS NOT NULL`. É o que impede o mesmo extrato importado duas vezes de duplicar lançamento.
 
@@ -805,7 +829,9 @@ Para renda variável, a referência usual é 6 meses em vez de 3, justamente por
 
 Parecem boas ideias e não valem o custo aqui:
 
-- Multiusuário e compartilhamento.
+- Compartilhar as MESMAS finanças entre duas pessoas (conta conjunta, casal com
+  orçamento comum). Multiusuário existe (§3), mas cada conta é uma ilha: não há
+  dado visível entre elas, e criar isso mudaria todas as perguntas do app.
 - Multi-moeda.
 - Cotação de ativos em tempo real.
 - Anexar nota fiscal por foto — atrito alto, uso baixo, vira pasta de fotos esquecidas.
@@ -911,11 +937,21 @@ Não implementar antes do app estar consolidado. Registrado para que a decisão 
 
 ### 10.1 Segurança
 
-- RLS ativa em todas as tabelas (§3). A `anon key` do Supabase é pública por natureza — sem RLS, qualquer um com a URL lê tudo.
+- RLS ativa em todas as tabelas, **por dono** (§3). A `anon key` do Supabase é
+  pública por natureza — sem RLS, qualquer um com a URL lê tudo.
+- **Cadastro público (signup) desligado no painel.** Com multiusuário, deixá-lo
+  aberto não vaza dado — conta nova vê um app vazio — mas deixa qualquer um que
+  descubra a URL criar acesso. Desligado, entra só quem for criado no painel:
+  *Authentication → Users → Add user*, com *Auto Confirm User* marcado, já que
+  não há envio de e-mail configurado.
 - Senha forte e 2FA na conta do Supabase. É a chave-mestra de tudo.
 - **Não gravar o que não é necessário:** número completo de cartão, número de conta, senha de banco. O app não precisa de nada disso. Apelido do cartão basta.
 - Secrets em variável de ambiente do Supabase. Nada de chave no repositório, mesmo privado.
-- Repositório privado.
+- Repositório **público**, por decisão consciente: o GitHub Pages exige plano
+  pago para publicar de repositório privado. É seguro porque o que está no
+  repositório é só código — a chave publicável do Supabase não dá acesso a nada
+  sem sessão, e a `service_role` nunca sai do painel. O `.env` está no
+  `.gitignore` desde o primeiro commit.
 
 ### 10.2 Backup e exportação
 
