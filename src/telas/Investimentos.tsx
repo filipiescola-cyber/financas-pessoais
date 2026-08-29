@@ -27,6 +27,11 @@ import {
 import { CampoValor } from '../ui/CampoValor';
 import { usarContas } from '../dados/usarContas';
 import { podePagarFatura } from '../dominio/saldo';
+import {
+  organizarCarteira,
+  type Agrupamento,
+  type Ordenacao,
+} from '../dominio/carteira';
 import { usarAviso } from '../ui/Aviso';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
@@ -42,6 +47,9 @@ const TIPOS: TipoDeInvestimento[] = ['cdb', 'tesouro', 'lci', 'lca', 'poupanca',
 export function Investimentos() {
   const [criando, setCriando] = useState(false);
   const investimentos = useQuery({ queryKey: ['investimentos'], queryFn: () => calcularTodos() });
+  const [agrupamento, setAgrupamento] = useState<Agrupamento>('instituicao');
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>('valor');
+
   const arquivados = useQuery({
     queryKey: ['investimentos', 'arquivados'],
     queryFn: () => listarInvestimentos(true).then((tudo) => tudo.filter((i) => !i.ativo)),
@@ -113,9 +121,44 @@ export function Investimentos() {
           </div>
 
           <Secao titulo="Aplicações">
-            <div className="space-y-2">
-              {lista.map((item) => (
-                <LinhaDeInvestimento key={item.investimento.id} item={item} />
+            <ControlesDaCarteira
+              agrupamento={agrupamento}
+              ordenacao={ordenacao}
+              aoAgrupar={setAgrupamento}
+              aoOrdenar={setOrdenacao}
+            />
+
+            <div className="space-y-4">
+              {organizarCarteira(
+                lista.map((item) => ({
+                  chave: item.investimento.id,
+                  item,
+                  nome: item.investimento.nome,
+                  instituicao: item.investimento.instituicao,
+                  tipo: item.investimento.tipo,
+                  vencimento: item.investimento.vencimento,
+                  saldo: item.saldoExibido,
+                })),
+                agrupamento,
+                ordenacao,
+                (tipo) => ROTULO_TIPO[tipo as TipoDeInvestimento] ?? tipo,
+              ).map((grupo) => (
+                <div key={grupo.titulo || 'tudo'} className="space-y-2">
+                  {grupo.titulo !== '' && (
+                    <div className="flex items-baseline justify-between gap-3 px-1">
+                      <span className="text-[11px] uppercase tracking-wider text-slate-500">
+                        {grupo.titulo}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {grupo.itens.length} · <Dinheiro centavos={grupo.total} className="text-slate-400" />
+                      </span>
+                    </div>
+                  )}
+
+                  {grupo.itens.map(({ chave, item }) => (
+                    <LinhaDeInvestimento key={chave} item={item} />
+                  ))}
+                </div>
               ))}
             </div>
           </Secao>
@@ -692,5 +735,90 @@ function ResgateDoInvestimento({
         </Botao>
       </div>
     </div>
+  );
+}
+
+const AGRUPAMENTOS: { valor: Agrupamento; rotulo: string }[] = [
+  { valor: 'instituicao', rotulo: 'Instituição' },
+  { valor: 'tipo', rotulo: 'Tipo' },
+  { valor: 'nenhum', rotulo: 'Nenhum' },
+];
+
+const ORDENACOES: { valor: Ordenacao; rotulo: string }[] = [
+  { valor: 'valor', rotulo: 'Valor' },
+  { valor: 'vencimento', rotulo: 'Vencimento' },
+  { valor: 'nome', rotulo: 'Nome' },
+];
+
+/**
+ * Como a carteira é organizada.
+ *
+ * Agrupada por instituição de saída, porque com cinco aplicações de nome
+ * parecido a primeira pergunta deixa de ser "o que eu tenho" e passa a ser
+ * "quanto tem em cada lugar" — e o subtotal do grupo responde isso sem contas.
+ */
+function ControlesDaCarteira({
+  agrupamento,
+  ordenacao,
+  aoAgrupar,
+  aoOrdenar,
+}: {
+  agrupamento: Agrupamento;
+  ordenacao: Ordenacao;
+  aoAgrupar: (valor: Agrupamento) => void;
+  aoOrdenar: (valor: Ordenacao) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wider text-slate-600">agrupar por</span>
+        {AGRUPAMENTOS.map((opcao) => (
+          <BotaoDeControle
+            key={opcao.valor}
+            ativo={agrupamento === opcao.valor}
+            aoClicar={() => aoAgrupar(opcao.valor)}
+          >
+            {opcao.rotulo}
+          </BotaoDeControle>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wider text-slate-600">ordenar por</span>
+        {ORDENACOES.map((opcao) => (
+          <BotaoDeControle
+            key={opcao.valor}
+            ativo={ordenacao === opcao.valor}
+            aoClicar={() => aoOrdenar(opcao.valor)}
+          >
+            {opcao.rotulo}
+          </BotaoDeControle>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BotaoDeControle({
+  ativo,
+  aoClicar,
+  children,
+}: {
+  ativo: boolean;
+  aoClicar: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={aoClicar}
+      aria-pressed={ativo}
+      className={`rounded-full px-2.5 py-1 text-xs transition ${
+        ativo
+          ? 'bg-slate-700 text-slate-100'
+          : 'border border-borda text-slate-500 hover:border-borda-forte'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
