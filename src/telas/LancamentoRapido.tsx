@@ -18,6 +18,7 @@ import { usarModelos, usarSugestoesDeDescricao } from '../dados/usarModelos';
 import type { MotivoEmpresa, TipoDeLancamento } from '../dados/transacoes';
 import { ALVO_DE_TOQUE } from '../ui/base';
 import { ChipsDeConta } from '../ui/ChipsDeConta';
+import { ChipsDeParcelas } from '../ui/ChipsDeParcelas';
 
 type Modo = TipoDeLancamento | 'transferencia';
 
@@ -310,13 +311,11 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
         {ehCartao && modo === 'despesa' && (
           <div>
             <span className="text-sm text-slate-400">Parcelas</span>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {[1, 2, 3, 4, 6, 10, 12].map((n) => (
-                <Chip key={n} ativo={parcelas === n} aoClicar={() => setParcelas(n)}>
-                  {n === 1 ? 'À vista' : `${n}x`}
-                </Chip>
-              ))}
-            </div>
+            <ChipsDeParcelas
+              parcelas={parcelas}
+              aoMudar={setParcelas}
+              opcoes={[1, 2, 3, 4, 6, 10, 12]}
+            />
             {parcelas > 1 && valor > 0 && (
               <p className="mt-2 text-xs text-slate-500">
                 {parcelas} parcelas a partir de {formatarBR(data)}. A soma bate com{' '}

@@ -12,6 +12,7 @@ import { montarDadosDaProjecao } from '../dados/projecao';
 import { CampoValor } from '../ui/CampoValor';
 import { Link } from 'react-router-dom';
 import { Botao, Cartao, CartaoIndicador, Chip, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { ChipsDeParcelas } from '../ui/ChipsDeParcelas';
 
 const HORIZONTE = 12;
 
@@ -114,13 +115,11 @@ export function Simulador() {
 
         <div>
           <span className="text-sm text-slate-400">Em quantas vezes</span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((n) => (
-              <Chip key={n} ativo={parcelas === n} aoClicar={() => setParcelas(n)}>
-                {n === 1 ? 'À vista' : `${n}x`}
-              </Chip>
-            ))}
-          </div>
+          <ChipsDeParcelas
+            parcelas={parcelas}
+            aoMudar={setParcelas}
+            opcoes={[1, 2, 3, 4, 6, 10, 12, 18, 24]}
+          />
         </div>
 
         <div>
