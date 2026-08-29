@@ -11,6 +11,10 @@ import { Campo, ENTRADA } from './base';
  *
  * A lista é atalho, não cadastro: o campo de texto continua aceitando qualquer
  * coisa, e nada é validado contra ela.
+ *
+ * Quem não guarda cor — investimento não tem essa coluna — omite `cor`, e a
+ * paleta some junto. Um seletor de cor que não pinta nada é pior do que
+ * seletor nenhum.
  */
 export function CampoInstituicao({
   instituicao,
@@ -18,7 +22,7 @@ export function CampoInstituicao({
   aoMudar,
 }: {
   instituicao: string;
-  cor: string | null;
+  cor?: string | null;
   aoMudar: (instituicao: string, cor: string | null) => void;
 }) {
   const conhecida = corDaInstituicao(instituicao) !== null;
@@ -56,13 +60,13 @@ export function CampoInstituicao({
           const texto = e.target.value;
           // Digitou o nome de uma conhecida: a cor dela vem junto. Digitou
           // outra coisa: mantém a cor que já estava escolhida.
-          aoMudar(texto, corDaInstituicao(texto) ?? cor);
+          aoMudar(texto, corDaInstituicao(texto) ?? cor ?? null);
         }}
         placeholder="ou digite outra"
         className={`${ENTRADA} mt-2`}
       />
 
-      {instituicao.trim() !== '' && !conhecida && (
+      {cor !== undefined && instituicao.trim() !== '' && !conhecida && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-[11px] uppercase tracking-wider text-slate-600">cor</span>
           {CORES_DE_CONTA.map((opcao) => (

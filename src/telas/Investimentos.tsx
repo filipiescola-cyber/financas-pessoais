@@ -9,7 +9,9 @@ import {
   atualizarSaldoManual,
   calcularTodos,
   conferirInvestimento,
+  atualizarInvestimento,
   criarInvestimento,
+  type Investimento,
   desarquivarInvestimento,
   listarInvestimentos,
   ROTULO_TIPO,
@@ -34,6 +36,7 @@ import {
 } from '../dominio/carteira';
 import { usarAviso } from '../ui/Aviso';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { CampoInstituicao } from '../ui/CampoInstituicao';
 
 const TIPOS: TipoDeInvestimento[] = ['cdb', 'tesouro', 'lci', 'lca', 'poupanca', 'fundo', 'acoes', 'cripto', 'outro'];
 
@@ -292,6 +295,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const cliente = useQueryClient();
 
   const [resgatando, setResgatando] = useState(false);
+  const [editando, setEditando] = useState(false);
 
   const arquivar = useMutation({
     mutationFn: () => arquivarInvestimento(item.investimento.id),
@@ -337,8 +341,10 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
             {inv.isentoIR && ' · isento de IR'}
           </p>
           <p className="mt-0.5 text-xs text-slate-600">
+            {inv.instituicao && `${inv.instituicao} · `}
             desde {formatarBR(inv.dataAplicacao)}
             {resultado && ` · ${resultado.diasUteis} dias úteis`}
+            {inv.vencimento && ` · vence ${formatarBR(inv.vencimento)}`}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -388,6 +394,12 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
         </button>
         <button
+          onClick={() => setEditando((v) => !v)}
+          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {editando ? 'Cancelar' : 'Editar'}
+        </button>
+        <button
           onClick={() => setResgatando((v) => !v)}
           className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
@@ -402,6 +414,10 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           Arquivar
         </button>
       </div>
+
+      {editando && (
+        <EdicaoDoInvestimento investimento={inv} aoTerminar={() => setEditando(false)} />
+      )}
 
       {resgatando && (
         <ResgateDoInvestimento
@@ -440,11 +456,72 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   );
 }
 
+/**
+ * Instituição e vencimento de uma aplicação que já existe.
+ *
+ * Só estes dois de propósito: valor, taxa e data alimentam o cálculo do
+ * rendimento, e deixá-los editáveis aqui reescreveria o histórico sem deixar
+ * rastro. Para mudar o dinheiro existe Resgatar; para conferir, Conferir.
+ */
+function EdicaoDoInvestimento({
+  investimento,
+  aoTerminar,
+}: {
+  investimento: Investimento;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const { mostrar } = usarAviso();
+  const [instituicao, setInstituicao] = useState(investimento.instituicao ?? '');
+  const [vencimento, setVencimento] = useState(investimento.vencimento ?? '');
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      atualizarInvestimento(investimento.id, {
+        instituicao,
+        vencimento: vencimento || null,
+      }),
+    onSuccess: async () => {
+      await cliente.invalidateQueries({ queryKey: ['investimentos'] });
+      aoTerminar();
+      mostrar('Aplicação atualizada.');
+    },
+  });
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <CampoInstituicao instituicao={instituicao} aoMudar={(nova) => setInstituicao(nova)} />
+
+      <Campo rotulo="Vencimento (opcional)">
+        <input
+          type="date"
+          value={vencimento}
+          onChange={(e) => setVencimento(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      {salvar.isError && <p className="text-sm text-red-400">{(salvar.error as Error).message}</p>}
+
+      <div className="flex gap-2">
+        <Botao aoClicar={() => salvar.mutate()} desabilitado={salvar.isPending}>
+          Salvar
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
+    </div>
+  );
+}
+
 function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
   const cliente = useQueryClient();
   const contas = usarContas();
   const [contaOrigemId, setContaOrigemId] = useState<string | null>(null);
   const [nome, setNome] = useState('');
+  const [instituicao, setInstituicao] = useState('');
+  const [vencimento, setVencimento] = useState('');
   const [tipo, setTipo] = useState<TipoDeInvestimento>('cdb');
   const [indexador, setIndexador] = useState<Indexador>('CDI');
   const [percentual, setPercentual] = useState('100');
@@ -459,6 +536,8 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
     mutationFn: () =>
       criarInvestimento({
         nome,
+        instituicao,
+        vencimento: vencimento || null,
         tipo,
         indexador: semCalculo ? null : indexador,
         percentualIndexador: ehPrefixado ? null : Number(percentual.replace(',', '.')),
@@ -484,6 +563,8 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
           className={ENTRADA}
         />
       </Campo>
+
+      <CampoInstituicao instituicao={instituicao} aoMudar={(nova) => setInstituicao(nova)} />
 
       <Campo
         rotulo="Tipo"
@@ -547,6 +628,18 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
           type="date"
           value={data}
           onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <Campo
+        rotulo="Vencimento (opcional)"
+        ajuda="Data do resgate no papel. Em CDB e Tesouro é o que ordena a carteira por quem vence primeiro; poupança e fundo aberto não têm."
+      >
+        <input
+          type="date"
+          value={vencimento}
+          onChange={(e) => setVencimento(e.target.value)}
           className={ENTRADA}
         />
       </Campo>

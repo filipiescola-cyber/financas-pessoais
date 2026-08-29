@@ -260,6 +260,33 @@ export async function conferirInvestimento(id: string, saldoReal: Centavos): Pro
  * dela e os aportes ligados ao caixa continuam valendo. Arquivar tira do
  * patrimônio e da lista; apagar reescreveria meses fechados.
  */
+/**
+ * Corrige o que só se descobre depois: instituição e vencimento (§7).
+ *
+ * Existe porque a tela agrupa por instituição e ordena por vencimento, e sem
+ * edição quem cadastrou antes desses campos existirem ficaria preso em "sem
+ * instituição" para sempre — sem outra saída além de apagar e recadastrar.
+ *
+ * Só estes dois: valor, taxa e data mudam o cálculo do rendimento, e mexer
+ * neles pela lateral reescreveria o histórico sem deixar rastro.
+ */
+export async function atualizarInvestimento(
+  id: string,
+  campos: { instituicao?: string | null; vencimento?: DataISO | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('investimentos')
+    .update({
+      ...(campos.instituicao !== undefined
+        ? { instituicao: campos.instituicao?.trim() || null }
+        : {}),
+      ...(campos.vencimento !== undefined ? { vencimento: campos.vencimento } : {}),
+    })
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function arquivarInvestimento(id: string): Promise<void> {
   const { error } = await supabase.from('investimentos').update({ ativo: false }).eq('id', id);
   if (error) throw new Error(error.message);
