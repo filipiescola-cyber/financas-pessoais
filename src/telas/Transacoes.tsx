@@ -10,7 +10,8 @@ import {
 } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { usarContas } from '../dados/usarContas';
-import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
+import { usarBuscaDeCategoria, usarTransacoes } from '../dados/usarTransacoes';
+import type { Categoria } from '../dados/tipos';
 import { entraNoConsolidado } from '../dominio/saldo';
 import { saldosAoFimDoDia } from '../dominio/saldoDiario';
 import {
@@ -43,6 +44,7 @@ import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
 import { RevisarELancar } from '../ui/RevisarELancar';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import { EditarTransacao } from './EditarTransacao';
 
 const MESES = [
@@ -62,7 +64,6 @@ export function Transacoes() {
 
   const contas = usarContas();
   const cartoes = usarCartoes();
-  const categorias = usarCategorias(true);
   const transacoes = usarTransacoes({
     de: mes,
     ate: ultimoDiaDoMes(mes),
@@ -74,7 +75,7 @@ export function Transacoes() {
   const fila = usarFila();
 
   const nomeConta = new Map((contas.data ?? []).map((c) => [c.id, c.nome]));
-  const nomeCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.nome]));
+  const buscarCategoria = usarBuscaDeCategoria();
   const lista = transacoes.data ?? [];
 
   // Receita e despesa nunca viram um total único (§14). Transferência fica fora
@@ -358,7 +359,7 @@ export function Transacoes() {
                     bloco={linha.bloco}
                     paga={statusDeFatura.data?.get(linha.bloco.faturaId) === 'paga'}
                     nomeCartao={nomeConta.get(linha.bloco.contaId) ?? 'Cartão'}
-                    nomeDaCategoria={(id) => (id ? (nomeCategoria.get(id) ?? null) : null)}
+                    buscarCategoria={buscarCategoria}
                     aoEditar={setEditando}
                   />
                 ) : linha.tipo === 'lancamento' ? (
@@ -366,11 +367,7 @@ export function Transacoes() {
                     key={linha.transacao.id}
                     transacao={linha.transacao}
                     nomeConta={nomeConta.get(linha.transacao.contaId) ?? '—'}
-                    nomeCategoria={
-                      linha.transacao.categoriaId
-                        ? (nomeCategoria.get(linha.transacao.categoriaId) ?? null)
-                        : null
-                    }
+                    categoria={buscarCategoria(linha.transacao.categoriaId)}
                     aoEditar={() => setEditando(linha.transacao)}
                   />
                 ) : (
@@ -456,12 +453,12 @@ function FiltroChip({
 function ItemDeTransacao({
   transacao,
   nomeConta,
-  nomeCategoria,
+  categoria,
   aoEditar,
 }: {
   transacao: Transacao;
   nomeConta: string;
-  nomeCategoria: string | null;
+  categoria: Categoria | null;
   aoEditar: () => void;
 }) {
   const [confirmandoParcelamento, setConfirmandoParcelamento] = useState(false);
@@ -528,12 +525,24 @@ function ItemDeTransacao({
           <div className="min-w-0">
             <p className="truncate text-slate-100">
               {transacao.descricao ||
-                nomeCategoria ||
+                categoria?.nome ||
                 (ehTransferencia ? 'Transferência' : 'Sem descrição')}
             </p>
             <p className="truncate text-xs text-slate-500">
               {nomeConta}
-              {nomeCategoria && ` · ${nomeCategoria}`}
+              {categoria && (
+                <>
+                  {' · '}
+                  <span className="inline-flex items-center gap-1 align-middle">
+                    <IconeDeCategoria
+                      chave={categoria.icone}
+                      cor={categoria.cor}
+                      className="h-3.5 w-3.5"
+                    />
+                    {categoria.nome}
+                  </span>
+                </>
+              )}
               {ehParcelado && ` · parcela ${transacao.parcelaNum}/${transacao.parcelaTotal}`}
             </p>
             {(ehTransferencia || transacao.motivoEmpresa) && (
@@ -762,13 +771,13 @@ function BlocoDaFatura({
   bloco,
   paga,
   nomeCartao,
-  nomeDaCategoria,
+  buscarCategoria,
   aoEditar,
 }: {
   bloco: BlocoDeFatura<Transacao>;
   paga: boolean;
   nomeCartao: string;
-  nomeDaCategoria: (id: string | null) => string | null;
+  buscarCategoria: (id: string | null) => Categoria | null;
   aoEditar: (transacao: Transacao) => void;
 }) {
   const [aberto, setAberto] = useState(true);
@@ -796,13 +805,23 @@ function BlocoDaFatura({
 
       {aberto && (
         <ul className="mt-2.5 space-y-1.5 border-l border-borda pl-3">
-          {bloco.compras.map((compra) => (
+          {bloco.compras.map((compra) => {
+            const categoria = buscarCategoria(compra.categoriaId);
+
+            return (
             <li key={compra.id} className="flex items-baseline justify-between gap-3">
               <button
                 onClick={() => aoEditar(compra)}
-                className={`min-w-0 truncate text-left text-xs text-slate-300 hover:text-slate-100 ${ALVO_DE_TOQUE}`}
+                className={`flex min-w-0 items-center gap-1.5 text-left text-xs text-slate-300 hover:text-slate-100 ${ALVO_DE_TOQUE}`}
               >
-                {compra.descricao || nomeDaCategoria(compra.categoriaId) || 'Sem descrição'}
+                <IconeDeCategoria
+                  chave={categoria?.icone ?? null}
+                  cor={categoria?.cor ?? null}
+                  className="h-3.5 w-3.5"
+                />
+                <span className="truncate">
+                  {compra.descricao || categoria?.nome || 'Sem descrição'}
+                </span>
               </button>
               <span className="shrink-0 text-[11px] text-slate-500">
                 {formatarBR(compra.dataCompetencia).slice(0, 5)} ·{' '}
@@ -812,7 +831,8 @@ function BlocoDaFatura({
               </span>
               <Dinheiro centavos={compra.valor} className="shrink-0 text-xs text-slate-400" />
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </li>

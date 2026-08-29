@@ -9,7 +9,7 @@ import { usarCartoes } from '../dados/usarCartoes';
 import type { CartaoComConta } from '../dados/tipos';
 import { podePagarFatura } from '../dominio/saldo';
 import { usarContas } from '../dados/usarContas';
-import { usarCategorias } from '../dados/usarTransacoes';
+import { usarBuscaDeCategoria } from '../dados/usarTransacoes';
 import {
   cartoesComFaturaPendente,
   desfazerPagamentoDeFatura,
@@ -20,6 +20,7 @@ import {
 import { listarTransacoesDaFatura, type Transacao } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { ALVO_DE_TOQUE, Botao, Chip, Pagina, Vazio } from '../ui/base';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import { EditarTransacao } from './EditarTransacao';
 
 const ROTULO_STATUS: Record<Fatura['status'], string> = {
@@ -214,11 +215,9 @@ function CartaoDeFatura({
 
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
-  const categorias = usarCategorias(true);
+  const buscarCategoria = usarBuscaDeCategoria();
   const [editando, setEditando] = useState<Transacao | null>(null);
 
-  const nomeDaCategoria = (id: string | null) =>
-    id === null ? null : (categorias.data?.find((c) => c.id === id)?.nome ?? null);
 
   const desfazer = useMutation({
     mutationFn: () => desfazerPagamentoDeFatura(fatura.id),
@@ -273,31 +272,40 @@ function CartaoDeFatura({
           {/* A compra abre para edição daqui também: era preciso sair para
               Lançamentos e procurar de novo o que já estava na tela. */}
           <ul className="space-y-1">
-            {(transacoes.data ?? []).map((transacao) => (
+            {(transacoes.data ?? []).map((transacao) => {
+              const categoria = buscarCategoria(transacao.categoriaId);
+
+              return (
               <li key={transacao.id}>
                 <button
                   onClick={() => setEditando(transacao)}
-                  className="flex w-full justify-between gap-3 rounded-md px-1 py-1 text-left text-sm transition hover:bg-superficie-alta"
+                  className="flex w-full items-center justify-between gap-3 rounded-md px-1 py-1 text-left text-sm transition hover:bg-superficie-alta"
                 >
-                  <span className="truncate text-slate-300">
+                  <span className="flex min-w-0 items-center gap-1.5 text-slate-300">
+                    <IconeDeCategoria
+                      chave={categoria?.icone ?? null}
+                      cor={categoria?.cor ?? null}
+                      className="h-4 w-4"
+                    />
+                    <span className="truncate">
                     {/* Sem descrição, cai na categoria — igual à lista de
                         lançamentos. "Sem descrição 2/2" não identifica nada. */}
-                    {transacao.descricao ||
-                      nomeDaCategoria(transacao.categoriaId) ||
-                      'Sem descrição'}
+                    {transacao.descricao || categoria?.nome || 'Sem descrição'}
                     {transacao.parcelaNum && (
                       <span className="text-slate-500">
                         {' '}
                         {transacao.parcelaNum}/{transacao.parcelaTotal}
                       </span>
                     )}
+                    </span>
                   </span>
                   <span className="dinheiro shrink-0 text-slate-400">
                     {formatar(Math.abs(transacao.valor))}
                   </span>
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
 
           {fatura.status === 'paga' ? (

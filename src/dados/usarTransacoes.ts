@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { hoje, somarDias, type DataISO } from '../dominio/datas';
 import { chaves } from './chaves';
@@ -25,6 +26,27 @@ export function usarCategorias(incluirArquivadas = false) {
     queryKey: chaves.categorias.lista(incluirArquivadas),
     queryFn: () => listarCategorias(incluirArquivadas),
   });
+}
+
+/**
+ * Busca de categoria por id, para as listas que só guardam o id na linha.
+ *
+ * Devolve a categoria inteira, não só o nome: o ícone e a cor moram nela, e
+ * três telas que só pegavam o nome acabavam mostrando a categoria sem o
+ * desenho que o usuário escolheu para ela.
+ *
+ * Inclui as arquivadas de propósito — lançamento antigo aponta para categoria
+ * que pode não estar mais em uso, e ele não deve ficar sem rótulo por isso.
+ */
+export function usarBuscaDeCategoria() {
+  const categorias = usarCategorias(true);
+
+  const porId = useMemo(
+    () => new Map((categorias.data ?? []).map((c) => [c.id, c])),
+    [categorias.data],
+  );
+
+  return (id: string | null) => (id === null ? null : (porId.get(id) ?? null));
 }
 
 export function usarTransacoes(filtros: {
