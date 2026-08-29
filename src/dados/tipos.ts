@@ -36,6 +36,12 @@ export type Conta = {
   encerradaEm: DataISO | null;
   /** Cor da conta, sugerida pela instituição no cadastro (§4). */
   cor: string | null;
+  /**
+   * Conta principal, quando esta é uma subconta (§4) — a caixinha do Nubank,
+   * o cofrinho do Mercado Pago. Muda só onde ela aparece na lista: o saldo
+   * continua sendo o dela, e o consolidado soma as duas.
+   */
+  contaPaiId: string | null;
 };
 
 /** Conta com o saldo calculado pela view (§13.2). */

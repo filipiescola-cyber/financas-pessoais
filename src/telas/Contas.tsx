@@ -5,6 +5,7 @@ import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import { conferirEncerramento, type Aviso, type Bloqueio } from '../dominio/encerramento';
 import { ListaDePendencias } from '../ui/ListaDePendencias';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
+import { agruparEmArvore, principaisPossiveis } from '../dominio/arvoreDeContas';
 import { situacaoDaConta } from '../dados/contas';
 import { dividasDosCartoes } from '../dados/faturas';
 import { usarCartoes } from '../dados/usarCartoes';
@@ -107,7 +108,7 @@ export function Contas() {
           <Secao titulo="Suas contas">
             <Cartao>
               <ul className="divide-y divide-borda">
-                {disponiveis.map((conta) => (
+                {agruparEmArvore(disponiveis).map(({ conta, subcontas }) => (
                   <LinhaDeConta
                     key={conta.id}
                     id={conta.id}
@@ -119,7 +120,9 @@ export function Contas() {
                     }
                     cor={conta.cor}
                     instituicao={conta.instituicao}
+                    contaPaiId={conta.contaPaiId}
                     valor={conta.saldoAtual}
+                    subcontas={subcontas}
                   />
                 ))}
                 {empresa && (
@@ -152,7 +155,9 @@ function LinhaDeConta({
   detalhe,
   cor,
   instituicao,
+  contaPaiId,
   valor,
+  subcontas = [],
   neutra = false,
 }: {
   id: string;
@@ -160,7 +165,9 @@ function LinhaDeConta({
   detalhe: string;
   cor?: string | null;
   instituicao?: string | null;
+  contaPaiId?: string | null;
   valor: Centavos;
+  subcontas?: ContaComSaldo[];
   neutra?: boolean;
 }) {
   const [encerrando, setEncerrando] = useState(false);
@@ -212,12 +219,67 @@ function LinhaDeConta({
           nome={nome}
           instituicao={instituicao ?? ''}
           cor={cor ?? null}
+          contaPaiId={contaPaiId ?? null}
           aoTerminar={() => setEditando(false)}
         />
       )}
 
       {encerrando && (
         <PainelDeEncerramento id={id} nome={nome} aoTerminar={() => setEncerrando(false)} />
+      )}
+
+      {/* As subcontas ficam dentro da linha da principal, em corpo menor. Não
+          somam nada nela: cada uma tem o próprio saldo, e o consolidado lá em
+          cima já contou as duas (§13.2). */}
+      {subcontas.length > 0 && (
+        <ul className="mt-2 space-y-1 border-l border-borda pl-3">
+          {subcontas.map((sub) => (
+            <LinhaDeSubconta key={sub.id} conta={sub} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function LinhaDeSubconta({ conta }: { conta: ContaComSaldo }) {
+  const [editando, setEditando] = useState(false);
+
+  return (
+    <li>
+      <div className="flex items-center justify-between gap-3 py-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            className="h-4 w-1 shrink-0 rounded-full"
+            style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+          />
+          <span className="min-w-0">
+            <span className="block truncate text-sm text-slate-300">{conta.nome}</span>
+            <span className="block truncate text-[11px] text-slate-600">
+              {ROTULO_TIPO_CONTA[conta.tipo]}
+            </span>
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-3">
+          <Dinheiro centavos={conta.saldoAtual} className="text-sm text-slate-300" />
+          <button
+            onClick={() => setEditando((v) => !v)}
+            className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+          >
+            {editando ? 'Fechar' : 'Editar'}
+          </button>
+        </span>
+      </div>
+
+      {editando && (
+        <PainelDeEdicao
+          id={conta.id}
+          nome={conta.nome}
+          instituicao={conta.instituicao ?? ''}
+          cor={conta.cor}
+          contaPaiId={conta.contaPaiId}
+          aoTerminar={() => setEditando(false)}
+        />
       )}
     </li>
   );
@@ -466,12 +528,14 @@ function FormularioConta({ aoTerminar }: { aoTerminar: () => void }) {
   const [tipo, setTipo] = useState<TipoDeConta>('corrente');
   const [instituicao, setInstituicao] = useState('');
   const [cor, setCor] = useState<string | null>(null);
+  const [contaPaiId, setContaPaiId] = useState<string | null>(null);
   const [saldoInicial, setSaldoInicial] = useState<Centavos>(0);
+  const contas = usarContas();
 
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     if (nome.trim() === '') return;
-    await criar.mutateAsync({ nome, tipo, instituicao, cor, saldoInicial });
+    await criar.mutateAsync({ nome, tipo, instituicao, cor, contaPaiId, saldoInicial });
     aoTerminar();
   }
 
@@ -516,6 +580,13 @@ function FormularioConta({ aoTerminar }: { aoTerminar: () => void }) {
           }}
         />
 
+        <CampoContaPrincipal
+          contas={(contas.data ?? []).filter(entraNoConsolidado)}
+          contaEditadaId={null}
+          escolhida={contaPaiId}
+          aoEscolher={setContaPaiId}
+        />
+
         <CampoValor valor={saldoInicial} aoMudar={setSaldoInicial} rotulo="Saldo inicial" />
         <p className="-mt-2 text-xs leading-relaxed text-slate-500">
           O saldo do dia 1º deste mês, não o de hoje. Começar no dia 1º entrega um mês fechado de
@@ -554,18 +625,22 @@ function PainelDeEdicao({
   nome,
   instituicao,
   cor,
+  contaPaiId,
   aoTerminar,
 }: {
   id: string;
   nome: string;
   instituicao: string;
   cor: string | null;
+  contaPaiId: string | null;
   aoTerminar: () => void;
 }) {
   const atualizar = usarAtualizarConta();
+  const contas = usarContas();
   const [novoNome, setNovoNome] = useState(nome);
   const [novaInstituicao, setNovaInstituicao] = useState(instituicao);
   const [novaCor, setNovaCor] = useState(cor);
+  const [novaPrincipal, setNovaPrincipal] = useState(contaPaiId);
 
   return (
     <div className="mt-3 space-y-4 rounded-lg border border-borda-forte bg-superficie-alta p-3">
@@ -587,6 +662,13 @@ function PainelDeEdicao({
         }}
       />
 
+      <CampoContaPrincipal
+        contas={(contas.data ?? []).filter(entraNoConsolidado)}
+        contaEditadaId={id}
+        escolhida={novaPrincipal}
+        aoEscolher={setNovaPrincipal}
+      />
+
       {atualizar.isError && (
         <p className="text-sm text-red-400">{(atualizar.error as Error).message}</p>
       )}
@@ -597,7 +679,12 @@ function PainelDeEdicao({
             atualizar.mutate(
               {
                 id,
-                campos: { nome: novoNome, instituicao: novaInstituicao, cor: novaCor },
+                campos: {
+                  nome: novoNome,
+                  instituicao: novaInstituicao,
+                  cor: novaCor,
+                  contaPaiId: novaPrincipal,
+                },
               },
               { onSuccess: aoTerminar },
             )
@@ -684,5 +771,60 @@ function BlocoDoQueDeve({ contas }: { contas: ContaComSaldo[] }) {
         dívida e não conta como despesa nova — o gasto já foi contado em cada compra.
       </p>
     </Secao>
+  );
+}
+
+/**
+ * Subconta de quem (§4).
+ *
+ * Caixinha do Nubank, cofrinho do Mercado Pago: conta de verdade, com saldo
+ * próprio, que mora dentro de outra. O campo mexe só em onde ela aparece na
+ * lista — o saldo continua sendo dela e o consolidado soma as duas.
+ *
+ * A lista de escolhas já vem podada pelas mesmas três regras que o banco impõe,
+ * para a tela não oferecer o que o banco vai recusar.
+ */
+function CampoContaPrincipal({
+  contas,
+  contaEditadaId,
+  escolhida,
+  aoEscolher,
+}: {
+  // Só o que o campo usa: pedir ContaComSaldo aqui obrigaria quem chama a
+  // buscar um saldo que este campo nem mostra.
+  contas: { id: string; nome: string; cor: string | null; contaPaiId: string | null }[];
+  contaEditadaId: string | null;
+  escolhida: string | null;
+  aoEscolher: (id: string | null) => void;
+}) {
+  const possiveis = principaisPossiveis(contas, contaEditadaId);
+  if (possiveis.length === 0) return null;
+
+  return (
+    <Campo
+      rotulo="Subconta de (opcional)"
+      ajuda="Para caixinha, cofrinho, reserva — o que mora dentro de outra conta. Ela aparece recuada embaixo da principal, e o saldo continua sendo dela: o consolidado soma as duas."
+    >
+      <div className="flex flex-wrap gap-2">
+        {possiveis.map((conta) => (
+          <button
+            key={conta.id}
+            type="button"
+            onClick={() => aoEscolher(escolhida === conta.id ? null : conta.id)}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition ${
+              escolhida === conta.id
+                ? 'bg-sky-900/60 text-sky-200'
+                : 'border border-borda text-slate-500 hover:border-borda-forte'
+            }`}
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+            />
+            {conta.nome}
+          </button>
+        ))}
+      </div>
+    </Campo>
   );
 }

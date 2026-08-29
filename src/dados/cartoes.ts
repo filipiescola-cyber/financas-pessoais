@@ -45,6 +45,7 @@ function montar(conta: LinhaConta, cartao: LinhaCartao): CartaoComConta {
       ativo: conta.ativo,
       encerradaEm: conta.encerrada_em,
       cor: conta.cor,
+      contaPaiId: conta.conta_pai_id,
     },
   };
 }

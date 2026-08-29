@@ -184,6 +184,7 @@ export type Database = {
       contas: {
         Row: {
           ativo: boolean
+          conta_pai_id: string | null
           cor: string | null
           created_at: string
           data_conferencia: string | null
@@ -199,6 +200,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          conta_pai_id?: string | null
           cor?: string | null
           created_at?: string
           data_conferencia?: string | null
@@ -214,6 +216,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          conta_pai_id?: string | null
           cor?: string | null
           created_at?: string
           data_conferencia?: string | null
@@ -227,7 +230,22 @@ export type Database = {
           tipo?: string
           usuario_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "contas_conta_pai_id_fkey"
+            columns: ["conta_pai_id"]
+            isOneToOne: false
+            referencedRelation: "contas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contas_conta_pai_id_fkey"
+            columns: ["conta_pai_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_contas"
+            referencedColumns: ["conta_id"]
+          },
+        ]
       }
       faturas: {
         Row: {

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { hoje, primeiroDiaDoMes, ultimoDiaDoMes } from '../dominio/datas';
 import { entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
+import { agruparEmArvore } from '../dominio/arvoreDeContas';
 import { ADIAVEIS, lerStatusOnboarding, PASSOS } from '../dados/config';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { usarTransacoes } from '../dados/usarTransacoes';
@@ -205,13 +206,36 @@ export function Inicio() {
         >
           <Cartao>
             <ul className="divide-y divide-borda">
-              {disponiveis.map((conta) => (
-                <li key={conta.id} className="flex items-center justify-between px-4 py-3">
-                  <span className="truncate text-sm text-slate-200">{conta.nome}</span>
-                  <Dinheiro
-                    centavos={conta.saldoAtual}
-                    className={`text-sm ${conta.saldoAtual < 0 ? 'text-red-400' : 'text-slate-200'}`}
-                  />
+              {/* Mesma hierarquia da tela de Contas: caixinha e cofrinho ficam
+                  recuados sob a principal. O saldo de cada um continua sendo o
+                  dele — o consolidado lá em cima já somou os dois (§13.2). */}
+              {agruparEmArvore(disponiveis).map(({ conta, subcontas }) => (
+                <li key={conta.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm text-slate-200">{conta.nome}</span>
+                    <Dinheiro
+                      centavos={conta.saldoAtual}
+                      className={`shrink-0 text-sm ${
+                        conta.saldoAtual < 0 ? 'text-red-400' : 'text-slate-200'
+                      }`}
+                    />
+                  </div>
+
+                  {subcontas.length > 0 && (
+                    <ul className="mt-1.5 space-y-1 border-l border-borda pl-3">
+                      {subcontas.map((sub) => (
+                        <li key={sub.id} className="flex items-center justify-between gap-3">
+                          <span className="truncate text-xs text-slate-400">{sub.nome}</span>
+                          <Dinheiro
+                            centavos={sub.saldoAtual}
+                            className={`shrink-0 text-xs ${
+                              sub.saldoAtual < 0 ? 'text-red-400' : 'text-slate-400'
+                            }`}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>
