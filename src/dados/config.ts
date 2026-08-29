@@ -28,7 +28,10 @@ export async function lerConfig<T>(chave: string): Promise<T | null> {
 export async function gravarConfig(chave: string, valor: unknown): Promise<void> {
   const { error } = await supabase
     .from('config')
-    .upsert({ chave, valor: valor as never }, { onConflict: 'chave' });
+    // A chave primária é (usuario_id, chave) desde o multiusuário: `chave`
+    // sozinha deixou de ser única, e o upsert por ela dava erro de restrição.
+    // O usuario_id não vai no payload — o default `auth.uid()` preenche.
+    .upsert({ chave, valor: valor as never }, { onConflict: 'usuario_id,chave' });
   if (error) throw new Error(error.message);
 }
 

@@ -67,6 +67,7 @@ export type Database = {
           dia_fechamento: number
           dia_vencimento: number
           limite: number | null
+          usuario_id: string
         }
         Insert: {
           conta_id: string
@@ -74,6 +75,7 @@ export type Database = {
           dia_fechamento: number
           dia_vencimento: number
           limite?: number | null
+          usuario_id?: string
         }
         Update: {
           conta_id?: string
@@ -81,6 +83,7 @@ export type Database = {
           dia_fechamento?: number
           dia_vencimento?: number
           limite?: number | null
+          usuario_id?: string
         }
         Relationships: [
           {
@@ -124,6 +127,7 @@ export type Database = {
           nome: string
           sistema: boolean
           tipo: string
+          usuario_id: string
         }
         Insert: {
           ativo?: boolean
@@ -135,6 +139,7 @@ export type Database = {
           nome: string
           sistema?: boolean
           tipo: string
+          usuario_id?: string
         }
         Update: {
           ativo?: boolean
@@ -146,6 +151,7 @@ export type Database = {
           nome?: string
           sistema?: boolean
           tipo?: string
+          usuario_id?: string
         }
         Relationships: [
           {
@@ -160,14 +166,17 @@ export type Database = {
       config: {
         Row: {
           chave: string
+          usuario_id: string
           valor: Json
         }
         Insert: {
           chave: string
+          usuario_id?: string
           valor: Json
         }
         Update: {
           chave?: string
+          usuario_id?: string
           valor?: Json
         }
         Relationships: []
@@ -186,6 +195,7 @@ export type Database = {
           saldo_conferido: number | null
           saldo_inicial: number
           tipo: string
+          usuario_id: string
         }
         Insert: {
           ativo?: boolean
@@ -200,6 +210,7 @@ export type Database = {
           saldo_conferido?: number | null
           saldo_inicial?: number
           tipo: string
+          usuario_id?: string
         }
         Update: {
           ativo?: boolean
@@ -214,6 +225,7 @@ export type Database = {
           saldo_conferido?: number | null
           saldo_inicial?: number
           tipo?: string
+          usuario_id?: string
         }
         Relationships: []
       }
@@ -226,6 +238,7 @@ export type Database = {
           mes_referencia: string
           status: string
           transacao_pagamento_id: string | null
+          usuario_id: string
           valor_total: number
         }
         Insert: {
@@ -236,6 +249,7 @@ export type Database = {
           mes_referencia: string
           status?: string
           transacao_pagamento_id?: string | null
+          usuario_id?: string
           valor_total?: number
         }
         Update: {
@@ -246,6 +260,7 @@ export type Database = {
           mes_referencia?: string
           status?: string
           transacao_pagamento_id?: string | null
+          usuario_id?: string
           valor_total?: number
         }
         Relationships: [
@@ -293,6 +308,7 @@ export type Database = {
           periodo_fim: string | null
           periodo_inicio: string | null
           total_linhas: number
+          usuario_id: string
         }
         Insert: {
           conciliadas?: number
@@ -306,6 +322,7 @@ export type Database = {
           periodo_fim?: string | null
           periodo_inicio?: string | null
           total_linhas?: number
+          usuario_id?: string
         }
         Update: {
           conciliadas?: number
@@ -319,6 +336,7 @@ export type Database = {
           periodo_fim?: string | null
           periodo_inicio?: string | null
           total_linhas?: number
+          usuario_id?: string
         }
         Relationships: [
           {
@@ -375,6 +393,7 @@ export type Database = {
           saldo_manual: number | null
           taxa_prefixada: number | null
           tipo: string
+          usuario_id: string
           valor_aplicado: number
           vencimento: string | null
         }
@@ -394,6 +413,7 @@ export type Database = {
           saldo_manual?: number | null
           taxa_prefixada?: number | null
           tipo: string
+          usuario_id?: string
           valor_aplicado: number
           vencimento?: string | null
         }
@@ -413,6 +433,7 @@ export type Database = {
           saldo_manual?: number | null
           taxa_prefixada?: number | null
           tipo?: string
+          usuario_id?: string
           valor_aplicado?: number
           vencimento?: string | null
         }
@@ -425,6 +446,7 @@ export type Database = {
           descricao: string
           id: string
           ultimo_uso: string
+          usuario_id: string
           vezes_usada: number
         }
         Insert: {
@@ -433,6 +455,7 @@ export type Database = {
           descricao: string
           id?: string
           ultimo_uso?: string
+          usuario_id?: string
           vezes_usada?: number
         }
         Update: {
@@ -441,6 +464,7 @@ export type Database = {
           descricao?: string
           id?: string
           ultimo_uso?: string
+          usuario_id?: string
           vezes_usada?: number
         }
         Relationships: [
@@ -473,6 +497,7 @@ export type Database = {
           id: string
           nome: string
           prazo: string | null
+          usuario_id: string
           valor_alvo: number
           valor_atual: number
         }
@@ -481,6 +506,7 @@ export type Database = {
           id?: string
           nome: string
           prazo?: string | null
+          usuario_id?: string
           valor_alvo: number
           valor_atual?: number
         }
@@ -489,6 +515,7 @@ export type Database = {
           id?: string
           nome?: string
           prazo?: string | null
+          usuario_id?: string
           valor_alvo?: number
           valor_atual?: number
         }
@@ -518,6 +545,7 @@ export type Database = {
           nome: string
           ordem: number
           tipo: string
+          usuario_id: string
           valor_padrao: number | null
         }
         Insert: {
@@ -528,6 +556,7 @@ export type Database = {
           nome: string
           ordem?: number
           tipo?: string
+          usuario_id?: string
           valor_padrao?: number | null
         }
         Update: {
@@ -538,6 +567,7 @@ export type Database = {
           nome?: string
           ordem?: number
           tipo?: string
+          usuario_id?: string
           valor_padrao?: number | null
         }
         Relationships: [
@@ -571,6 +601,7 @@ export type Database = {
           investimento_id: string
           tipo: string
           transacao_id: string | null
+          usuario_id: string
           valor: number
         }
         Insert: {
@@ -579,6 +610,7 @@ export type Database = {
           investimento_id: string
           tipo: string
           transacao_id?: string | null
+          usuario_id?: string
           valor: number
         }
         Update: {
@@ -587,6 +619,7 @@ export type Database = {
           investimento_id?: string
           tipo?: string
           transacao_id?: string | null
+          usuario_id?: string
           valor?: number
         }
         Relationships: [
@@ -611,18 +644,21 @@ export type Database = {
           categoria_id: string
           id: string
           mes_referencia: string
+          usuario_id: string
           valor_planejado: number
         }
         Insert: {
           categoria_id: string
           id?: string
           mes_referencia: string
+          usuario_id?: string
           valor_planejado: number
         }
         Update: {
           categoria_id?: string
           id?: string
           mes_referencia?: string
+          usuario_id?: string
           valor_planejado?: number
         }
         Relationships: [
@@ -650,6 +686,7 @@ export type Database = {
           inverter_sinal: boolean
           linhas_cabecalho: number
           nome: string
+          usuario_id: string
         }
         Insert: {
           col_data?: number | null
@@ -665,6 +702,7 @@ export type Database = {
           inverter_sinal?: boolean
           linhas_cabecalho?: number
           nome: string
+          usuario_id?: string
         }
         Update: {
           col_data?: number | null
@@ -680,6 +718,7 @@ export type Database = {
           inverter_sinal?: boolean
           linhas_cabecalho?: number
           nome?: string
+          usuario_id?: string
         }
         Relationships: [
           {
@@ -710,6 +749,7 @@ export type Database = {
           id: string
           natureza: string | null
           tipo: string
+          usuario_id: string
           valor_previsto: number | null
         }
         Insert: {
@@ -723,6 +763,7 @@ export type Database = {
           id?: string
           natureza?: string | null
           tipo?: string
+          usuario_id?: string
           valor_previsto?: number | null
         }
         Update: {
@@ -736,6 +777,7 @@ export type Database = {
           id?: string
           natureza?: string | null
           tipo?: string
+          usuario_id?: string
           valor_previsto?: number | null
         }
         Relationships: [
@@ -770,6 +812,7 @@ export type Database = {
           rendimento_acumulado: number
           rendimento_dia: number
           saldo_bruto: number
+          usuario_id: string
         }
         Insert: {
           data: string
@@ -778,6 +821,7 @@ export type Database = {
           rendimento_acumulado: number
           rendimento_dia: number
           saldo_bruto: number
+          usuario_id?: string
         }
         Update: {
           data?: string
@@ -786,6 +830,7 @@ export type Database = {
           rendimento_acumulado?: number
           rendimento_dia?: number
           saldo_bruto?: number
+          usuario_id?: string
         }
         Relationships: [
           {
@@ -823,6 +868,7 @@ export type Database = {
           tipo: string
           transacao_pai_id: string | null
           transferencia_par_id: string | null
+          usuario_id: string
           valor: number
         }
         Insert: {
@@ -850,6 +896,7 @@ export type Database = {
           tipo: string
           transacao_pai_id?: string | null
           transferencia_par_id?: string | null
+          usuario_id?: string
           valor: number
         }
         Update: {
@@ -877,6 +924,7 @@ export type Database = {
           tipo?: string
           transacao_pai_id?: string | null
           transferencia_par_id?: string | null
+          usuario_id?: string
           valor?: number
         }
         Relationships: [

@@ -2,9 +2,18 @@ import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAutenticacao } from '../dados/autenticacao';
 
-// Login e nada mais. Não existe tela de cadastro de propósito: o app é de um
-// usuário só e o signup público fica DESLIGADO no painel do Supabase — é o que
-// sustenta a política de RLS "using (true)" (ver a migration ..._rls.sql).
+// Login e nada mais, ainda de propósito — mas por outro motivo desde o
+// multiusuário.
+//
+// Cada pessoa agora tem os próprios dados: a política de RLS filtra por dono
+// (ver a migration ..._multiusuario.sql), então uma conta nova enxerga um app
+// vazio, não o de outra pessoa. O que continua desligado é o CADASTRO PÚBLICO,
+// e essa é uma escolha diferente: sem ele, entra quem for criado no painel do
+// Supabase — o dono decide quem, em vez de qualquer um se inscrever.
+//
+// Se um dia o cadastro aberto fizer sentido, é aqui que a tela de "criar conta"
+// entra, chamando supabase.auth.signUp. A segurança dos dados não depende
+// disso; o controle de quem entra, sim.
 export function Login() {
   const { sessao, carregando, entrar } = useAutenticacao();
   const [email, setEmail] = useState('');

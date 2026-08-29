@@ -100,7 +100,7 @@ export async function recomecarDoZero(): Promise<ResultadoDaReinicializacao> {
       chave: 'onboarding_status',
       valor: { concluido: false, passoAtual: 'carteira', pulados: [] },
     },
-    { onConflict: 'chave' },
+    { onConflict: 'usuario_id,chave' },
   );
   if (erroOnboarding) throw new Error(`Falha ao reiniciar o onboarding: ${erroOnboarding.message}`);
 
