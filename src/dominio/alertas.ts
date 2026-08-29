@@ -42,6 +42,8 @@ export type EntradaDosAlertas = {
   historicoDaEmpresa: Centavos[];
   /** Contas sem conferência há mais de um mês (§5.3). */
   contasSemConferencia: { nome: string; ultimaConferencia: DataISO | null }[];
+  /** Aplicações com vencimento chegando (§7). */
+  investimentosVencendo: { nome: string; vencimento: DataISO; valor: Centavos }[];
 };
 
 const MESES = [
@@ -49,9 +51,27 @@ const MESES = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 
+/** Dias cheios de uma data à outra. Negativo quando a segunda já passou. */
+function diasEntre(de: DataISO, ate: DataISO): number {
+  const [a1, m1, d1] = de.split('-').map(Number);
+  const [a2, m2, d2] = ate.split('-').map(Number);
+  const um = Date.UTC(a1!, m1! - 1, d1!);
+  const outro = Date.UTC(a2!, m2! - 1, d2!);
+  return Math.round((outro - um) / 86400000);
+}
+
 function nomeDoMes(data: DataISO): string {
   return MESES[Number(data.split('-')[1]) - 1] ?? data;
 }
+
+/**
+ * Aplicação vencendo: quinze dias de antecedência.
+ *
+ * É o suficiente para decidir o que fazer com o dinheiro — reaplicar, resgatar,
+ * usar — e pouco o bastante para o aviso não virar paisagem. Vencimento que
+ * aparece com dois meses de antecedência é ignorado por dois meses.
+ */
+const DIAS_PARA_VENCIMENTO = 15;
 
 /** Fatura fechando em 3 dias só vira alerta se estiver acima da média (§8.6). */
 const DIAS_PARA_FECHAMENTO = 3;
@@ -161,6 +181,25 @@ export function gerarAlertas(entrada: EntradaDosAlertas): Alerta[] {
         destino: '/conferencia',
       });
     }
+  }
+
+  // Aplicação chegando no vencimento. O dinheiro volta a ser seu e vai ficar
+  // parado rendendo nada se ninguém decidir o que fazer com ele.
+  for (const investimento of entrada.investimentosVencendo) {
+    const dias = diasEntre(entrada.hoje, investimento.vencimento);
+    if (dias < 0 || dias > DIAS_PARA_VENCIMENTO) continue;
+
+    alertas.push({
+      id: `investimento-vence-${investimento.nome}`,
+      gravidade: 'informativo',
+      titulo:
+        dias === 0
+          ? `${investimento.nome} vence hoje`
+          : `${investimento.nome} vence em ${dias} dia(s)`,
+      detalhe:
+        'No vencimento o dinheiro volta para a conta. Vale decidir antes se reaplica ou usa — parado ele rende nada.',
+      destino: '/investimentos',
+    });
   }
 
   return alertas;

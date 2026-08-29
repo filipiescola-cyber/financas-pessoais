@@ -19,7 +19,16 @@ export async function montarEntradaDosAlertas(
 ): Promise<EntradaDosAlertas> {
   const mes = primeiroDiaDoMes(referencia);
 
-  const [projecao, orcamentos, categorias, transacoesDoMes, faturas, recorrencias, contas] =
+  const [
+    projecao,
+    orcamentos,
+    categorias,
+    transacoesDoMes,
+    faturas,
+    recorrencias,
+    contas,
+    investimentos,
+  ] =
     await Promise.all([
       montarDadosDaProjecao(referencia),
       listarOrcamentos(mes),
@@ -38,6 +47,11 @@ export async function montarEntradaDosAlertas(
         .from('contas')
         .select('id, nome, tipo, data_conferencia')
         .eq('ativo', true),
+      supabase
+        .from('investimentos')
+        .select('nome, vencimento, valor_aplicado')
+        .eq('ativo', true)
+        .not('vencimento', 'is', null),
     ]);
 
   // --- projeção ficando negativa ----------------------------------------
@@ -181,5 +195,12 @@ export async function montarEntradaDosAlertas(
     contasSemConferencia: (contas.data ?? [])
       .filter((c) => ['corrente', 'poupanca', 'carteira'].includes(c.tipo))
       .map((c) => ({ nome: c.nome, ultimaConferencia: c.data_conferencia })),
+    investimentosVencendo: (investimentos.data ?? [])
+      .filter((i): i is typeof i & { vencimento: string } => i.vencimento !== null)
+      .map((i) => ({
+        nome: i.nome,
+        vencimento: i.vencimento,
+        valor: paraCentavos(i.valor_aplicado),
+      })),
   };
 }

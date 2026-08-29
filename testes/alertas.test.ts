@@ -14,6 +14,7 @@ const vazio: EntradaDosAlertas = {
   recorrenciasFaltando: [],
   historicoDaEmpresa: [],
   contasSemConferencia: [],
+  investimentosVencendo: [],
 };
 
 describe('o que NÃO alerta (§8.6)', () => {
@@ -139,5 +140,49 @@ describe('ordenação', () => {
 
     const ordenados = ordenarPorGravidade(alertas);
     expect(ordenados.map((a) => a.gravidade)).toEqual(['urgente', 'atencao', 'informativo']);
+  });
+});
+
+describe('aplicação chegando no vencimento', () => {
+  const cdb = { nome: 'CDB Inter', vencimento: '2026-09-05', valor: 1000000 };
+
+  it('avisa dentro dos quinze dias', () => {
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-08-28',
+      investimentosVencendo: [cdb],
+    });
+    expect(alertas.map((a) => a.id)).toContain('investimento-vence-CDB Inter');
+  });
+
+  it('não avisa com dois meses de antecedência: viraria paisagem', () => {
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-06-28',
+      investimentosVencendo: [cdb],
+    });
+    expect(alertas).toEqual([]);
+  });
+
+  it('não avisa depois de vencido: o aviso perdeu a serventia', () => {
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-09-20',
+      investimentosVencendo: [cdb],
+    });
+    expect(alertas).toEqual([]);
+  });
+
+  it('no próprio dia, o texto muda', () => {
+    const [alerta] = gerarAlertas({
+      ...vazio,
+      hoje: '2026-09-05',
+      investimentosVencendo: [cdb],
+    });
+    expect(alerta?.titulo).toBe('CDB Inter vence hoje');
+  });
+
+  it('aplicação sem vencimento não entra na lista e não vira alerta', () => {
+    expect(gerarAlertas({ ...vazio, hoje: '2026-08-28' })).toEqual([]);
   });
 });
