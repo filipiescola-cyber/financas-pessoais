@@ -11,7 +11,6 @@ import { usarCartoes } from '../dados/usarCartoes';
 import { proximosVencimentos } from '../dados/projecao';
 import { montarEntradaDosAlertas } from '../dados/alertas';
 import { gerarAlertas, ordenarPorGravidade } from '../dominio/alertas';
-import { totalDaFatura } from '../dados/faturas';
 import { formatarBR } from '../dominio/datas';
 import { useMutation } from '@tanstack/react-query';
 import { previstoDoMes, resumirPrevisto, type ItemPrevisto } from '../dominio/previsto';
@@ -236,10 +235,10 @@ export function Inicio() {
               {(vencimentos.data ?? []).map((fatura) => (
                 <LinhaDeFatura
                   key={fatura.id}
-                  faturaId={fatura.id}
                   nome={
                     cartoes.data?.find((c) => c.contaId === fatura.cartaoId)?.conta.nome ?? 'Cartão'
                   }
+                  total={fatura.total}
                   vencimento={fatura.vencimento}
                   vencida={fatura.vencida}
                 />
@@ -253,25 +252,23 @@ export function Inicio() {
 }
 
 /**
- * Linha de fatura a vencer. O total é somado das transações, não lido de
- * `valor_total`: enquanto a fatura está aberta ela muda a cada lançamento (§13.2).
+ * Linha de fatura a vencer.
+ *
+ * O total chega pronto: era uma consulta por fatura aqui dentro, e agora sai
+ * somado junto com a lista, numa ida só. De quebra é o mesmo número que decide
+ * se a fatura aparece — vazia não entra.
  */
 function LinhaDeFatura({
-  faturaId,
   nome,
+  total,
   vencimento,
   vencida,
 }: {
-  faturaId: string;
   nome: string;
+  total: Centavos;
   vencimento: string;
   vencida: boolean;
 }) {
-  const total = useQuery({
-    queryKey: ['fatura-total', faturaId],
-    queryFn: () => totalDaFatura(faturaId),
-  });
-
   return (
     <li className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
@@ -280,7 +277,7 @@ function LinhaDeFatura({
           {vencida ? 'Venceu' : 'Vence'} em {formatarBR(vencimento)}
         </p>
       </div>
-      <Dinheiro centavos={Math.abs(total.data ?? 0)} className="shrink-0 text-sm text-slate-200" />
+      <Dinheiro centavos={Math.abs(total)} className="shrink-0 text-sm text-slate-200" />
     </li>
   );
 }

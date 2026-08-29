@@ -10,7 +10,14 @@
 //   saldo              -> passado, `data_caixa <= hoje`
 
 import { paraCentavos, type Centavos } from '../dominio/dinheiro';
-import { hoje, primeiroDiaDoMes, somarDias, somarMeses, type DataISO } from '../dominio/datas';
+import {
+  hoje,
+  primeiroDiaDoMes,
+  somarDias,
+  somarMeses,
+  ultimoDiaDoMes,
+  type DataISO,
+} from '../dominio/datas';
 import { mediana, projetarRenda, type RendaProjetada } from '../dominio/projecao';
 import { entraNaProjecaoDeRenda, type Natureza } from '../dominio/natureza';
 import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
@@ -177,27 +184,56 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
 /**
  * Faturas a vencer, para o dashboard (§11).
  *
- * A janela pega um mês para trás de propósito: fatura vencida e não paga é a
- * informação mais urgente da tela, e escondê-la porque a data passou seria o
- * oposto do que serve.
+ * A janela termina no fim do MÊS CORRENTE: a pergunta da tela inicial é o que
+ * ainda sai neste mês, e faturas de outubro no meio de agosto viram cinco
+ * linhas para ler antes de achar a que interessa.
+ *
+ * Para trás ela pega um mês de propósito, e isso continua: fatura vencida e não
+ * paga é a informação mais urgente da tela, e escondê-la porque a data passou
+ * seria o oposto do que serve.
+ *
+ * O total vem SOMADO das transações, nunca de `valor_total`: enquanto a fatura
+ * está aberta a coluna vale zero, e a tela mostrava R$ 0,00 para fatura com
+ * compra dentro (§13.2). Fatura sem nada dentro não volta daqui — nada a pagar
+ * não é vencimento, é ruído.
  */
-export async function proximosVencimentos(referencia: DataISO = hoje(), diasAFrente = 45) {
+export async function proximosVencimentos(referencia: DataISO = hoje()) {
   const { data, error } = await supabase
     .from('faturas')
-    .select('id, cartao_id, data_vencimento, valor_total, status')
+    .select('id, cartao_id, data_vencimento, status')
     .neq('status', 'paga')
     .gte('data_vencimento', somarDias(referencia, -30))
-    .lte('data_vencimento', somarDias(referencia, diasAFrente))
+    .lte('data_vencimento', ultimoDiaDoMes(referencia))
     .order('data_vencimento');
 
   if (error) throw error;
+  if (!data || data.length === 0) return [];
 
-  return (data ?? []).map((fatura) => ({
-    id: fatura.id,
-    cartaoId: fatura.cartao_id,
-    vencimento: fatura.data_vencimento,
-    valorGravado: paraCentavos(fatura.valor_total),
-    status: fatura.status as 'aberta' | 'fechada',
-    vencida: fatura.data_vencimento < referencia,
-  }));
+  const { data: linhas, error: erroLinhas } = await supabase
+    .from('transacoes')
+    .select('valor, fatura_id')
+    .in(
+      'fatura_id',
+      data.map((f) => f.id),
+    )
+    // Filha de divisão não soma: o pai já está na fatura (§5.5).
+    .is('transacao_pai_id', null);
+  if (erroLinhas) throw erroLinhas;
+
+  const total = new Map<string, number>();
+  for (const linha of linhas ?? []) {
+    if (linha.fatura_id === null) continue;
+    total.set(linha.fatura_id, (total.get(linha.fatura_id) ?? 0) + paraCentavos(linha.valor));
+  }
+
+  return data
+    .map((fatura) => ({
+      id: fatura.id,
+      cartaoId: fatura.cartao_id,
+      vencimento: fatura.data_vencimento,
+      total: total.get(fatura.id) ?? 0,
+      status: fatura.status as 'aberta' | 'fechada',
+      vencida: fatura.data_vencimento < referencia,
+    }))
+    .filter((fatura) => fatura.total !== 0);
 }
