@@ -5,6 +5,7 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import type { Indexador } from '../dominio/rendimento';
 import {
   arquivarInvestimento,
+  resgatarInvestimento,
   atualizarSaldoManual,
   calcularTodos,
   conferirInvestimento,
@@ -24,6 +25,8 @@ import {
   taxasVigentes,
 } from '../dados/indicadores';
 import { CampoValor } from '../ui/CampoValor';
+import { usarContas } from '../dados/usarContas';
+import { podePagarFatura } from '../dominio/saldo';
 import { usarAviso } from '../ui/Aviso';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
@@ -245,6 +248,8 @@ function Indicadores() {
 function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const cliente = useQueryClient();
 
+  const [resgatando, setResgatando] = useState(false);
+
   const arquivar = useMutation({
     mutationFn: () => arquivarInvestimento(item.investimento.id),
     onSuccess: () => cliente.invalidateQueries({ queryKey: ['investimentos'] }),
@@ -340,14 +345,29 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
         </button>
         <button
+          onClick={() => setResgatando((v) => !v)}
+          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {resgatando ? 'Cancelar' : 'Resgatar'}
+        </button>
+        <button
           onClick={() => arquivar.mutate()}
           disabled={arquivar.isPending}
-          title="Resgatado ou vencido: sai do patrimônio, o histórico fica"
+          title="Sai do patrimônio sem mexer em conta nenhuma. Para o dinheiro voltar, use Resgatar."
           className={`text-xs text-slate-600 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
           Arquivar
         </button>
       </div>
+
+      {resgatando && (
+        <ResgateDoInvestimento
+          investimentoId={inv.id}
+          nome={inv.nome}
+          saldoEstimado={item.saldoExibido}
+          aoTerminar={() => setResgatando(false)}
+        />
+      )}
 
       {aberto && (
         <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
@@ -379,6 +399,8 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
 
 function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
   const cliente = useQueryClient();
+  const contas = usarContas();
+  const [contaOrigemId, setContaOrigemId] = useState<string | null>(null);
   const [nome, setNome] = useState('');
   const [tipo, setTipo] = useState<TipoDeInvestimento>('cdb');
   const [indexador, setIndexador] = useState<Indexador>('CDI');
@@ -400,6 +422,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         taxaPrefixada: ehPrefixado ? Number(prefixada.replace(',', '.')) : null,
         dataAplicacao: data,
         valorAplicado: valor,
+        contaOrigemId,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['investimentos'] });
@@ -485,6 +508,29 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         />
       </Campo>
 
+      <Campo
+        rotulo="De qual conta saiu (opcional)"
+        ajuda="Informando, o app tira o valor dessa conta como transferência — aplicar não é gastar, o dinheiro continua seu. Sem informar, a aplicação só é registrada e nenhuma conta se mexe: é o caso de quem está cadastrando algo que já existia."
+      >
+        <div className="flex flex-wrap gap-2">
+          {(contas.data ?? []).filter(podePagarFatura).map((conta) => (
+            <Chip
+              key={conta.id}
+              ativo={contaOrigemId === conta.id}
+              aoClicar={() => setContaOrigemId(contaOrigemId === conta.id ? null : conta.id)}
+            >
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+                />
+                {conta.nome}
+              </span>
+            </Chip>
+          ))}
+        </div>
+      </Campo>
+
       {criar.isError && <p className="text-sm text-red-400">{(criar.error as Error).message}</p>}
 
       <div className="flex gap-2">
@@ -536,5 +582,115 @@ function LinhaArquivada({
         Reativar
       </button>
     </li>
+  );
+}
+
+/**
+ * Resgate: o dinheiro volta para a conta (§7.4).
+ *
+ * O valor vem preenchido com a estimativa do app, mas é editável — e essa é a
+ * regra da tela inteira (§7.3, §14): o número calculado é estimativa, o real é
+ * o que o banco creditou, já com IR e IOF descontados. Gravar o estimado no
+ * caixa seria pôr um número inventado no saldo.
+ */
+function ResgateDoInvestimento({
+  investimentoId,
+  nome,
+  saldoEstimado,
+  aoTerminar,
+}: {
+  investimentoId: string;
+  nome: string;
+  saldoEstimado: Centavos;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const contas = usarContas();
+  const [valor, setValor] = useState<Centavos>(saldoEstimado);
+  const [data, setData] = useState<DataISO>(hoje());
+  const [contaDestinoId, setContaDestinoId] = useState<string | null>(null);
+  const [encerrar, setEncerrar] = useState(true);
+
+  const resgatar = useMutation({
+    mutationFn: () =>
+      resgatarInvestimento({
+        investimentoId,
+        nome,
+        valor,
+        data,
+        contaDestinoId: contaDestinoId!,
+        encerrar,
+      }),
+    onSuccess: async () => {
+      await cliente.invalidateQueries();
+      aoTerminar();
+    },
+  });
+
+  const destinos = (contas.data ?? []).filter(podePagarFatura);
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto o banco creditou" />
+      <p className="text-xs leading-relaxed text-slate-500">
+        Veio preenchido com a estimativa do app. O número certo é o do extrato, já com IR e IOF
+        descontados.
+      </p>
+
+      <Campo rotulo="Para qual conta">
+        <div className="flex flex-wrap gap-2">
+          {destinos.map((conta) => (
+            <Chip
+              key={conta.id}
+              ativo={contaDestinoId === conta.id}
+              aoClicar={() => setContaDestinoId(conta.id)}
+            >
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+                />
+                {conta.nome}
+              </span>
+            </Chip>
+          ))}
+        </div>
+      </Campo>
+
+      <Campo rotulo="Data">
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <label className="flex items-center gap-2 text-xs text-slate-400">
+        <input
+          type="checkbox"
+          checked={encerrar}
+          onChange={(e) => setEncerrar(e.target.checked)}
+          className="h-4 w-4"
+        />
+        Resgatei tudo: arquivar a aplicação
+      </label>
+
+      {resgatar.isError && (
+        <p className="text-sm text-red-400">{(resgatar.error as Error).message}</p>
+      )}
+
+      <div className="flex gap-2">
+        <Botao
+          aoClicar={() => resgatar.mutate()}
+          desabilitado={valor <= 0 || contaDestinoId === null || resgatar.isPending}
+        >
+          {resgatar.isPending ? 'Resgatando…' : 'Registrar resgate'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
+    </div>
   );
 }

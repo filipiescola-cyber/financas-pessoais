@@ -7,6 +7,7 @@ import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
 import { calcular, type Indexador, type Resultado } from '../dominio/rendimento';
 import { listarFeriados, tabelaDeIR, taxasVigentes } from './indicadores';
+import { criarTransferencia } from './transacoes';
 import { supabase } from './supabase';
 
 export type TipoDeInvestimento =
@@ -89,12 +90,55 @@ export type NovoInvestimento = {
   valorAplicado: Centavos;
   vencimento?: DataISO | null;
   liquidezDiaria?: boolean;
+  /**
+   * De qual conta o dinheiro saiu (§7.4).
+   *
+   * Opcional: quem está cadastrando uma aplicação que já existia antes do app
+   * não deve ver um lançamento inventado aparecer na conta. Informado, gera a
+   * transferência — que é o que faz o dinheiro sair de algum lugar em vez de
+   * surgir do nada.
+   */
+  contaOrigemId?: string | null;
 };
+
+/**
+ * A conta onde o dinheiro aplicado passa a ficar (§7.4).
+ *
+ * Aporte é transferência, não despesa: o dinheiro sai da corrente e continua
+ * seu, agora aplicado. Sem uma conta do outro lado, a transferência não teria
+ * destino e o saldo consolidado cairia — como se você tivesse gasto.
+ *
+ * Uma só para todas as aplicações, e não uma por CDB: oito aplicações virariam
+ * oito contas na lista, e o detalhe de cada uma já vive na tabela de
+ * investimentos.
+ */
+async function contaDeInvestimentos(): Promise<string> {
+  const { data: existente, error } = await supabase
+    .from('contas')
+    .select('id')
+    .eq('tipo', 'investimento')
+    .eq('ativo', true)
+    .order('created_at')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (existente) return existente.id;
+
+  const { data, error: erroCriacao } = await supabase
+    .from('contas')
+    .insert({ nome: 'Investimentos', tipo: 'investimento', saldo_inicial: 0 })
+    .select('id')
+    .single();
+  if (erroCriacao) throw new Error(erroCriacao.message);
+  return data.id;
+}
 
 export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
   const calculoAutomatico = !TIPOS_SEM_CALCULO.includes(novo.tipo);
 
-  const { error } = await supabase.from('investimentos').insert({
+  const { data: criado, error } = await supabase
+    .from('investimentos')
+    .insert({
     nome: novo.nome.trim(),
     instituicao: novo.instituicao?.trim() || null,
     tipo: novo.tipo,
@@ -107,11 +151,89 @@ export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
     liquidez_diaria: novo.liquidezDiaria ?? true,
     isento_ir: TIPOS_ISENTOS.includes(novo.tipo),
     calculo_automatico: calculoAutomatico,
-    // Renda variável começa valendo o que foi aplicado, até o usuário atualizar.
-    saldo_manual: calculoAutomatico ? null : paraNumerico(novo.valorAplicado),
-  });
+      // Renda variável começa valendo o que foi aplicado, até o usuário atualizar.
+      saldo_manual: calculoAutomatico ? null : paraNumerico(novo.valorAplicado),
+    })
+    .select('id')
+    .single();
 
   if (error) throw new Error(error.message);
+  if (!novo.contaOrigemId) return;
+
+  await registrarMovimento({
+    investimentoId: criado.id,
+    tipo: 'aporte',
+    valor: novo.valorAplicado,
+    data: novo.dataAplicacao,
+    contaDoCaixa: novo.contaOrigemId,
+    descricao: `Aplicação em ${novo.nome.trim()}`,
+  });
+}
+
+/**
+ * Aporte ou resgate: a transferência entre o caixa e a conta de investimentos,
+ * e o registro que liga uma coisa à outra (§7.4).
+ *
+ * Nunca é receita nem despesa. Aplicar não é gastar e resgatar não é ganhar —
+ * o patrimônio não muda em nenhum dos dois, só muda de lugar. O rendimento é
+ * que é ganho, e ele só vira receita quando realizado.
+ */
+async function registrarMovimento(dados: {
+  investimentoId: string;
+  tipo: 'aporte' | 'resgate';
+  valor: Centavos;
+  data: DataISO;
+  contaDoCaixa: string;
+  descricao: string;
+}): Promise<void> {
+  const contaInvestimentos = await contaDeInvestimentos();
+  const ehAporte = dados.tipo === 'aporte';
+
+  const ids = await criarTransferencia({
+    valor: dados.valor,
+    contaOrigemId: ehAporte ? dados.contaDoCaixa : contaInvestimentos,
+    contaDestinoId: ehAporte ? contaInvestimentos : dados.contaDoCaixa,
+    data: dados.data,
+    descricao: dados.descricao,
+  });
+
+  const { error } = await supabase.from('movimentacoes_investimento').insert({
+    investimento_id: dados.investimentoId,
+    tipo: dados.tipo,
+    valor: paraNumerico(dados.valor),
+    data: dados.data,
+    // Guarda a perna que saiu do caixa: é por ela que se acha o lançamento
+    // a partir do investimento, e vice-versa.
+    transacao_id: ids[0] ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Resgata a aplicação: o dinheiro volta para a conta (§7.4).
+ *
+ * O valor é informado, não calculado: o que o banco credita é o líquido, já
+ * com IR e IOF, e o app trata o próprio cálculo como estimativa até ser
+ * conferido (§7.3). Chutar aqui seria gravar um número inventado no caixa.
+ */
+export async function resgatarInvestimento(dados: {
+  investimentoId: string;
+  nome: string;
+  valor: Centavos;
+  data: DataISO;
+  contaDestinoId: string;
+  encerrar: boolean;
+}): Promise<void> {
+  await registrarMovimento({
+    investimentoId: dados.investimentoId,
+    tipo: 'resgate',
+    valor: dados.valor,
+    data: dados.data,
+    contaDoCaixa: dados.contaDestinoId,
+    descricao: `Resgate de ${dados.nome.trim()}`,
+  });
+
+  if (dados.encerrar) await arquivarInvestimento(dados.investimentoId);
 }
 
 export async function atualizarSaldoManual(id: string, saldo: Centavos): Promise<void> {
