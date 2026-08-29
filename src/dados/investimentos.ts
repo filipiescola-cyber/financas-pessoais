@@ -11,7 +11,8 @@ import { criarTransferencia } from './transacoes';
 import { supabase } from './supabase';
 
 export type TipoDeInvestimento =
-  | 'cdb' | 'tesouro' | 'lci' | 'lca' | 'poupanca' | 'fundo' | 'acoes' | 'cripto' | 'outro';
+  | 'cdb' | 'rdb' | 'tesouro' | 'lci' | 'lca' | 'poupanca'
+  | 'fundo' | 'acoes' | 'cripto' | 'outro';
 
 export type Investimento = {
   id: string;
@@ -38,6 +39,7 @@ export const TIPOS_ISENTOS: TipoDeInvestimento[] = ['lci', 'lca', 'poupanca'];
 
 export const ROTULO_TIPO: Record<TipoDeInvestimento, string> = {
   cdb: 'CDB',
+  rdb: 'RDB',
   tesouro: 'Tesouro Direto',
   lci: 'LCI',
   lca: 'LCA',
@@ -261,18 +263,22 @@ export async function conferirInvestimento(id: string, saldoReal: Centavos): Pro
  * patrimônio e da lista; apagar reescreveria meses fechados.
  */
 /**
- * Corrige o que só se descobre depois: instituição e vencimento (§7).
+ * Corrige o que só se descobre depois: instituição, vencimento e liquidez (§7).
  *
  * Existe porque a tela agrupa por instituição e ordena por vencimento, e sem
  * edição quem cadastrou antes desses campos existirem ficaria preso em "sem
  * instituição" para sempre — sem outra saída além de apagar e recadastrar.
  *
- * Só estes dois: valor, taxa e data mudam o cálculo do rendimento, e mexer
- * neles pela lateral reescreveria o histórico sem deixar rastro.
+ * Só estes: valor, taxa e data mudam o cálculo do rendimento, e mexer neles
+ * pela lateral reescreveria o histórico sem deixar rastro.
  */
 export async function atualizarInvestimento(
   id: string,
-  campos: { instituicao?: string | null; vencimento?: DataISO | null },
+  campos: {
+    instituicao?: string | null;
+    vencimento?: DataISO | null;
+    liquidezDiaria?: boolean;
+  },
 ): Promise<void> {
   const { error } = await supabase
     .from('investimentos')
@@ -281,6 +287,9 @@ export async function atualizarInvestimento(
         ? { instituicao: campos.instituicao?.trim() || null }
         : {}),
       ...(campos.vencimento !== undefined ? { vencimento: campos.vencimento } : {}),
+      ...(campos.liquidezDiaria !== undefined
+        ? { liquidez_diaria: campos.liquidezDiaria }
+        : {}),
     })
     .eq('id', id);
 

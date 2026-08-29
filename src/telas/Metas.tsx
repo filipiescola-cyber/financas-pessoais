@@ -20,6 +20,7 @@ import {
 } from '../dados/orcamentos';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { usarContasComSaldo } from '../dados/usarContas';
+import { calcularTodos } from '../dados/investimentos';
 import { CampoValor } from '../ui/CampoValor';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 
@@ -41,9 +42,21 @@ export function Metas() {
   // apontada para um cartão leria um número que não quer dizer nada.
   const ondeCabeDinheiro = (contas.data ?? []).filter(entraNoConsolidado);
 
-  const saldo = (contas.data ?? [])
+  // Investimento com liquidez diária É reserva (§8.8): dinheiro num RDB que se
+  // resgata hoje cobre uma emergência exatamente como o da conta corrente.
+  // Preso até o vencimento não cobre, por maior que seja — e somar os dois daria
+  // uma reserva no papel que não existe na hora em que ela precisa existir.
+  const investimentos = useQuery({ queryKey: ['investimentos', 'calculados'], queryFn: () => calcularTodos() });
+
+  const emConta = (contas.data ?? [])
     .filter(entraNoConsolidado)
     .reduce((total, c) => total + c.saldoAtual, 0);
+
+  const liquidos = (investimentos.data ?? [])
+    .filter((item) => item.investimento.liquidezDiaria)
+    .reduce((total, item) => total + item.saldoExibido, 0);
+
+  const saldo = emConta + liquidos;
 
   // Renda irregular muda a régua da reserva de 3 para 6 meses (§8.8). O sinal
   // aqui é a própria origem da projeção: quem tem salário fixo tem recorrência
@@ -68,7 +81,7 @@ export function Metas() {
         {reserva.mesesCobertos === null ? (
           <Nota tom="atencao">
             Sem despesas fixas cadastradas, não dá para dizer quantos meses a reserva cobre — e um
-            número inventado seria pior que nenhum. Cadastre suas fixas em Mais → Atalhos.
+            número inventado seria pior que nenhum. Cadastre suas fixas em Atalhos.
           </Nota>
         ) : (
           <>
@@ -90,6 +103,14 @@ export function Metas() {
             <p className="text-xs leading-relaxed text-slate-600">
               O denominador é a despesa fixa, não a total: em emergência real as variáveis são a
               primeira coisa que se corta.
+              {liquidos > 0 && (
+                <>
+                  {' '}
+                  No numerador entram as contas ({formatar(emConta)}) mais os investimentos com
+                  liquidez diária ({formatar(liquidos)}) — o que está preso até o vencimento fica
+                  de fora, porque não cobre emergência.
+                </>
+              )}
               {rendaIrregular &&
                 ' Como sua renda oscila, a referência é 6 meses em vez de 3 — a receita pode sumir por um período inteiro.'}
             </p>

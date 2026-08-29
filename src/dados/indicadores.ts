@@ -32,6 +32,10 @@ export type ResultadoDaAtualizacao = {
  *
  * "Sem isso o rendimento erra cerca de 10 dias por ano." Roda uma vez por ano —
  * feriado nacional não muda no meio do caminho.
+ *
+ * Desde que a recorrência ganhou regra de dia útil (§5.2), a tabela também
+ * decide QUANDO o salário cai. Um ano faltando não é mais só rendimento um
+ * pouco otimista: é a data prevista errada em todo mês com feriado.
  */
 export async function atualizarFeriados(ano: number): Promise<ResultadoDaAtualizacao> {
   try {
@@ -63,6 +67,37 @@ export async function atualizarFeriados(ano: number): Promise<ResultadoDaAtualiz
       mensagem: `Não foi possível buscar os feriados: ${(erro as Error).message}. Dá para cadastrar na mão, e o cálculo continua funcionando com o que já existe.`,
     };
   }
+}
+
+/**
+ * Garante que os anos pedidos existem na tabela, buscando só o que falta.
+ *
+ * Chamada na abertura do app (§13.3), não por um botão: quem precisa saber que
+ * 20 de novembro é feriado é o app, e fazer o usuário lembrar de apertar um
+ * botão uma vez por ano é o mesmo que não ter o dado. A verificação é uma
+ * contagem por ano — barata o bastante para rodar diariamente.
+ *
+ * Falha de rede não interrompe nada: `atualizarFeriados` devolve o erro em vez
+ * de lançar, e o §9 é explícito em tratar API externa como acelerador, nunca
+ * como dependência.
+ */
+export async function garantirFeriados(anos: number[]): Promise<number> {
+  let buscados = 0;
+
+  for (const ano of anos) {
+    const { count, error } = await supabase
+      .from('feriados')
+      .select('data', { count: 'exact', head: true })
+      .gte('data', `${ano}-01-01`)
+      .lte('data', `${ano}-12-31`);
+
+    if (error || (count ?? 0) > 0) continue;
+
+    const resultado = await atualizarFeriados(ano);
+    if (resultado.ok) buscados += resultado.quantidade;
+  }
+
+  return buscados;
 }
 
 export async function listarFeriados(): Promise<Set<DataISO>> {

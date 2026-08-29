@@ -38,7 +38,18 @@ import { usarAviso } from '../ui/Aviso';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
 
-const TIPOS: TipoDeInvestimento[] = ['cdb', 'tesouro', 'lci', 'lca', 'poupanca', 'fundo', 'acoes', 'cripto', 'outro'];
+const TIPOS: TipoDeInvestimento[] = [
+  'cdb',
+  'rdb',
+  'tesouro',
+  'lci',
+  'lca',
+  'poupanca',
+  'fundo',
+  'acoes',
+  'cripto',
+  'outro',
+];
 
 /**
  * Investimentos (§7).
@@ -211,7 +222,19 @@ function Indicadores() {
   const [mostrandoManual, setMostrandoManual] = useState(false);
 
   const buscarFeriados = useMutation({
-    mutationFn: () => atualizarFeriados(new Date().getFullYear()),
+    // O ano que vem junto: um parcelamento ou um vencimento de janeiro já
+    // precisa do calendário do ano seguinte.
+    mutationFn: async () => {
+      const ano = new Date().getFullYear();
+      const atual = await atualizarFeriados(ano);
+      const proximo = await atualizarFeriados(ano + 1);
+      return {
+        ...atual,
+        mensagem: atual.ok && proximo.ok
+          ? `Feriados de ${ano} e ${ano + 1} atualizados.`
+          : atual.mensagem,
+      };
+    },
     onSuccess: async (r) => {
       await cliente.invalidateQueries({ queryKey: ['investimentos'] });
       mostrar(r.mensagem);
@@ -283,9 +306,11 @@ function Indicadores() {
       )}
 
       <p className="text-xs leading-relaxed text-slate-600">
-        Sem feriado cadastrado o rendimento erra cerca de 10 dias por ano, sempre para mais. Se a
-        busca falhar, o app continua funcionando com o que já está gravado — nenhuma API aqui é
-        caminho crítico.
+        O calendário é buscado sozinho na abertura do app, para o ano corrente e o seguinte —
+        estes botões são o reforço para quando a busca falhar. Sem feriado cadastrado o rendimento
+        erra cerca de 10 dias por ano, sempre para mais, e a recorrência marcada em dia útil cai um
+        dia adiantada nos meses com feriado. Nenhuma API aqui é caminho crítico: sem ela o app
+        segue com o que já está gravado.
       </p>
     </Cartao>
   );
@@ -339,6 +364,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
                 ? ` · ${inv.taxaPrefixada}% a.a.`
                 : ''}
             {inv.isentoIR && ' · isento de IR'}
+            {inv.liquidezDiaria && ' · liquidez diária'}
           </p>
           <p className="mt-0.5 text-xs text-slate-600">
             {inv.instituicao && `${inv.instituicao} · `}
@@ -474,12 +500,14 @@ function EdicaoDoInvestimento({
   const { mostrar } = usarAviso();
   const [instituicao, setInstituicao] = useState(investimento.instituicao ?? '');
   const [vencimento, setVencimento] = useState(investimento.vencimento ?? '');
+  const [liquidezDiaria, setLiquidezDiaria] = useState(investimento.liquidezDiaria);
 
   const salvar = useMutation({
     mutationFn: () =>
       atualizarInvestimento(investimento.id, {
         instituicao,
         vencimento: vencimento || null,
+        liquidezDiaria,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['investimentos'] });
@@ -500,6 +528,8 @@ function EdicaoDoInvestimento({
           className={ENTRADA}
         />
       </Campo>
+
+      <CampoDeLiquidez liquidezDiaria={liquidezDiaria} aoMudar={setLiquidezDiaria} />
 
       {salvar.isError && <p className="text-sm text-red-400">{(salvar.error as Error).message}</p>}
 
@@ -522,6 +552,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
   const [nome, setNome] = useState('');
   const [instituicao, setInstituicao] = useState('');
   const [vencimento, setVencimento] = useState('');
+  const [liquidezDiaria, setLiquidezDiaria] = useState(true);
   const [tipo, setTipo] = useState<TipoDeInvestimento>('cdb');
   const [indexador, setIndexador] = useState<Indexador>('CDI');
   const [percentual, setPercentual] = useState('100');
@@ -538,6 +569,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         nome,
         instituicao,
         vencimento: vencimento || null,
+        liquidezDiaria,
         tipo,
         indexador: semCalculo ? null : indexador,
         percentualIndexador: ehPrefixado ? null : Number(percentual.replace(',', '.')),
@@ -634,7 +666,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
 
       <Campo
         rotulo="Vencimento (opcional)"
-        ajuda="Data do resgate no papel. Em CDB e Tesouro é o que ordena a carteira por quem vence primeiro; poupança e fundo aberto não têm."
+        ajuda="Data do resgate no papel. Em CDB e Tesouro é o que ordena a carteira por quem vence primeiro; poupança, RDB com liquidez e fundo aberto não têm."
       >
         <input
           type="date"
@@ -643,6 +675,8 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
           className={ENTRADA}
         />
       </Campo>
+
+      <CampoDeLiquidez liquidezDiaria={liquidezDiaria} aoMudar={setLiquidezDiaria} />
 
       <Campo
         rotulo="De qual conta saiu (opcional)"
@@ -913,5 +947,38 @@ function BotaoDeControle({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Liquidez diária (§8.8).
+ *
+ * Não é enfeite de cadastro: é o que decide se o dinheiro conta como reserva de
+ * emergência. RDB e poupança costumam ser resgatáveis a qualquer momento, e
+ * esse dinheiro cobre uma emergência de verdade; um CDB travado até 2029 não
+ * cobre, por maior que seja. Contar os dois juntos daria uma reserva no papel
+ * que não existe na hora em que ela precisa existir.
+ */
+function CampoDeLiquidez({
+  liquidezDiaria,
+  aoMudar,
+}: {
+  liquidezDiaria: boolean;
+  aoMudar: (valor: boolean) => void;
+}) {
+  return (
+    <Campo
+      rotulo="Liquidez"
+      ajuda="Só o que tem liquidez diária conta na reserva de emergência, em Metas."
+    >
+      <div className="flex flex-wrap gap-2">
+        <Chip ativo={liquidezDiaria} aoClicar={() => aoMudar(true)}>
+          Resgato quando quiser
+        </Chip>
+        <Chip ativo={!liquidezDiaria} aoClicar={() => aoMudar(false)}>
+          Preso até o vencimento
+        </Chip>
+      </div>
+    </Campo>
   );
 }
