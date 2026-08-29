@@ -8,15 +8,15 @@ import { usarCategorias } from '../dados/usarTransacoes';
 import { usarCriarModelo, usarExcluirModelo, usarModelos, usarRecorrencias } from '../dados/usarModelos';
 import { arquivarRecorrencia, criarRecorrencia } from '../dados/recorrencias';
 import { usarFeriados } from '../dados/usarFeriados';
-import { formatarBR, hoje, type DataISO } from '../dominio/datas';
 import {
-  dataDaOcorrencia,
-  proximaOcorrencia,
-  repeticoesRestantes,
-  rotuloDoDia,
-  terminoParaRepeticoes,
-  type RegraDoDia,
-} from '../dominio/recorrencias';
+  CampoPrazo,
+  CampoQuando,
+  diaEhValido,
+  terminoEscolhido,
+  type ModoDePrazo,
+} from '../ui/CampoQuando';
+import { hoje } from '../dominio/datas';
+import { repeticoesRestantes, rotuloDoDia, type RegraDoDia } from '../dominio/recorrencias';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { ChipsDeConta } from '../ui/ChipsDeConta';
@@ -354,20 +354,8 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
   const doTipo = (categorias.data ?? []).filter((c) => c.tipo === tipo);
   const diaNumero = Number(dia);
 
-  // Com regra de dia útil o número deixa de ser data e vira ordinal: nenhum mês
-  // tem mais de 23 dias úteis.
-  const maximo = regra === 'fixo' ? 31 : 23;
-  const diaOk = diaNumero >= 1 && diaNumero <= maximo;
-
-  // O prazo é sempre guardado como a DATA da última ocorrência; "12x" é só
-  // outra forma de dizer a mesma coisa, e a conversão acontece aqui.
-  const terminaEm: DataISO | null = !diaOk
-    ? null
-    : modoPrazo === 'parcelas' && Number(parcelas) >= 1
-      ? terminoParaRepeticoes(hoje(), diaNumero, regra, Number(parcelas), feriados)
-      : modoPrazo === 'ate' && /^\d{4}-\d{2}$/.test(mesFinal)
-        ? dataDaOcorrencia(`${mesFinal}-01`, diaNumero, regra, feriados)
-        : null;
+  const diaOk = diaEhValido(diaNumero, regra);
+  const terminaEm = terminoEscolhido(modoPrazo, parcelas, mesFinal, diaNumero, regra, feriados);
 
   const prazoOk = modoPrazo === 'sem' || terminaEm !== null;
 
@@ -432,92 +420,27 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
         </p>
       )}
 
-      <Campo rotulo={tipo === 'despesa' ? 'Dia do vencimento' : 'Dia do recebimento'}>
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            {REGRAS.map((opcao) => (
-              <Chip
-                key={opcao.valor}
-                ativo={regra === opcao.valor}
-                aoClicar={() => setRegra(opcao.valor)}
-              >
-                {opcao.rotulo}
-              </Chip>
-            ))}
-          </div>
+      <CampoQuando
+        rotulo={tipo === 'despesa' ? 'Dia do vencimento' : 'Dia do recebimento'}
+        dia={dia}
+        regra={regra}
+        feriados={feriados}
+        aoMudarDia={setDia}
+        aoMudarRegra={setRegra}
+      />
 
-          <input
-            inputMode="numeric"
-            value={dia}
-            onChange={(e) => setDia(e.target.value.replace(/\D/g, '').slice(0, 2))}
-            placeholder={regra === 'fixo' ? '1 a 31' : `1 a ${maximo}`}
-            className={ENTRADA}
-          />
-
-          {diaOk && (
-            <p className="text-xs text-slate-500">
-              {rotuloDoDia(diaNumero, regra)} · a próxima cai em{' '}
-              <span className="text-slate-300">
-                {formatarBR(proximaOcorrencia(hoje(), diaNumero, regra, feriados))}
-              </span>
-              .
-            </p>
-          )}
-        </div>
-      </Campo>
-
-      <Campo rotulo="Prazo">
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            {PRAZOS.map((opcao) => (
-              <Chip
-                key={opcao.valor}
-                ativo={modoPrazo === opcao.valor}
-                aoClicar={() => setModoPrazo(opcao.valor)}
-              >
-                {opcao.rotulo}
-              </Chip>
-            ))}
-          </div>
-
-          {modoPrazo === 'parcelas' && (
-            <input
-              inputMode="numeric"
-              value={parcelas}
-              onChange={(e) => setParcelas(e.target.value.replace(/\D/g, '').slice(0, 3))}
-              placeholder="36"
-              className={ENTRADA}
-            />
-          )}
-
-          {modoPrazo === 'ate' && (
-            <input
-              type="month"
-              value={mesFinal}
-              onChange={(e) => setMesFinal(e.target.value)}
-              className={ENTRADA}
-            />
-          )}
-
-          {modoPrazo === 'sem' ? (
-            <p className="text-xs text-slate-500">
-              Repete todo mês, sem data para acabar. É o caso do aluguel e do salário.
-            </p>
-          ) : terminaEm === null ? (
-            <p className="text-xs text-slate-500">
-              Financiamento, curso, consórcio: some sozinha depois da última, e o fluxo de caixa
-              mostra o alívio no mês seguinte.
-            </p>
-          ) : (
-            <p className="text-xs text-slate-500">
-              Última em{' '}
-              <span className="text-slate-300">{formatarBR(terminaEm)}</span> ·{' '}
-              {repeticoesRestantes(hoje(), terminaEm, diaNumero, regra, feriados)}x a partir de
-              agora.
-            </p>
-          )}
-        </div>
-      </Campo>
+      <CampoPrazo
+        modo={modoPrazo}
+        parcelas={parcelas}
+        mesFinal={mesFinal}
+        terminaEm={terminaEm}
+        dia={diaNumero}
+        regra={regra}
+        feriados={feriados}
+        aoMudarModo={setModoPrazo}
+        aoMudarParcelas={setParcelas}
+        aoMudarMesFinal={setMesFinal}
+      />
 
       <Campo rotulo="Conta">
         <ChipsDeConta
@@ -554,17 +477,3 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
     </Cartao>
   );
 }
-
-type ModoDePrazo = 'sem' | 'parcelas' | 'ate';
-
-const REGRAS: { valor: RegraDoDia; rotulo: string }[] = [
-  { valor: 'fixo', rotulo: 'Dia fixo' },
-  { valor: 'dia_util', rotulo: 'Dia útil' },
-  { valor: 'dia_util_do_fim', rotulo: 'Dia útil, do fim' },
-];
-
-const PRAZOS: { valor: ModoDePrazo; rotulo: string }[] = [
-  { valor: 'sem', rotulo: 'Sem prazo' },
-  { valor: 'parcelas', rotulo: 'Nº de parcelas' },
-  { valor: 'ate', rotulo: 'Até um mês' },
-];

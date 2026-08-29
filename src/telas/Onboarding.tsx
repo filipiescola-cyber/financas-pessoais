@@ -4,8 +4,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatarBR, hoje, primeiroDiaDoMes, somarMeses } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { descreverFatura, ehDiaValido, faturaDeReferencia } from '../dominio/fatura';
+import { podePagarFatura } from '../dominio/saldo';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
+import { CampoInstituicao } from '../ui/CampoInstituicao';
+import {
+  CampoPrazo,
+  CampoQuando,
+  diaEhValido,
+  terminoEscolhido,
+  type ModoDePrazo,
+} from '../ui/CampoQuando';
+import { usarFeriados } from '../dados/usarFeriados';
+import { rotuloDoDia, type RegraDoDia } from '../dominio/recorrencias';
 import { criarConta } from '../dados/contas';
 import { criarCartao } from '../dados/cartoes';
 import { criarRecorrencia } from '../dados/recorrencias';
@@ -25,8 +36,11 @@ import { usarCategorias } from '../dados/usarTransacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 
 /**
- * Onboarding (§4.1). Uma pergunta por tela, caminho MANUAL apenas — a
- * ramificação por extrato depende da importação, que é da Fase 4.
+ * Onboarding (§4.1). Uma pergunta por tela, caminho MANUAL apenas.
+ *
+ * A importação de extrato existe (tela Importar), mas continua fora daqui de
+ * propósito: quem está começando não tem o CSV em mãos no meio do cadastro, e
+ * mandar buscar arquivo é onde se abandona o fluxo.
  *
  * Duas decisões estruturais:
  *
@@ -226,6 +240,8 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
   const contas = usarContas();
   const cliente = useQueryClient();
   const [nome, setNome] = useState('');
+  const [instituicao, setInstituicao] = useState('');
+  const [cor, setCor] = useState<string | null>(null);
   const [saldo, setSaldo] = useState<Centavos>(0);
 
   const bancarias = (contas.data ?? []).filter((c) =>
@@ -233,10 +249,13 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
   );
 
   const criar = useMutation({
-    mutationFn: () => criarConta({ nome, tipo: 'corrente', saldoInicial: saldo }),
+    mutationFn: () =>
+      criarConta({ nome, tipo: 'corrente', instituicao, cor, saldoInicial: saldo }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['contas'] });
       setNome('');
+      setInstituicao('');
+      setCor(null);
       setSaldo(0);
     },
   });
@@ -267,7 +286,13 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
               key={conta.id}
               className="flex justify-between rounded-lg border border-borda px-3 py-2 text-sm"
             >
-              <span className="text-slate-200">{conta.nome}</span>
+              <span className="flex items-center gap-2 text-slate-200">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+                />
+                {conta.nome}
+              </span>
               <span className="text-slate-400">{formatar(conta.saldoInicial)}</span>
             </li>
           ))}
@@ -280,6 +305,14 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
           onChange={(e) => setNome(e.target.value)}
           placeholder="Nome da conta"
           className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+        />
+        <CampoInstituicao
+          instituicao={instituicao}
+          cor={cor}
+          aoMudar={(nova, novaCor) => {
+            setInstituicao(nova);
+            setCor(novaCor);
+          }}
         />
         <CampoValor valor={saldo} aoMudar={setSaldo} rotulo={`Saldo em ${formatarBR(dataDeCorte)}`} />
         <button
@@ -301,24 +334,40 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
 function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
   const cartoes = usarCartoes();
   const cliente = useQueryClient();
+  const contas = usarContas();
   const [nome, setNome] = useState('');
+  const [instituicao, setInstituicao] = useState('');
+  const [cor, setCor] = useState<string | null>(null);
   const [fechamento, setFechamento] = useState('');
   const [vencimento, setVencimento] = useState('');
   const [limite, setLimite] = useState<Centavos>(0);
+  const [contaPagamentoId, setContaPagamentoId] = useState<string | null>(null);
+
+  const pagadoras = (contas.data ?? []).filter(podePagarFatura);
 
   const dias = { diaFechamento: Number(fechamento), diaVencimento: Number(vencimento) };
   const diasOk = ehDiaValido(dias.diaFechamento) && ehDiaValido(dias.diaVencimento);
 
   const criar = useMutation({
     mutationFn: () =>
-      criarCartao({ nome, limite: limite === 0 ? null : limite, ...dias }),
+      criarCartao({
+        nome,
+        instituicao,
+        cor,
+        limite: limite === 0 ? null : limite,
+        contaPagamentoId,
+        ...dias,
+      }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['cartoes'] });
       await cliente.invalidateQueries({ queryKey: ['contas'] });
       setNome('');
+      setInstituicao('');
+      setCor(null);
       setFechamento('');
       setVencimento('');
       setLimite(0);
+      setContaPagamentoId(null);
     },
   });
 
@@ -349,6 +398,14 @@ function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
           placeholder="Apelido do cartão"
           className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
+        <CampoInstituicao
+          instituicao={instituicao}
+          cor={cor}
+          aoMudar={(nova, novaCor) => {
+            setInstituicao(nova);
+            setCor(novaCor);
+          }}
+        />
         <div className="grid grid-cols-2 gap-3">
           <input
             inputMode="numeric"
@@ -371,6 +428,38 @@ function PassoCartoes({ aoAvancar }: { aoAvancar: () => void }) {
           </p>
         )}
         <CampoValor valor={limite} aoMudar={setLimite} rotulo="Limite (opcional)" />
+
+        {pagadoras.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-sm text-slate-400">Qual conta paga a fatura? (opcional)</p>
+            <div className="flex flex-wrap gap-2">
+              {pagadoras.map((conta) => (
+                <button
+                  key={conta.id}
+                  onClick={() =>
+                    setContaPagamentoId(contaPagamentoId === conta.id ? null : conta.id)
+                  }
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${
+                    contaPagamentoId === conta.id
+                      ? 'bg-emerald-600 text-white'
+                      : 'border border-borda-forte text-slate-300'
+                  }`}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+                  />
+                  {conta.nome}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              É de onde o dinheiro sai no vencimento. Informando agora, pagar a fatura depois vira
+              um toque — sem escolher a conta toda vez.
+            </p>
+          </div>
+        )}
+
         <button
           onClick={() => criar.mutate()}
           disabled={nome.trim() === '' || !diasOk || criar.isPending}
@@ -621,8 +710,14 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState<Centavos>(0);
   const [dia, setDia] = useState('');
+  const [regra, setRegra] = useState<RegraDoDia>('fixo');
+  const [modoPrazo, setModoPrazo] = useState<ModoDePrazo>('sem');
+  const [parcelas, setParcelas] = useState('');
+  const [mesFinal, setMesFinal] = useState('');
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [adicionadas, setAdicionadas] = useState<string[]>([]);
+
+  const feriados = usarFeriados();
 
   const contaPadrao = (contas.data ?? []).find((c) => c.tipo === 'corrente') ?? contas.data?.[0];
   const fixas = (categorias.data ?? []).filter(
@@ -630,7 +725,10 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
   );
 
   const diaNum = Number(dia);
-  const valido = descricao.trim() !== '' && valor > 0 && diaNum >= 1 && diaNum <= 31 && contaPadrao;
+  const terminaEm = terminoEscolhido(modoPrazo, parcelas, mesFinal, diaNum, regra, feriados);
+  const prazoOk = modoPrazo === 'sem' || terminaEm !== null;
+  const valido =
+    descricao.trim() !== '' && valor > 0 && diaEhValido(diaNum, regra) && prazoOk && contaPadrao;
 
   const adicionar = useMutation({
     mutationFn: () =>
@@ -642,13 +740,23 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
         tipo: 'despesa',
         natureza: 'fixa',
         dia: diaNum,
+        regra,
+        terminaEm,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['recorrencias'] });
-      setAdicionadas((atual) => [...atual, `${descricao} · ${formatar(valor)} · dia ${diaNum}`]);
+      setAdicionadas((atual) => [
+        ...atual,
+        `${descricao} · ${formatar(valor)} · ${rotuloDoDia(diaNum, regra)}` +
+          (terminaEm ? ` · até ${formatarBR(terminaEm)}` : ''),
+      ]);
       setDescricao('');
       setValor(0);
       setDia('');
+      setRegra('fixo');
+      setModoPrazo('sem');
+      setParcelas('');
+      setMesFinal('');
       setCategoriaId(null);
     },
   });
@@ -661,8 +769,8 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
 
       <p className="rounded-lg border border-borda bg-superficie p-3 text-xs text-slate-400">
         A soma das fixas é o seu custo de vida mínimo: quanto precisa entrar todo mês para nada
-        atrasar. Nesta fase elas ficam cadastradas; a geração automática do lançamento no dia certo
-        é da Fase 3.
+        atrasar. Uma vez cadastradas, elas geram o lançamento sozinhas no dia certo — e de forma
+        retroativa, então ficar dias sem abrir o app não perde nenhum.
       </p>
 
       {adicionadas.length > 0 && (
@@ -683,12 +791,25 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
           className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
         <CampoValor valor={valor} aoMudar={setValor} rotulo="Valor mensal" />
-        <input
-          inputMode="numeric"
-          value={dia}
-          onChange={(e) => setDia(e.target.value.replace(/\D/g, '').slice(0, 2))}
-          placeholder="Dia do vencimento"
-          className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+        <CampoQuando
+          rotulo="Dia do vencimento"
+          dia={dia}
+          regra={regra}
+          feriados={feriados}
+          aoMudarDia={setDia}
+          aoMudarRegra={setRegra}
+        />
+        <CampoPrazo
+          modo={modoPrazo}
+          parcelas={parcelas}
+          mesFinal={mesFinal}
+          terminaEm={terminaEm}
+          dia={diaNum}
+          regra={regra}
+          feriados={feriados}
+          aoMudarModo={setModoPrazo}
+          aoMudarParcelas={setParcelas}
+          aoMudarMesFinal={setMesFinal}
         />
         <div className="flex flex-wrap gap-2">
           {fixas.map((categoria) => (
@@ -730,10 +851,12 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState<Centavos>(0);
   const [dia, setDia] = useState('');
+  const [regra, setRegra] = useState<RegraDoDia>('fixo');
   const [mesTipico, setMesTipico] = useState<Centavos>(0);
   const [mesRuim, setMesRuim] = useState<Centavos>(0);
   const [adicionadas, setAdicionadas] = useState<string[]>([]);
 
+  const feriados = usarFeriados();
   const contaPadrao = (contas.data ?? []).find((c) => c.tipo === 'corrente') ?? contas.data?.[0];
   const salario = (categorias.data ?? []).find((c) => c.tipo === 'receita' && c.nome === 'Salário');
 
@@ -747,13 +870,18 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
         tipo: 'receita',
         natureza: 'fixa',
         dia: Number(dia),
+        regra,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['recorrencias'] });
-      setAdicionadas((atual) => [...atual, `${descricao} · ${formatar(valor)} · dia ${dia}`]);
+      setAdicionadas((atual) => [
+        ...atual,
+        `${descricao} · ${formatar(valor)} · ${rotuloDoDia(Number(dia), regra)}`,
+      ]);
       setDescricao('');
       setValor(0);
       setDia('');
+      setRegra('fixo');
     },
   });
 
@@ -802,17 +930,27 @@ function PassoFontesDeRenda({ aoAvancar }: { aoAvancar: () => void }) {
             className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
           <CampoValor valor={valor} aoMudar={setValor} rotulo="Valor líquido" />
-          <input
-            inputMode="numeric"
-            value={dia}
-            onChange={(e) => setDia(e.target.value.replace(/\D/g, '').slice(0, 2))}
-            placeholder="Dia do recebimento"
-            className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+          <CampoQuando
+            rotulo="Dia do recebimento"
+            dia={dia}
+            regra={regra}
+            feriados={feriados}
+            aoMudarDia={setDia}
+            aoMudarRegra={setRegra}
           />
+          <p className="text-xs text-slate-500">
+            Salário quase nunca cai num dia fixo: "5º dia útil" é o mais comum, e a data muda todo
+            mês. Escolhendo a regra, a previsão acerta sozinha em vez de errar todo mês em que o dia
+            cair num sábado.
+          </p>
           <button
             onClick={() => adicionarFixa.mutate()}
             disabled={
-              descricao.trim() === '' || valor <= 0 || !contaPadrao || adicionarFixa.isPending
+              descricao.trim() === '' ||
+              valor <= 0 ||
+              !diaEhValido(Number(dia), regra) ||
+              !contaPadrao ||
+              adicionarFixa.isPending
             }
             className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200 disabled:opacity-40"
           >
@@ -908,7 +1046,7 @@ function PassoCategorias({ aoConcluir }: { aoConcluir: () => void }) {
 
   return (
     <div className="space-y-4">
-      <Titulo ajuda="Já vêm prontas, com a natureza preenchida. Dá para ajustar depois em Mais → Categorias.">
+      <Titulo ajuda="Já vêm prontas, com natureza, cor e ícone. Dá para ajustar depois em Categorias.">
         Categorias
       </Titulo>
 
