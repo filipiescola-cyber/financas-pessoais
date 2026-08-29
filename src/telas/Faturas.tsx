@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
-import { formatarBR, hoje, type DataISO } from '../dominio/datas';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
-import { descreverFatura, faturaDoMes } from '../dominio/fatura';
+import { descreverFatura, faturaDeReferencia, faturaDoMes } from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
+import type { CartaoComConta } from '../dados/tipos';
 import { podePagarFatura } from '../dominio/saldo';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
@@ -14,12 +15,11 @@ import {
   desfazerPagamentoDeFatura,
   listarFaturas,
   pagarFatura,
-  totalDaFatura,
   type Fatura,
 } from '../dados/faturas';
 import { listarTransacoesDaFatura, type Transacao } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
-import { ALVO_DE_TOQUE, Chip, Pagina, Vazio } from '../ui/base';
+import { ALVO_DE_TOQUE, Botao, Chip, Pagina, Vazio } from '../ui/base';
 import { EditarTransacao } from './EditarTransacao';
 
 const ROTULO_STATUS: Record<Fatura['status'], string> = {
@@ -94,93 +94,123 @@ export function Faturas() {
         </div>
       )}
 
-      <ListaDeFaturas cartaoId={cartao.contaId} nomeDoCartao={cartao.conta.nome} />
+      <FaturaDoMes cartao={cartao} />
     </Pagina>
   );
 }
 
-function ListaDeFaturas({ cartaoId, nomeDoCartao }: { cartaoId: string; nomeDoCartao: string }) {
+/**
+ * Uma fatura por vez, o mês inteiro (§2.1).
+ *
+ * Antes eram todos os meses empilhados na mesma tela, cada um numa sanfona.
+ * Fatura não se lê assim: a do banco é um documento fechado, de um mês só, com
+ * tudo à vista. Empilhar doze delas obrigava a abrir e fechar caixas para
+ * encontrar a de setembro, e o que importa quase sempre é uma só.
+ *
+ * A navegação é por mês de referência, como na lista de lançamentos, e para nas
+ * pontas: antes da primeira fatura gerada e depois da última não há o que
+ * mostrar.
+ */
+function FaturaDoMes({ cartao }: { cartao: CartaoComConta }) {
   const faturas = useQuery({
-    queryKey: ['faturas', cartaoId],
-    queryFn: () => listarFaturas(cartaoId),
+    queryKey: ['faturas', cartao.contaId],
+    queryFn: () => listarFaturas(cartao.contaId),
   });
+
+  // Começa na fatura em que uma compra de hoje cairia — a que está aberta
+  // agora, que é a que se quer ver ao entrar na tela.
+  const mesAtual = faturaDeReferencia(hoje(), cartao).mesReferencia;
+  const [mes, setMes] = useState<DataISO>(mesAtual);
 
   const lista = faturas.data ?? [];
+  const fatura = lista.find((f) => f.mesReferencia === mes) ?? null;
 
-  // Os totais vêm somados por fatura. São poucas consultas e evita depender de
-  // uma coluna que só é confiável depois do fechamento.
-  const totais = useQueries({
-    queries: lista.map((fatura) => ({
-      queryKey: ['fatura-total', fatura.id],
-      queryFn: () => totalDaFatura(fatura.id),
-    })),
-  });
-
-  const [abertaId, setAbertaId] = useState<string | null>(null);
+  const meses = lista.map((f) => f.mesReferencia).sort();
+  const temAnterior = meses.some((m) => m < mes);
+  const temSeguinte = meses.some((m) => m > mes);
 
   if (faturas.isPending) return <p className="text-slate-400">Carregando faturas…</p>;
   if (faturas.isError) return <p className="text-red-400">{(faturas.error as Error).message}</p>;
 
-  if (lista.length === 0) {
-    return (
-      <p className="rounded-xl border border-dashed border-borda-forte p-6 text-center text-sm text-slate-400">
-        As faturas são geradas na abertura do app. Recarregue a página se esta lista continuar
-        vazia.
-      </p>
-    );
-  }
-
-  // Mostra da mais recente para trás, começando pela que ainda não fechou.
-  const ordenadas = [...lista].sort((a, b) => b.mesReferencia.localeCompare(a.mesReferencia));
-  const relevantes = ordenadas.filter((f) => f.mesReferencia <= proximoLimite());
-
   return (
-    <div className="space-y-2">
-      {relevantes.map((fatura, indice) => {
-        const total = totais[lista.indexOf(fatura)]?.data ?? 0;
-        return (
-          <CartaoDeFatura
-            key={fatura.id}
-            fatura={fatura}
-            total={total}
-            cartaoId={cartaoId}
-            nomeDoCartao={nomeDoCartao}
-            expandida={abertaId === fatura.id || (abertaId === null && indice === 0)}
-            aoAlternar={() => setAbertaId(abertaId === fatura.id ? '' : fatura.id)}
-          />
-        );
-      })}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-slate-200">Fatura de {nomeDoMes(mes)}</p>
+          {fatura && (
+            <p className="text-xs text-slate-500">
+              Fecha em {formatarBR(fatura.dataFechamento)} · vence em{' '}
+              {formatarBR(fatura.dataVencimento)} · {ROTULO_STATUS[fatura.status]}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Botao
+            tipo="secundario"
+            aoClicar={() => setMes(somarMeses(mes, -1))}
+            desabilitado={!temAnterior}
+            className="px-3"
+          >
+            ‹
+          </Botao>
+          <Botao
+            tipo="secundario"
+            aoClicar={() => setMes(somarMeses(mes, 1))}
+            desabilitado={!temSeguinte}
+            className="px-3"
+          >
+            ›
+          </Botao>
+        </div>
+      </div>
+
+      {fatura === null ? (
+        <p className="rounded-xl border border-dashed border-borda-forte p-6 text-center text-sm text-slate-400">
+          Não há fatura gerada para {nomeDoMes(mes)}. Elas são criadas na abertura do app, doze
+          meses à frente.
+        </p>
+      ) : (
+        <CartaoDeFatura
+          fatura={fatura}
+          cartaoId={cartao.contaId}
+          nomeDoCartao={cartao.conta.nome}
+        />
+      )}
     </div>
   );
 }
 
-/** Não faz sentido listar 12 faturas futuras vazias: mostra até 2 meses à frente. */
-function proximoLimite(): DataISO {
-  const [ano, mes] = hoje().split('-').map(Number);
-  const alvo = new Date(Date.UTC(ano!, mes! + 1, 1));
-  return alvo.toISOString().slice(0, 10);
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+function nomeDoMes(data: DataISO): string {
+  const [ano, mes] = data.split('-');
+  return `${MESES[Number(mes) - 1]} de ${ano}`;
 }
+
 
 function CartaoDeFatura({
   fatura,
-  total,
   cartaoId,
   nomeDoCartao,
-  expandida,
-  aoAlternar,
 }: {
   fatura: Fatura;
-  total: Centavos;
   cartaoId: string;
   nomeDoCartao: string;
-  expandida: boolean;
-  aoAlternar: () => void;
 }) {
   const transacoes = useQuery({
     queryKey: ['transacoes-fatura', fatura.id],
     queryFn: () => listarTransacoesDaFatura(fatura.id),
-    enabled: expandida,
   });
+
+  // Somado das compras, nunca lido de `valor_total`: enquanto a fatura está
+  // aberta a coluna vale zero (§13.2). Como a tela mostra as compras de
+  // qualquer jeito, o total sai da mesma consulta — sem uma ida a mais.
+  const total = (transacoes.data ?? [])
+    .filter((t) => t.transacaoPaiId === null)
+    .reduce((soma, t) => soma + t.valor, 0);
 
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
@@ -202,21 +232,29 @@ function CartaoDeFatura({
 
   return (
     <article className="rounded-xl border border-borda bg-superficie">
-      <button onClick={aoAlternar} className="flex w-full items-start justify-between gap-3 p-4 text-left">
-        <div>
-          <p className="text-slate-100">
-            Vence em {formatarBR(fatura.dataVencimento)}
+      {/* Cabeçalho como o da fatura do banco: o valor em destaque e, ao lado,
+          o que ele quer dizer. Deixou de ser botão — a tela mostra uma fatura
+          só, e não há mais o que abrir ou fechar. */}
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-wider text-slate-500">
+            {fatura.status === 'paga' ? 'Você pagou' : 'Você deve'}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            Fecha em {formatarBR(fatura.dataFechamento)} · {ROTULO_STATUS[fatura.status]}
+            {vencida ? 'Venceu' : 'Vence'} em {formatarBR(fatura.dataVencimento)}
             {vencida && ' · vencida'}
           </p>
         </div>
-        <span className="dinheiro shrink-0 text-lg text-slate-100">{formatar(Math.abs(total))}</span>
-      </button>
+        <span
+          className={`dinheiro shrink-0 text-2xl font-semibold ${
+            vencida ? 'text-amber-400' : 'text-slate-100'
+          }`}
+        >
+          {formatar(Math.abs(total))}
+        </span>
+      </div>
 
-      {expandida && (
-        <div className="space-y-3 border-t border-borda p-4">
+      <div className="space-y-3 border-t border-borda p-4">
           <p className="text-xs text-slate-500">
             {descreverFatura(
               faturaDoMes(fatura.mesReferencia, {
@@ -288,8 +326,7 @@ function CartaoDeFatura({
               vencimento={fatura.dataVencimento}
             />
           )}
-        </div>
-      )}
+      </div>
 
       <EditarTransacao transacao={editando} aoFechar={() => setEditando(null)} />
     </article>
