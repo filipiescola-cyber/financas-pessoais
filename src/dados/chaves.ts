@@ -56,6 +56,14 @@ export const DERIVADO_DE_TRANSACAO: readonly (readonly string[])[] = [
   ['cartoes-com-fatura-pendente'],
   ['dividas-cartoes'],
   ['status-faturas'],
+  // Meta vinculada a uma conta lê o saldo real dela (§8.8): qualquer lançamento
+  // muda o "quanto já tem", e sem isto a barra de progresso só se acertava ao
+  // recarregar a página.
+  ['metas'],
+  // A memória de autocomplete cresce a cada lançamento (§5.2).
+  ['sugestoes-descricao'],
+  // O histórico de lotes importados é feito de transações.
+  ['importacoes'],
   ['recorrencias'],
   ['investimentos'],
 ];

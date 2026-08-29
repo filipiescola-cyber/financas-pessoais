@@ -201,7 +201,18 @@ export async function criarTransferencia(nova: NovaTransferencia): Promise<strin
 export async function excluirTransacoes(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   const { error } = await supabase.from('transacoes').delete().in('id', ids);
-  if (error) throw new Error(error.message);
+  if (!error) return;
+
+  // O banco recusa apagar o lançamento que financiou uma aplicação (§7.4).
+  // Sem traduzir, o usuário receberia o nome da restrição — e a mensagem certa
+  // aqui não é o erro, é o caminho: o aporte se desfaz resgatando.
+  if (error.code === '23503' && error.message.includes('movimentacoes_investimento')) {
+    throw new Error(
+      'Este lançamento é o aporte de uma aplicação. Para desfazer, use Resgatar em Investimentos — assim o dinheiro volta para a conta e a aplicação é encerrada junto.',
+    );
+  }
+
+  throw new Error(error.message);
 }
 
 export async function listarTransacoes(filtros: {
