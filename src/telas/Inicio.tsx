@@ -19,6 +19,7 @@ import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorr
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
+import { usarFeriados } from '../dados/usarFeriados';
 import { usarAviso } from '../ui/Aviso';
 import { Botao, Cartao, CartaoIndicador, Dinheiro, Pagina, Secao, Vazio } from '../ui/base';
 
@@ -319,6 +320,7 @@ function LinhaDeFatura({
  */
 function PrevistoDoMes({ mes }: { mes: string }) {
   const recorrencias = usarRecorrencias();
+  const feriados = usarFeriados();
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
 
@@ -349,10 +351,13 @@ function PrevistoDoMes({ mes }: { mes: string }) {
       tipo: r.tipo,
       valorPrevisto: r.valorPrevisto,
       dia: r.dia,
+      regra: r.regra,
+      terminaEm: r.terminaEm,
     })),
     geradas.data,
     mes,
     hoje(),
+    feriados,
   );
 
   const resumo = resumirPrevisto(itens);

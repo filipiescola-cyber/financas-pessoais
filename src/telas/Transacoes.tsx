@@ -40,6 +40,7 @@ import {
 import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
 import { statusDasFaturas } from '../dados/faturas';
 import { usarRecorrencias } from '../dados/usarModelos';
+import { usarFeriados } from '../dados/usarFeriados';
 import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { EditarTransacao } from './EditarTransacao';
@@ -85,6 +86,7 @@ export function Transacoes() {
   // hoje. Sem isto, um mês futuro aparece vazio mesmo com salário e aluguel
   // cadastrados — que é o oposto do que a tela deveria responder.
   const recorrencias = usarRecorrencias();
+  const feriados = usarFeriados();
 
   // O filtro de conta é aplicado na fonte: ele vale tanto para as linhas
   // previstas do mês quanto para a ponte que abre o saldo dos meses distantes.
@@ -96,6 +98,8 @@ export function Transacoes() {
       tipo: r.tipo,
       valorPrevisto: r.valorPrevisto,
       dia: r.dia,
+      regra: r.regra,
+      terminaEm: r.terminaEm,
     }));
 
   const geradas = useQuery({
@@ -105,7 +109,7 @@ export function Transacoes() {
 
   const previstos =
     recorrencias.data && geradas.data
-      ? previstoDoMes(recorrenciasPrevistas, geradas.data, mes, hoje()).filter(
+      ? previstoDoMes(recorrenciasPrevistas, geradas.data, mes, hoje(), feriados).filter(
           (p) => p.situacao !== 'lancado',
         )
       : [];
@@ -145,7 +149,14 @@ export function Transacoes() {
   const previstoDaPonte = !precisaDePonte
     ? 0
     : recorrencias.data && geradasDaPonte.data
-      ? previstoAteOMes(recorrenciasPrevistas, geradasDaPonte.data, mesCorrente, mes, hoje())
+      ? previstoAteOMes(
+          recorrenciasPrevistas,
+          geradasDaPonte.data,
+          mesCorrente,
+          mes,
+          hoje(),
+          feriados,
+        )
       : null;
 
   // Quais faturas do mês ainda não foram pagas. Sem isto o saldo previsto do

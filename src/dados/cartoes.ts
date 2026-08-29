@@ -173,7 +173,7 @@ export async function situacaoDoCartao(contaId: string): Promise<SituacaoDoCarta
     dividaDoCartao(contaId),
     supabase
       .from('recorrencias')
-      .select('id, descricao, dia, valor_previsto')
+      .select('id, descricao, dia, regra_do_dia, valor_previsto')
       .eq('conta_id', contaId)
       .eq('ativo', true)
       .order('dia'),

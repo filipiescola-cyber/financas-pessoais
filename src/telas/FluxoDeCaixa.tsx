@@ -64,6 +64,7 @@ export function FluxoDeCaixa() {
     horizonteEmMeses: HORIZONTE,
     renda: dados.data.renda,
     fixasMensais: dados.data.fixasMensais,
+    fixasComPrazo: dados.data.fixasComPrazo,
     provisaoEventualMensal: dados.data.provisaoEventualMensal,
     medianaDasVariaveis: dados.data.medianaDasVariaveis,
     jaLancadoPorMes: dados.data.jaLancadoPorMes,

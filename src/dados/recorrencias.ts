@@ -7,7 +7,9 @@
 // e já entra na projeção do §8 desde o primeiro dia.
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
+import type { DataISO } from '../dominio/datas';
 import type { Natureza } from '../dominio/natureza';
+import type { RegraDoDia } from '../dominio/recorrencias';
 import { supabase } from './supabase';
 
 export type Recorrencia = {
@@ -20,6 +22,10 @@ export type Recorrencia = {
   natureza: Natureza | null;
   frequencia: 'mensal' | 'semanal' | 'anual';
   dia: number;
+  /** Com regra de dia útil, `dia` é ordinal e não data. */
+  regra: RegraDoDia;
+  /** Data da última ocorrência, quando a recorrência tem prazo. */
+  terminaEm: DataISO | null;
   ativo: boolean;
 };
 
@@ -32,6 +38,8 @@ export type NovaRecorrencia = {
   natureza?: Natureza | null;
   frequencia?: 'mensal' | 'semanal' | 'anual';
   dia: number;
+  regra?: RegraDoDia;
+  terminaEm?: DataISO | null;
 };
 
 export async function listarRecorrencias(): Promise<Recorrencia[]> {
@@ -52,6 +60,8 @@ export async function listarRecorrencias(): Promise<Recorrencia[]> {
     natureza: linha.natureza as Natureza | null,
     frequencia: linha.frequencia as Recorrencia['frequencia'],
     dia: linha.dia,
+    regra: linha.regra_do_dia as RegraDoDia,
+    terminaEm: linha.termina_em,
     ativo: linha.ativo,
   }));
 }
@@ -69,6 +79,8 @@ export async function criarRecorrencia(nova: NovaRecorrencia): Promise<string> {
       natureza: nova.natureza ?? 'fixa',
       frequencia: nova.frequencia ?? 'mensal',
       dia: nova.dia,
+      regra_do_dia: nova.regra ?? 'fixo',
+      termina_em: nova.terminaEm ?? null,
     })
     .select('id')
     .single();

@@ -6,6 +6,7 @@
 import { formatar, paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
 import type { Item, SituacaoDaConta } from '../dominio/encerramento';
+import { rotuloDoDia, type RegraDoDia } from '../dominio/recorrencias';
 import { saldoAte } from './transacoes';
 import { supabase } from './supabase';
 import type { Conta, ContaComSaldo, LinhaConta, LinhaSaldo, TipoDeConta } from './tipos';
@@ -145,7 +146,7 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
     saldoAte(hoje(), id),
     supabase
       .from('recorrencias')
-      .select('id, descricao, dia, valor_previsto')
+      .select('id, descricao, dia, regra_do_dia, valor_previsto')
       .eq('conta_id', id)
       .eq('ativo', true)
       .order('dia'),
@@ -185,10 +186,12 @@ export function itemDaRecorrencia(linha: {
   id: string;
   descricao: string;
   dia: number;
+  regra_do_dia: string;
   valor_previsto: number | null;
 }): Item {
   const valor = linha.valor_previsto === null ? 'valor variável' : formatar(paraCentavos(linha.valor_previsto));
-  return { id: linha.id, rotulo: linha.descricao, detalhe: `dia ${linha.dia} · ${valor}` };
+  const quando = rotuloDoDia(linha.dia, linha.regra_do_dia as RegraDoDia);
+  return { id: linha.id, rotulo: linha.descricao, detalhe: `${quando} · ${valor}` };
 }
 
 function diaEMes(data: DataISO): string {

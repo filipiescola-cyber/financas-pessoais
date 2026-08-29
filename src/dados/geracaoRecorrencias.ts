@@ -15,6 +15,8 @@
 import { hoje, type DataISO } from '../dominio/datas';
 import { paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { vencimentosPendentes } from '../dominio/recorrencias';
+import type { RegraDoDia } from '../dominio/recorrencias';
+import { listarFeriados } from './indicadores';
 import { faturaDeReferencia } from '../dominio/fatura';
 import { idDaFatura } from './faturas';
 import { supabase } from './supabase';
@@ -31,6 +33,9 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
   if (error) throw error;
 
   if (!recorrencias || recorrencias.length === 0) return 0;
+
+  // O calendário de dias úteis, uma leitura só para o lote inteiro.
+  const feriados = await listarFeriados();
 
   // Cartão precisa da configuração para achar a fatura e a data de caixa.
   const { data: cartoes } = await supabase.from('cartoes').select('*');
@@ -56,7 +61,16 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
 
   for (const recorrencia of recorrencias) {
     const criadaEm = (recorrencia.created_at ?? referencia).slice(0, 10);
-    const vencimentos = vencimentosPendentes(criadaEm, referencia, recorrencia.dia);
+    const vencimentos = vencimentosPendentes(
+      criadaEm,
+      referencia,
+      {
+        dia: recorrencia.dia,
+        regra: recorrencia.regra_do_dia as RegraDoDia,
+        terminaEm: recorrencia.termina_em,
+      },
+      feriados,
+    );
 
     for (const competencia of vencimentos) {
       if (jaGeradas.has(`${recorrencia.id}|${competencia}`)) continue;

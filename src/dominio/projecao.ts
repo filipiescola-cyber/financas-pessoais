@@ -146,6 +146,17 @@ export type EntradaDaProjecao = {
   horizonteEmMeses: number;
   renda: RendaProjetada;
   fixasMensais: Centavos;
+  /**
+   * As fixas que têm prazo, com a data da última parcela.
+   *
+   * Ficam separadas das outras porque param: financiamento de 36x, curso de
+   * 12x, consórcio. Somadas ao total mensal, elas manteriam o mês 20 tão
+   * pesado quanto o mês 1 — e o alívio que a última parcela traz, que é
+   * exatamente o que se quer enxergar num fluxo de caixa, nunca apareceria.
+   *
+   * Cada recorrência está em UMA das duas listas, nunca nas duas.
+   */
+  fixasComPrazo: { valor: Centavos; ate: DataISO }[];
   provisaoEventualMensal: Centavos;
   medianaDasVariaveis: Centavos;
   /** Já gravado no banco, por mês: parcelas e recorrências futuras (§13.2). */
@@ -165,8 +176,13 @@ export function projetarFluxo(entrada: EntradaDaProjecao, cenario: Cenario): Mes
   for (let i = 0; i < entrada.horizonteEmMeses; i += 1) {
     const mes = primeiroDiaDoMes(somarMeses(entrada.aPartirDe, i));
 
+    const aindaPesa = entrada.fixasComPrazo.reduce(
+      (total, fixa) => (mes <= fixa.ate ? total + fixa.valor : total),
+      0,
+    );
+
     const saidas: ComponentesDoMes = {
-      fixas: entrada.fixasMensais,
+      fixas: entrada.fixasMensais + aindaPesa,
       jaLancado: entrada.jaLancadoPorMes[mes] ?? 0,
       provisaoEventual: entrada.provisaoEventualMensal,
       variaveis: entrada.medianaDasVariaveis,

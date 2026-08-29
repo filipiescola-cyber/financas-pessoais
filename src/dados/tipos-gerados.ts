@@ -766,6 +766,8 @@ export type Database = {
           frequencia: string
           id: string
           natureza: string | null
+          regra_do_dia: string
+          termina_em: string | null
           tipo: string
           usuario_id: string
           valor_previsto: number | null
@@ -780,6 +782,8 @@ export type Database = {
           frequencia: string
           id?: string
           natureza?: string | null
+          regra_do_dia?: string
+          termina_em?: string | null
           tipo?: string
           usuario_id?: string
           valor_previsto?: number | null
@@ -794,6 +798,8 @@ export type Database = {
           frequencia?: string
           id?: string
           natureza?: string | null
+          regra_do_dia?: string
+          termina_em?: string | null
           tipo?: string
           usuario_id?: string
           valor_previsto?: number | null

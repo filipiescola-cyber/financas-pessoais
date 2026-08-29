@@ -12,6 +12,9 @@ import { primeiroMesNegativo, projetarFluxo } from '../dominio/projecao';
 import type { EntradaDosAlertas } from '../dominio/alertas';
 import { listarOrcamentos } from './orcamentos';
 import { montarDadosDaProjecao } from './projecao';
+import { dataDaOcorrencia, type RegraDoDia } from '../dominio/recorrencias';
+import { somarDias } from '../dominio/datas';
+import { listarFeriados } from './indicadores';
 import { supabase } from './supabase';
 
 export async function montarEntradaDosAlertas(
@@ -42,7 +45,10 @@ export async function montarEntradaDosAlertas(
         .from('faturas')
         .select('cartao_id, data_fechamento, valor_total, status')
         .eq('status', 'aberta'),
-      supabase.from('recorrencias').select('id, descricao, dia').eq('ativo', true),
+      supabase
+        .from('recorrencias')
+        .select('id, descricao, dia, regra_do_dia, termina_em')
+        .eq('ativo', true),
       supabase
         .from('contas')
         .select('id, nome, tipo, data_conferencia')
@@ -65,6 +71,7 @@ export async function montarEntradaDosAlertas(
       horizonteEmMeses: 12,
       renda: projecao.renda,
       fixasMensais: projecao.fixasMensais,
+      fixasComPrazo: projecao.fixasComPrazo,
       provisaoEventualMensal: projecao.provisaoEventualMensal,
       medianaDasVariaveis: projecao.medianaDasVariaveis,
       jaLancadoPorMes: projecao.jaLancadoPorMes,
@@ -153,13 +160,23 @@ export async function montarEntradaDosAlertas(
     .not('recorrencia_id', 'is', null);
 
   const jaGeradas = new Set((geradas ?? []).map((t) => t.recorrencia_id));
-  const diaDeHoje = Number(referencia.split('-')[2]);
+  const feriados = await listarFeriados();
 
-  const recorrenciasFaltando = (recorrencias.data ?? [])
-    // Só o que já passou do dia esperado, com folga de 2 dias: cobrar no próprio
-    // dia geraria alerta para conta que ainda vai cair à noite.
-    .filter((r) => r.dia + 2 < diaDeHoje && !jaGeradas.has(r.id))
-    .map((r) => ({ descricao: r.descricao, diaEsperado: r.dia }));
+  // A data esperada é calculada, nunca lida direto da coluna `dia`: com regra de
+  // dia útil aquele número é ORDINAL, e comparar "5" com o dia de hoje daria um
+  // alerta de atraso no dia 8 de todo mês para quem recebe no 5º dia útil.
+  const recorrenciasFaltando = (recorrencias.data ?? []).flatMap((r) => {
+    const esperada = dataDaOcorrencia(mes, r.dia, r.regra_do_dia as RegraDoDia, feriados);
+
+    // Recorrência que já terminou não está atrasada: acabou.
+    if (r.termina_em !== null && esperada > r.termina_em) return [];
+    // Folga de 2 dias: cobrar no próprio dia geraria alerta para conta que ainda
+    // vai cair à noite.
+    if (somarDias(esperada, 2) >= referencia) return [];
+    if (jaGeradas.has(r.id)) return [];
+
+    return [{ descricao: r.descricao, diaEsperado: Number(esperada.slice(8, 10)) }];
+  });
 
   // --- conta Empresa ------------------------------------------------------
   const contaEmpresa = (contas.data ?? []).find((c) => c.tipo === 'empresa');

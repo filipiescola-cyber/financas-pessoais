@@ -11,7 +11,9 @@
 // o que já entrou e o que falta, e o lançamento ser uma decisão sua.
 
 import type { Centavos } from './dinheiro';
-import { diaNoMes, somarMeses, type DataISO } from './datas';
+import { somarMeses, type DataISO } from './datas';
+import type { Feriados } from './diasUteis';
+import { dataDaOcorrencia, type RegraDoDia } from './recorrencias';
 
 export type SituacaoPrevista = 'lancado' | 'atrasado' | 'aguardando';
 
@@ -21,6 +23,9 @@ export type RecorrenciaPrevista = {
   tipo: 'receita' | 'despesa';
   valorPrevisto: Centavos | null;
   dia: number;
+  regra: RegraDoDia;
+  /** Prazo, quando a recorrência tem fim. Depois dele ela some do previsto. */
+  terminaEm: DataISO | null;
 };
 
 export type ItemPrevisto = {
@@ -45,16 +50,23 @@ export function chaveDaOcorrencia(recorrenciaId: string, data: DataISO): string 
  *   aguardando — ainda vai vencer
  *
  * Dia 31 num mês curto cai no último dia, mesma regra do cartão e da geração.
+ *
+ * Recorrência com prazo vencido não aparece: depois da última parcela ela não
+ * é mais "aguardando", é passado. Deixá-la na lista faria o mês seguinte a um
+ * financiamento quitado continuar mostrando a parcela como pendência eterna.
  */
 export function previstoDoMes(
   recorrencias: readonly RecorrenciaPrevista[],
   jaLancadas: ReadonlySet<string>,
   mes: DataISO,
   hoje: DataISO,
+  feriados: Feriados,
 ): ItemPrevisto[] {
   return recorrencias
-    .map((recorrencia) => {
-      const dataPrevista = diaNoMes(mes, recorrencia.dia);
+    .flatMap((recorrencia) => {
+      const dataPrevista = dataDaOcorrencia(mes, recorrencia.dia, recorrencia.regra, feriados);
+      if (recorrencia.terminaEm !== null && dataPrevista > recorrencia.terminaEm) return [];
+
       const lancado = jaLancadas.has(chaveDaOcorrencia(recorrencia.id, dataPrevista));
 
       const situacao: SituacaoPrevista = lancado
@@ -63,14 +75,16 @@ export function previstoDoMes(
           ? 'atrasado'
           : 'aguardando';
 
-      return {
-        recorrenciaId: recorrencia.id,
-        descricao: recorrencia.descricao,
-        tipo: recorrencia.tipo,
-        valor: recorrencia.valorPrevisto,
-        dataPrevista,
-        situacao,
-      };
+      return [
+        {
+          recorrenciaId: recorrencia.id,
+          descricao: recorrencia.descricao,
+          tipo: recorrencia.tipo,
+          valor: recorrencia.valorPrevisto,
+          dataPrevista,
+          situacao,
+        },
+      ];
     })
     .sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
 }
@@ -137,11 +151,12 @@ export function previstoAteOMes(
   deMes: DataISO,
   ateMes: DataISO,
   hoje: DataISO,
+  feriados: Feriados,
 ): Centavos {
   let total = 0;
 
   for (let mes = deMes; mes < ateMes; mes = somarMeses(mes, 1)) {
-    for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje)) {
+    for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje, feriados)) {
       if (item.situacao === 'lancado' || item.valor === null) continue;
       total += item.tipo === 'receita' ? item.valor : -item.valor;
     }

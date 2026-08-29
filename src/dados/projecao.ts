@@ -24,6 +24,8 @@ import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
 import { lerConfig } from './config';
 import { previstoDoMes, resumirPrevisto } from '../dominio/previsto';
 import { ocorrenciasJaGeradas } from './geracaoRecorrencias';
+import { listarFeriados } from './indicadores';
+import type { RegraDoDia } from '../dominio/recorrencias';
 import { supabase } from './supabase';
 
 const JANELA_DE_HISTORICO = 12;
@@ -32,6 +34,8 @@ export type DadosDaProjecao = {
   saldoAtual: Centavos;
   renda: RendaProjetada;
   fixasMensais: Centavos;
+  /** As fixas com prazo, que param de pesar depois da última parcela. */
+  fixasComPrazo: { valor: Centavos; ate: DataISO }[];
   provisaoEventualMensal: Centavos;
   medianaDasVariaveis: Centavos;
   jaLancadoPorMes: Record<DataISO, Centavos>;
@@ -67,7 +71,10 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       .from('transacoes')
       .select('valor, tipo, data_competencia, data_caixa, categoria_id, natureza')
       .gte('data_competencia', inicioDoHistorico),
-    supabase.from('recorrencias').select('id, descricao, dia, valor_previsto, tipo, natureza').eq('ativo', true),
+    supabase
+      .from('recorrencias')
+      .select('id, descricao, dia, regra_do_dia, termina_em, valor_previsto, tipo, natureza')
+      .eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
   ]);
 
@@ -137,9 +144,24 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     .map(([, valor]) => valor);
 
   // --- fixas e provisão --------------------------------------------------
-  const fixasMensais = (recorrencias.data ?? [])
-    .filter((r) => r.tipo === 'despesa')
+  //
+  // Fixa com prazo entra numa lista à parte, não na soma mensal: financiamento
+  // de 36x tem que sumir do mês 37, senão a projeção mostra o aperto de hoje
+  // até o fim do horizonte e o alívio da última parcela — que é o que se quer
+  // enxergar num fluxo de caixa — nunca aparece. Cada recorrência está em UMA
+  // das duas, nunca nas duas.
+  const despesasFixas = (recorrencias.data ?? []).filter((r) => r.tipo === 'despesa');
+
+  const fixasMensais = despesasFixas
+    .filter((r) => r.termina_em === null)
     .reduce((total, r) => total + Math.abs(paraCentavos(r.valor_previsto ?? 0)), 0);
+
+  const fixasComPrazo = despesasFixas
+    .filter((r) => r.termina_em !== null)
+    .map((r) => ({
+      valor: Math.abs(paraCentavos(r.valor_previsto ?? 0)),
+      ate: r.termina_em!,
+    }));
 
   // Fonte de renda fixa vira recorrência de receita (§4.5), e o §4.5 promete que
   // ela entra na projeção desde o primeiro dia. Só vale enquanto não há
@@ -198,7 +220,10 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       0,
     );
 
-  const geradas = await ocorrenciasJaGeradas(primeiroDiaDesteMes, ultimoDiaDoMes(referencia));
+  const [geradas, feriados] = await Promise.all([
+    ocorrenciasJaGeradas(primeiroDiaDesteMes, ultimoDiaDoMes(referencia)),
+    listarFeriados(),
+  ]);
 
   const resumoDoPrevisto = resumirPrevisto(
     previstoDoMes(
@@ -208,10 +233,13 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
         tipo: r.tipo as 'receita' | 'despesa',
         valorPrevisto: r.valor_previsto === null ? null : paraCentavos(r.valor_previsto),
         dia: r.dia,
+        regra: r.regra_do_dia as RegraDoDia,
+        terminaEm: r.termina_em,
       })),
       geradas,
       primeiroDiaDesteMes,
       referencia,
+      feriados,
     ),
   );
 
@@ -226,6 +254,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       rendaFixaMensal,
     ),
     fixasMensais,
+    fixasComPrazo,
     provisaoEventualMensal,
     medianaDasVariaveis: mediana(historicoDeVariaveis) ?? 0,
     aindaNesteMes,
