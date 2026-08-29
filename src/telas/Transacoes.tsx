@@ -242,30 +242,43 @@ export function Transacoes() {
         data em que aconteceu, o lugar é Relatórios.
       </p>
 
-      <div className="flex flex-wrap gap-2">
-        <FiltroChip ativo={contaId === null} aoClicar={() => setContaId(null)}>
-          Todas as contas
-        </FiltroChip>
-        {(contas.data ?? []).map((conta) => (
-          <FiltroChip
-            key={conta.id}
-            ativo={contaId === conta.id}
-            aoClicar={() => setContaId(conta.id)}
-          >
-            <span className="flex items-center gap-1.5">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
-              />
-              {conta.nome}
-              {/* Dois filtros escritos "Nubank" — a conta e o cartão — não dão
-                  para distinguir. Aqui a fila é uma só, então o rótulo resolve. */}
-              {conta.tipo === 'cartao_credito' && (
-                <span className="opacity-60">· cartão</span>
-              )}
-            </span>
+      {/* Em duas filas rotuladas, e não numa só.
+          Com um cartão por banco, a fila única virava onze chips embaralhados,
+          metade deles com o mesmo nome do outro — e o rótulo "· cartão" em cada
+          um era a gambiarra que segurava isso de pé. O título do grupo diz a
+          mesma coisa uma vez, para todos. */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <FiltroChip ativo={contaId === null} aoClicar={() => setContaId(null)}>
+            Todas
           </FiltroChip>
-        ))}
+          {(contas.data ?? [])
+            .filter((c) => c.tipo !== 'cartao_credito')
+            .map((conta) => (
+              <ChipDeFiltroDeConta
+                key={conta.id}
+                conta={conta}
+                ativo={contaId === conta.id}
+                aoClicar={() => setContaId(conta.id)}
+              />
+            ))}
+        </div>
+
+        {(contas.data ?? []).some((c) => c.tipo === 'cartao_credito') && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">cartão</span>
+            {(contas.data ?? [])
+              .filter((c) => c.tipo === 'cartao_credito')
+              .map((conta) => (
+                <ChipDeFiltroDeConta
+                  key={conta.id}
+                  conta={conta}
+                  ativo={contaId === conta.id}
+                  aoClicar={() => setContaId(conta.id)}
+                />
+              ))}
+          </div>
+        )}
       </div>
 
       {fila.pendentes > 0 && (
@@ -792,5 +805,27 @@ function BlocoDaFatura({
         </ul>
       )}
     </li>
+  );
+}
+
+function ChipDeFiltroDeConta({
+  conta,
+  ativo,
+  aoClicar,
+}: {
+  conta: { nome: string; cor: string | null };
+  ativo: boolean;
+  aoClicar: () => void;
+}) {
+  return (
+    <FiltroChip ativo={ativo} aoClicar={aoClicar}>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+        />
+        {conta.nome}
+      </span>
+    </FiltroChip>
   );
 }
