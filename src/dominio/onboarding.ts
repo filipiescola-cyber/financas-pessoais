@@ -121,12 +121,19 @@ export function trilhaDe(status: StatusOnboarding): Trilha {
  *
  * A regra certa é abrir no primeiro passo que ainda pede alguma coisa:
  *
+ *   trilha não escolhida -> a escolha, que precede tudo
  *   não concluído   -> onde parou
  *   concluído com passo adiado -> no primeiro adiado, que é o que o banner do
  *                                 Início promete quando diz "preencher agora"
  *   concluído e completo       -> do começo, para servir de revisão
  */
 export function passoDeEntrada(status: StatusOnboarding): PassoDoOnboarding {
+  // Quem nunca escolheu trilha é perguntado, mesmo tendo progresso gravado.
+  // Sem isto, quem já tinha um onboarding em andamento caía direto no passo
+  // salvo e era posto na trilha rápida por omissão — decidindo por ele
+  // justamente a escolha que a tela existe para oferecer.
+  if (status.trilha === undefined) return 'trilha';
+
   const passos = passosDaTrilha(trilhaDe(status));
   if (!status.concluido) {
     // Trocar de trilha pode deixar o passo gravado fora da lista. Nesse caso a

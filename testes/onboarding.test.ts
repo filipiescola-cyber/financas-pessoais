@@ -10,7 +10,12 @@ import {
 describe('onde o wizard abre (§4.1)', () => {
   it('em andamento, retoma de onde parou', () => {
     expect(
-      passoDeEntrada({ concluido: false, passoAtual: 'cartoes', pulados: [] }),
+      passoDeEntrada({
+        concluido: false,
+        passoAtual: 'cartoes',
+        pulados: [],
+        trilha: 'rapida',
+      }),
     ).toBe('cartoes');
   });
 
@@ -22,6 +27,7 @@ describe('onde o wizard abre (§4.1)', () => {
       concluido: true,
       passoAtual: 'categorias',
       pulados: [],
+      trilha: 'rapida',
     });
     expect(entrada).not.toBe('categorias');
     expect(entrada).toBe('trilha');
@@ -34,6 +40,7 @@ describe('onde o wizard abre (§4.1)', () => {
         concluido: true,
         passoAtual: 'categorias',
         pulados: ['parcelamentos'],
+        trilha: 'rapida',
       }),
     ).toBe('parcelamentos');
   });
@@ -44,6 +51,7 @@ describe('onde o wizard abre (§4.1)', () => {
         concluido: true,
         passoAtual: 'categorias',
         pulados: ['parcelamentos', 'fatura-aberta'],
+        trilha: 'rapida',
       }),
     ).toBe('fatura-aberta');
   });
@@ -118,5 +126,33 @@ describe('entrada com trilha', () => {
       trilha: 'completa' as const,
     };
     expect(passoDeEntrada(status)).toBe('parcelamentos');
+  });
+});
+
+describe('quem já tinha progresso antes da escolha existir', () => {
+  it('é perguntado sobre a trilha, em vez de cair no passo salvo', () => {
+    // O bug: quem já estava no meio do onboarding abria direto na carteira e
+    // era posto na trilha rápida por omissão — o app decidindo por ele
+    // justamente a escolha que a tela existe para oferecer.
+    expect(
+      passoDeEntrada({ concluido: false, passoAtual: 'carteira', pulados: [] }),
+    ).toBe('trilha');
+  });
+
+  it('depois de escolher, a pergunta não volta', () => {
+    expect(
+      passoDeEntrada({
+        concluido: false,
+        passoAtual: 'carteira',
+        pulados: [],
+        trilha: 'rapida',
+      }),
+    ).toBe('carteira');
+  });
+
+  it('vale também para quem já tinha concluído', () => {
+    expect(
+      passoDeEntrada({ concluido: true, passoAtual: 'categorias', pulados: [] }),
+    ).toBe('trilha');
   });
 });

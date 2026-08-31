@@ -68,6 +68,10 @@ export function Onboarding() {
   const [passo, setPasso] = useState<PassoDoOnboarding | null>(null);
   const [pulados, setPulados] = useState<PassoDoOnboarding[]>([]);
   const [escolhida, setEscolhida] = useState<Trilha | undefined>(undefined);
+  // Onde o usuário estava antes de ser perguntado sobre a trilha. Sem guardar
+  // isso, quem já tinha progresso seria mandado de volta ao primeiro passo só
+  // por ter respondido a uma pergunta nova.
+  const [retomarEm, setRetomarEm] = useState<PassoDoOnboarding | null>(null);
 
   useEffect(() => {
     if (status.data && passo === null) {
@@ -77,6 +81,7 @@ export function Onboarding() {
       setPasso(passoDeEntrada(status.data));
       setPulados(status.data.pulados);
       setEscolhida(status.data.trilha);
+      setRetomarEm(status.data.trilha === undefined ? status.data.passoAtual : null);
     }
   }, [status.data, passo]);
 
@@ -150,7 +155,17 @@ export function Onboarding() {
         <PassoTrilha
           escolhida={trilha}
           aoEscolher={setEscolhida}
-          aoAvancar={() => avancar()}
+          aoAvancar={() => {
+            // Volta para onde parou, quando o passo salvo ainda existe na
+            // trilha escolhida. Trocar para uma trilha que não o tem cai no
+            // começo, que é o único destino honesto.
+            const retomar =
+              retomarEm && retomarEm !== 'trilha' && passos.includes(retomarEm)
+                ? retomarEm
+                : null;
+            setRetomarEm(null);
+            return retomar ? irPara(retomar) : avancar();
+          }}
         />
       )}
       {passo === 'carteira' && <PassoCarteira aoAvancar={() => avancar()} />}
