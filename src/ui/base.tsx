@@ -172,7 +172,7 @@ export function Botao({
 }: {
   children: ReactNode;
   aoClicar?: () => void;
-  tipo?: 'primario' | 'secundario' | 'discreto';
+  tipo?: 'primario' | 'secundario' | 'discreto' | 'perigo';
   desabilitado?: boolean;
   submit?: boolean;
   className?: string;
@@ -183,6 +183,9 @@ export function Botao({
       'bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-950/40',
     secundario: 'border border-borda-forte text-slate-200 hover:border-slate-500',
     discreto: 'text-slate-400 hover:text-slate-200',
+    // Para o que não se desfaz. Não é o botão mais bonito da tela de propósito:
+    // ele confirma uma decisão, nunca convida a tomá-la.
+    perigo: 'border border-red-800 text-red-300 hover:border-red-600 hover:text-red-200',
   } as const;
 
   return (

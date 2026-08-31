@@ -308,6 +308,111 @@ export async function atualizarInvestimento(
   if (error) throw new Error(error.message);
 }
 
+/** O que uma exclusão vai desfazer, para a tela dizer antes de agir. */
+export type PreviaDaExclusao = {
+  lancamentos: number;
+  /** Efeito no saldo de cada conta. Positivo = o dinheiro volta para ela. */
+  efeitos: { contaId: string; nome: string; delta: Centavos }[];
+};
+
+/**
+ * Excluir é para o que NUNCA ACONTECEU (§7.4).
+ *
+ * Arquivar é para o que acabou: a aplicação sai da carteira e o histórico
+ * continua contando a verdade. Não serve para erro de digitação — arquivar uma
+ * aplicação duplicada esconde a linha e deixa a transferência do aporte no
+ * extrato, então a conta corrente fica mais pobre para sempre por um dinheiro
+ * que nunca saiu.
+ *
+ * A trava não é tempo, é consequência: a tela mostra exatamente quantos
+ * lançamentos somem e quanto volta para cada conta, e quem decide é quem sabe
+ * se o dinheiro se moveu de verdade. Uma aplicação recém-cadastrada por engano
+ * tem um lançamento para desfazer; uma de três anos tem trinta, e a própria
+ * frase avisa.
+ */
+export async function previaDaExclusao(investimentoId: string): Promise<PreviaDaExclusao> {
+  const alvos = await transacoesDoInvestimento(investimentoId);
+  if (alvos.length === 0) return { lancamentos: 0, efeitos: [] };
+
+  const { data: contas } = await supabase.from('contas').select('id, nome');
+  const nomes = new Map((contas ?? []).map((c) => [c.id, c.nome]));
+
+  const porConta = new Map<string, Centavos>();
+  for (const linha of alvos) {
+    // Apagar o lançamento devolve à conta o oposto do que ele fez.
+    const delta = -paraCentavos(linha.valor);
+    porConta.set(linha.conta_id, (porConta.get(linha.conta_id) ?? 0) + delta);
+  }
+
+  return {
+    lancamentos: alvos.length,
+    efeitos: [...porConta.entries()]
+      .filter(([, delta]) => delta !== 0)
+      .map(([contaId, delta]) => ({ contaId, nome: nomes.get(contaId) ?? 'Conta', delta }))
+      .sort((a, b) => b.delta - a.delta),
+  };
+}
+
+/**
+ * Apaga a aplicação e tudo que ela criou.
+ *
+ * A ordem importa e é imposta pelo banco: as movimentações seguram tanto o
+ * investimento quanto os lançamentos (`on delete restrict`, §7.4), então elas
+ * saem primeiro. É a mesma ordem que o "recomeçar do zero" já usava.
+ */
+export async function excluirInvestimento(investimentoId: string): Promise<void> {
+  const alvos = await transacoesDoInvestimento(investimentoId);
+
+  const { error: erroMovimentos } = await supabase
+    .from('movimentacoes_investimento')
+    .delete()
+    .eq('investimento_id', investimentoId);
+  if (erroMovimentos) throw new Error(erroMovimentos.message);
+
+  if (alvos.length > 0) {
+    const { error } = await supabase
+      .from('transacoes')
+      .delete()
+      .in('id', alvos.map((t) => t.id));
+    if (error) throw new Error(error.message);
+  }
+
+  const { error } = await supabase.from('investimentos').delete().eq('id', investimentoId);
+  if (error) throw new Error(error.message);
+}
+
+/** Os dois lados de cada transferência que os movimentos criaram. */
+async function transacoesDoInvestimento(investimentoId: string) {
+  const { data: movimentos, error } = await supabase
+    .from('movimentacoes_investimento')
+    .select('transacao_id')
+    .eq('investimento_id', investimentoId)
+    .not('transacao_id', 'is', null);
+  if (error) throw error;
+
+  const ids = (movimentos ?? []).map((m) => m.transacao_id!).filter(Boolean);
+  if (ids.length === 0) return [];
+
+  // A movimentação guarda só a perna do caixa; a outra vem pelo par. Sem as
+  // duas, o saldo da conta Investimentos ficaria com metade da transferência.
+  const { data: pernas, error: erroPernas } = await supabase
+    .from('transacoes')
+    .select('id, conta_id, valor, transferencia_par_id')
+    .in('id', ids);
+  if (erroPernas) throw erroPernas;
+
+  const pares = (pernas ?? []).map((t) => t.transferencia_par_id).filter((id): id is string => !!id);
+  if (pares.length === 0) return pernas ?? [];
+
+  const { data: outras, error: erroOutras } = await supabase
+    .from('transacoes')
+    .select('id, conta_id, valor, transferencia_par_id')
+    .in('id', pares);
+  if (erroOutras) throw erroOutras;
+
+  return [...(pernas ?? []), ...(outras ?? [])];
+}
+
 export async function arquivarInvestimento(id: string): Promise<void> {
   const { error } = await supabase.from('investimentos').update({ ativo: false }).eq('id', id);
   if (error) throw new Error(error.message);

@@ -11,6 +11,8 @@ import {
   conferirInvestimento,
   aportarEmInvestimento,
   atualizarInvestimento,
+  excluirInvestimento,
+  previaDaExclusao,
   criarInvestimento,
   type Investimento,
   desarquivarInvestimento,
@@ -325,6 +327,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const [resgatando, setResgatando] = useState(false);
   const [editando, setEditando] = useState(false);
   const [aportando, setAportando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
 
   const arquivar = useMutation({
     mutationFn: () => arquivarInvestimento(item.investimento.id),
@@ -449,10 +452,25 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
         >
           Arquivar
         </button>
+        <button
+          onClick={() => setExcluindo((v) => !v)}
+          title="Para o que nunca aconteceu: apaga a aplicação e desfaz os lançamentos que ela criou."
+          className={`text-xs text-slate-600 hover:text-red-400 ${ALVO_DE_TOQUE}`}
+        >
+          {excluindo ? 'Cancelar' : 'Excluir'}
+        </button>
       </div>
 
       {editando && (
         <EdicaoDoInvestimento investimento={inv} aoTerminar={() => setEditando(false)} />
+      )}
+
+      {excluindo && (
+        <ExclusaoDoInvestimento
+          investimentoId={inv.id}
+          nome={inv.nome}
+          aoTerminar={() => setExcluindo(false)}
+        />
       )}
 
       {aportando && (
@@ -1102,6 +1120,99 @@ function AporteNoInvestimento({
       <p className="text-[11px] leading-relaxed text-slate-500">
         O dinheiro sai da conta como transferência, não como despesa: aplicar não é gastar.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Excluir uma aplicação que nunca existiu (§7.4).
+ *
+ * A diferença entre isto e Arquivar não é força, é natureza: arquivar é para o
+ * que ACABOU e preserva o histórico; excluir é para o que NUNCA ACONTECEU e
+ * desfaz o que o app registrou. Arquivar uma aplicação cadastrada em duplicidade
+ * esconde a linha e deixa a transferência do aporte no extrato — a conta fica
+ * mais pobre para sempre por um dinheiro que nunca saiu.
+ *
+ * A trava não é tempo, é consequência. O que torna isto seguro é a frase antes
+ * do clique: quantos lançamentos somem e quanto volta para cada conta. Uma
+ * aplicação recém-cadastrada por engano tem um lançamento para desfazer; uma de
+ * três anos tem trinta, e a própria contagem avisa que não é isso que se quer.
+ */
+function ExclusaoDoInvestimento({
+  investimentoId,
+  nome,
+  aoTerminar,
+}: {
+  investimentoId: string;
+  nome: string;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const { mostrar } = usarAviso();
+
+  const previa = useQuery({
+    queryKey: ['investimento-previa-exclusao', investimentoId],
+    queryFn: () => previaDaExclusao(investimentoId),
+  });
+
+  const excluir = useMutation({
+    mutationFn: () => excluirInvestimento(investimentoId),
+    onSuccess: async () => {
+      await cliente.invalidateQueries();
+      mostrar(`${nome} foi excluída, e os lançamentos dela desfeitos.`);
+    },
+  });
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-red-900/60 bg-red-950/20 p-3">
+      {previa.isPending ? (
+        <p className="text-sm text-slate-400">Vendo o que isso desfaz…</p>
+      ) : previa.isError ? (
+        <p className="text-sm text-red-400">{(previa.error as Error).message}</p>
+      ) : (
+        <>
+          <p className="text-sm text-slate-200">
+            {previa.data!.lancamentos === 0
+              ? 'Nada foi lançado por esta aplicação: excluir não mexe em conta nenhuma.'
+              : `Excluir vai apagar ${previa.data!.lancamentos} lançamento(s) e mudar o saldo dos meses em que eles caem.`}
+          </p>
+
+          {previa.data!.efeitos.length > 0 && (
+            <ul className="space-y-1">
+              {previa.data!.efeitos.map((efeito) => (
+                <li key={efeito.contaId} className="flex justify-between gap-3 text-sm">
+                  <span className="truncate text-slate-300">{efeito.nome}</span>
+                  <span className={efeito.delta > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                    {efeito.delta > 0 ? 'volta ' : 'sai '}
+                    <Dinheiro centavos={Math.abs(efeito.delta)} className="text-inherit" />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="text-xs leading-relaxed text-slate-500">
+            Só faça isso se o dinheiro <strong>não se moveu de verdade</strong> — cadastro
+            duplicado, valor digitado errado. Se a aplicação existiu e acabou, o certo é Arquivar,
+            que preserva o histórico; se ela existe e você tirou o dinheiro, é Resgatar.
+          </p>
+        </>
+      )}
+
+      {excluir.isError && <p className="text-sm text-red-400">{(excluir.error as Error).message}</p>}
+
+      <div className="flex gap-2">
+        <Botao
+          aoClicar={() => excluir.mutate()}
+          desabilitado={previa.isPending || excluir.isPending}
+          tipo="perigo"
+        >
+          {excluir.isPending ? 'Excluindo…' : 'Excluir mesmo assim'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
     </div>
   );
 }
