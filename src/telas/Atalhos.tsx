@@ -9,13 +9,15 @@ import { usarCriarModelo, usarExcluirModelo, usarModelos, usarRecorrencias } fro
 import { arquivarRecorrencia, criarRecorrencia } from '../dados/recorrencias';
 import { usarFeriados } from '../dados/usarFeriados';
 import {
+  CampoInicio,
   CampoPrazo,
   CampoQuando,
   diaEhValido,
+  inicioEscolhido,
   terminoEscolhido,
   type ModoDePrazo,
 } from '../ui/CampoQuando';
-import { hoje } from '../dominio/datas';
+import { formatarBR, hoje } from '../dominio/datas';
 import { repeticoesRestantes, rotuloDoDia, type RegraDoDia } from '../dominio/recorrencias';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
@@ -168,6 +170,9 @@ function ListaDeRecorrencias({
                       {recorrencia.tipo === 'receita' ? 'Entrada' : 'Saída'} ·{' '}
                       {rotuloDoDia(recorrencia.dia, recorrencia.regra)} ·{' '}
                       {nomeConta.get(recorrencia.contaId) ?? '—'}
+                      {recorrencia.comecaEm > hoje() && (
+                        <> · começa em {formatarBR(recorrencia.comecaEm)}</>
+                      )}
                       {recorrencia.terminaEm !== null && (
                         <>
                           {' '}
@@ -343,6 +348,7 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
   const [valor, setValor] = useState<Centavos>(0);
   const [dia, setDia] = useState('');
   const [regra, setRegra] = useState<RegraDoDia>('fixo');
+  const [mesInicial, setMesInicial] = useState('');
   const [modoPrazo, setModoPrazo] = useState<ModoDePrazo>('sem');
   const [parcelas, setParcelas] = useState('');
   const [mesFinal, setMesFinal] = useState('');
@@ -373,6 +379,7 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
         natureza: 'fixa',
         dia: diaNumero,
         regra,
+        comecaEm: inicioEscolhido(mesInicial),
         terminaEm,
       }),
     onSuccess: async () => {
@@ -425,9 +432,12 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
         dia={dia}
         regra={regra}
         feriados={feriados}
+        aPartirDe={inicioEscolhido(mesInicial)}
         aoMudarDia={setDia}
         aoMudarRegra={setRegra}
       />
+
+      <CampoInicio mes={mesInicial} aoMudar={setMesInicial} />
 
       <CampoPrazo
         modo={modoPrazo}

@@ -16,6 +16,7 @@ const salario: RecorrenciaPrevista = {
   valorPrevisto: 600000,
   dia: 27,
   regra: 'fixo',
+  comecaEm: '2020-01-01',
   terminaEm: null,
 };
 
@@ -26,6 +27,7 @@ const aluguel: RecorrenciaPrevista = {
   valorPrevisto: 150000,
   dia: 5,
   regra: 'fixo',
+  comecaEm: '2020-01-01',
   terminaEm: null,
 };
 
@@ -169,5 +171,57 @@ describe('prazo no previsto', () => {
     const itens = previstoDoMes([folha], new Set(), '2026-09-01', '2026-09-01', FERIADOS);
     // 07/09 é feriado: o 5º dia útil de setembro cai em 08.
     expect(itens[0]!.dataPrevista).toBe('2026-09-08');
+  });
+});
+
+describe('data de início', () => {
+  it('não aparece antes de começar', () => {
+    const assinatura: RecorrenciaPrevista = { ...aluguel, comecaEm: '2026-11-01' };
+
+    // Agosto: a assinatura ainda não vale. Não é atraso, é futuro.
+    expect(previstoDoMes([assinatura], new Set(), MES, '2026-08-20', FERIADOS)).toEqual([]);
+  });
+
+  it('aparece a partir do mês em que começa', () => {
+    const assinatura: RecorrenciaPrevista = { ...aluguel, comecaEm: '2026-11-01' };
+    const itens = previstoDoMes([assinatura], new Set(), '2026-11-01', '2026-11-20', FERIADOS);
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.dataPrevista).toBe('2026-11-05');
+  });
+
+  it('e não empurra o saldo dos meses anteriores ao início', () => {
+    const assinatura: RecorrenciaPrevista = { ...aluguel, comecaEm: '2026-11-01' };
+    const ate2027 = previstoAteOMes(
+      [assinatura],
+      new Set(),
+      '2026-08-01',
+      '2026-11-01',
+      '2026-08-01',
+      FERIADOS,
+    );
+    expect(ate2027).toBe(0);
+  });
+});
+
+describe('ocorrência dispensada', () => {
+  it('some da lista em vez de voltar como atraso', () => {
+    // O mês em que o freela não veio: apagado de propósito, não é pendência.
+    const puladas = new Set([chaveDaOcorrencia('r2', '2026-08-05')]);
+    expect(previstoDoMes([aluguel], new Set(), MES, '2026-08-20', FERIADOS, puladas)).toEqual([]);
+  });
+
+  it('só afeta o mês dispensado, nunca a recorrência inteira', () => {
+    const puladas = new Set([chaveDaOcorrencia('r2', '2026-08-05')]);
+    const setembro = previstoDoMes([aluguel], new Set(), '2026-09-01', '2026-09-20', FERIADOS, puladas);
+    expect(setembro).toHaveLength(1);
+  });
+
+  it('e não pesa no saldo dos meses seguintes', () => {
+    const puladas = new Set([chaveDaOcorrencia('r2', '2026-09-05')]);
+    const semPular = previstoAteOMes([aluguel], new Set(), MES, '2026-10-01', '2026-08-01', FERIADOS);
+    const pulando = previstoAteOMes(
+      [aluguel], new Set(), MES, '2026-10-01', '2026-08-01', FERIADOS, puladas,
+    );
+    expect(pulando - semPular).toBe(150000);
   });
 });

@@ -15,7 +15,7 @@ import { gerarAlertas, ordenarPorGravidade } from '../dominio/alertas';
 import { formatarBR } from '../dominio/datas';
 import { useMutation } from '@tanstack/react-query';
 import { previstoDoMes, resumirPrevisto, type ItemPrevisto } from '../dominio/previsto';
-import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
+import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
@@ -326,7 +326,7 @@ function PrevistoDoMes({ mes }: { mes: string }) {
 
   const geradas = useQuery({
     queryKey: ['ocorrencias-geradas', mes],
-    queryFn: () => ocorrenciasJaGeradas(mes, ultimoDiaDoMes(mes)),
+    queryFn: () => ocorrenciasDoPeriodo(mes, ultimoDiaDoMes(mes)),
   });
 
   const lancar = useMutation({
@@ -352,12 +352,14 @@ function PrevistoDoMes({ mes }: { mes: string }) {
       valorPrevisto: r.valorPrevisto,
       dia: r.dia,
       regra: r.regra,
+      comecaEm: r.comecaEm,
       terminaEm: r.terminaEm,
     })),
-    geradas.data,
+    geradas.data.geradas,
     mes,
     hoje(),
     feriados,
+    geradas.data.puladas,
   );
 
   const resumo = resumirPrevisto(itens);

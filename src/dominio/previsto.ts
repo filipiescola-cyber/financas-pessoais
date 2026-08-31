@@ -13,7 +13,9 @@
 import type { Centavos } from './dinheiro';
 import { somarMeses, type DataISO } from './datas';
 import type { Feriados } from './diasUteis';
-import { dataDaOcorrencia, type RegraDoDia } from './recorrencias';
+import { chaveDaOcorrencia, dataDaOcorrencia, type RegraDoDia } from './recorrencias';
+
+export { chaveDaOcorrencia } from './recorrencias';
 
 export type SituacaoPrevista = 'lancado' | 'atrasado' | 'aguardando';
 
@@ -24,6 +26,8 @@ export type RecorrenciaPrevista = {
   valorPrevisto: Centavos | null;
   dia: number;
   regra: RegraDoDia;
+  /** Primeiro dia em que ela vale. Antes disso não existe previsão nenhuma. */
+  comecaEm: DataISO;
   /** Prazo, quando a recorrência tem fim. Depois dele ela some do previsto. */
   terminaEm: DataISO | null;
 };
@@ -37,11 +41,6 @@ export type ItemPrevisto = {
   situacao: SituacaoPrevista;
 };
 
-/** Chave natural do que já foi gerado: recorrência mais data de competência. */
-export function chaveDaOcorrencia(recorrenciaId: string, data: DataISO): string {
-  return `${recorrenciaId}|${data}`;
-}
-
 /**
  * O previsto do mês, item a item.
  *
@@ -51,9 +50,15 @@ export function chaveDaOcorrencia(recorrenciaId: string, data: DataISO): string 
  *
  * Dia 31 num mês curto cai no último dia, mesma regra do cartão e da geração.
  *
- * Recorrência com prazo vencido não aparece: depois da última parcela ela não
- * é mais "aguardando", é passado. Deixá-la na lista faria o mês seguinte a um
- * financiamento quitado continuar mostrando a parcela como pendência eterna.
+ * Fora da janela [começa, termina] a recorrência não aparece. Antes do início
+ * ela ainda não vale — uma assinatura que começa em novembro não está atrasada
+ * em setembro. Depois do prazo ela não é mais "aguardando", é passado, e o mês
+ * seguinte a um financiamento quitado não deve mostrar a parcela como pendência
+ * eterna.
+ *
+ * `puladas` são as ocorrências que o usuário apagou de propósito: elas somem da
+ * lista em vez de voltarem como atraso. O mês em que o freela não veio é um
+ * fato, e a recorrência continua valendo para os outros meses.
  */
 export function previstoDoMes(
   recorrencias: readonly RecorrenciaPrevista[],
@@ -61,11 +66,14 @@ export function previstoDoMes(
   mes: DataISO,
   hoje: DataISO,
   feriados: Feriados,
+  puladas: ReadonlySet<string> = new Set(),
 ): ItemPrevisto[] {
   return recorrencias
     .flatMap((recorrencia) => {
       const dataPrevista = dataDaOcorrencia(mes, recorrencia.dia, recorrencia.regra, feriados);
+      if (dataPrevista < recorrencia.comecaEm) return [];
       if (recorrencia.terminaEm !== null && dataPrevista > recorrencia.terminaEm) return [];
+      if (puladas.has(chaveDaOcorrencia(recorrencia.id, dataPrevista))) return [];
 
       const lancado = jaLancadas.has(chaveDaOcorrencia(recorrencia.id, dataPrevista));
 
@@ -152,11 +160,12 @@ export function previstoAteOMes(
   ateMes: DataISO,
   hoje: DataISO,
   feriados: Feriados,
+  puladas: ReadonlySet<string> = new Set(),
 ): Centavos {
   let total = 0;
 
   for (let mes = deMes; mes < ateMes; mes = somarMeses(mes, 1)) {
-    for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje, feriados)) {
+    for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje, feriados, puladas)) {
       if (item.situacao === 'lancado' || item.valor === null) continue;
       total += item.tipo === 'receita' ? item.valor : -item.valor;
     }

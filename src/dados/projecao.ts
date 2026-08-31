@@ -23,7 +23,7 @@ import { entraNaProjecaoDeRenda, type Natureza } from '../dominio/natureza';
 import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
 import { lerConfig } from './config';
 import { previstoDoMes, resumirPrevisto } from '../dominio/previsto';
-import { ocorrenciasJaGeradas } from './geracaoRecorrencias';
+import { ocorrenciasDoPeriodo } from './geracaoRecorrencias';
 import { listarFeriados } from './indicadores';
 import type { RegraDoDia } from '../dominio/recorrencias';
 import { supabase } from './supabase';
@@ -73,7 +73,9 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       .gte('data_competencia', inicioDoHistorico),
     supabase
       .from('recorrencias')
-      .select('id, descricao, dia, regra_do_dia, termina_em, valor_previsto, tipo, natureza')
+      .select(
+        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza',
+      )
       .eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
   ]);
@@ -220,8 +222,8 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       0,
     );
 
-  const [geradas, feriados] = await Promise.all([
-    ocorrenciasJaGeradas(primeiroDiaDesteMes, ultimoDiaDoMes(referencia)),
+  const [ocorrencias, feriados] = await Promise.all([
+    ocorrenciasDoPeriodo(primeiroDiaDesteMes, ultimoDiaDoMes(referencia)),
     listarFeriados(),
   ]);
 
@@ -234,12 +236,14 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
         valorPrevisto: r.valor_previsto === null ? null : paraCentavos(r.valor_previsto),
         dia: r.dia,
         regra: r.regra_do_dia as RegraDoDia,
+        comecaEm: r.comeca_em,
         terminaEm: r.termina_em,
       })),
-      geradas,
+      ocorrencias.geradas,
       primeiroDiaDesteMes,
       referencia,
       feriados,
+      ocorrencias.puladas,
     ),
   );
 

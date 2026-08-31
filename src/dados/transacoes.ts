@@ -18,6 +18,7 @@ import { gerarParcelas, gerarParcelasRestantes } from '../dominio/parcelas';
 import { idDaFatura, idsDasFaturas } from './faturas';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
+import { pularOcorrencia } from './geracaoRecorrencias';
 
 type InsercaoTransacao = Database['public']['Tables']['transacoes']['Insert'];
 type LinhaTransacao = Database['public']['Tables']['transacoes']['Row'];
@@ -40,6 +41,8 @@ export type Transacao = {
   transferenciaParId: string | null;
   transacaoPaiId: string | null;
   faturaId: string | null;
+  /** De qual recorrência este lançamento veio, quando veio de uma. */
+  recorrenciaId: string | null;
   motivoEmpresa: MotivoEmpresa | null;
   /** Sobrescreve a natureza da categoria (§2.5). Null = herda da categoria. */
   natureza: Natureza | null;
@@ -56,6 +59,7 @@ function daLinha(linha: LinhaTransacao): Transacao {
     tipo: linha.tipo as Transacao['tipo'],
     dataCompetencia: linha.data_competencia,
     dataCaixa: linha.data_caixa,
+    recorrenciaId: linha.recorrencia_id,
     grupoParcelamentoId: linha.grupo_parcelamento_id,
     parcelaNum: linha.parcela_num,
     parcelaTotal: linha.parcela_total,
@@ -338,11 +342,21 @@ export async function excluirParcelamento(
 /**
  * Exclui uma transação avulsa. Transferência apaga as duas pontas: deixar uma
  * sozinha desequilibra dois saldos de uma vez (§2.3).
+ *
+ * Veio de recorrência, a exclusão precisa deixar registro (§13.3). A
+ * idempotência da geração se apoia na EXISTÊNCIA da transação: apagar e não
+ * marcar faz a próxima abertura do app concluir que a ocorrência está faltando
+ * e criá-la de novo. O usuário apagava, o lançamento voltava, e a única saída
+ * era arquivar a recorrência inteira — perdendo os outros meses junto.
  */
 export async function excluirTransacao(transacao: Transacao): Promise<void> {
   const ids = [transacao.id];
   if (transacao.transferenciaParId) ids.push(transacao.transferenciaParId);
   await excluirTransacoes(ids);
+
+  if (transacao.recorrenciaId) {
+    await pularOcorrencia(transacao.recorrenciaId, transacao.dataCompetencia);
+  }
 }
 
 export async function marcarRevisado(id: string, revisado: boolean): Promise<void> {

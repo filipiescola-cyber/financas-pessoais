@@ -38,7 +38,7 @@ import {
   faturasQueAindaVaoSair,
   type BlocoDeFatura,
 } from '../dominio/agrupamento';
-import { gerarUmaOcorrencia, ocorrenciasJaGeradas } from '../dados/geracaoRecorrencias';
+import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
 import { statusDasFaturas } from '../dados/faturas';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
@@ -100,17 +100,25 @@ export function Transacoes() {
       valorPrevisto: r.valorPrevisto,
       dia: r.dia,
       regra: r.regra,
+      comecaEm: r.comecaEm,
       terminaEm: r.terminaEm,
     }));
 
   const geradas = useQuery({
     queryKey: ['ocorrencias-geradas', mes],
-    queryFn: () => ocorrenciasJaGeradas(mes, ultimoDiaDoMes(mes)),
+    queryFn: () => ocorrenciasDoPeriodo(mes, ultimoDiaDoMes(mes)),
   });
 
   const previstos =
     recorrencias.data && geradas.data
-      ? previstoDoMes(recorrenciasPrevistas, geradas.data, mes, hoje(), feriados).filter(
+      ? previstoDoMes(
+          recorrenciasPrevistas,
+          geradas.data.geradas,
+          mes,
+          hoje(),
+          feriados,
+          geradas.data.puladas,
+        ).filter(
           (p) => p.situacao !== 'lancado',
         )
       : [];
@@ -141,7 +149,7 @@ export function Transacoes() {
 
   const geradasDaPonte = useQuery({
     queryKey: ['ocorrencias-geradas', 'ponte', mesCorrente, mes, contaId],
-    queryFn: () => ocorrenciasJaGeradas(mesCorrente, somarDias(mes, -1)),
+    queryFn: () => ocorrenciasDoPeriodo(mesCorrente, somarDias(mes, -1)),
     enabled: precisaDePonte,
   });
 
@@ -152,11 +160,12 @@ export function Transacoes() {
     : recorrencias.data && geradasDaPonte.data
       ? previstoAteOMes(
           recorrenciasPrevistas,
-          geradasDaPonte.data,
+          geradasDaPonte.data.geradas,
           mesCorrente,
           mes,
           hoje(),
           feriados,
+          geradasDaPonte.data.puladas,
         )
       : null;
 
@@ -471,7 +480,13 @@ function ItemDeTransacao({
     mutationFn: () => excluirTransacao(transacao),
     onSuccess: async () => {
       await invalidar();
-      mostrar('Lançamento excluído.');
+      // Vindo de recorrência, a exclusão vale só para aquele mês — e é preciso
+      // dizer, porque "some e não volta" é o oposto do que acontecia antes.
+      mostrar(
+        transacao.recorrenciaId
+          ? 'Excluído. Este mês não volta na próxima abertura; a recorrência segue nos outros.'
+          : 'Lançamento excluído.',
+      );
     },
   });
 

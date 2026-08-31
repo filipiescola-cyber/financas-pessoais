@@ -657,6 +657,35 @@ export type Database = {
           },
         ]
       }
+      ocorrencias_puladas: {
+        Row: {
+          created_at: string
+          data_competencia: string
+          recorrencia_id: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          data_competencia: string
+          recorrencia_id: string
+          usuario_id?: string
+        }
+        Update: {
+          created_at?: string
+          data_competencia?: string
+          recorrencia_id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocorrencias_puladas_recorrencia_id_fkey"
+            columns: ["recorrencia_id"]
+            isOneToOne: false
+            referencedRelation: "recorrencias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orcamentos: {
         Row: {
           categoria_id: string
@@ -759,6 +788,7 @@ export type Database = {
         Row: {
           ativo: boolean
           categoria_id: string | null
+          comeca_em: string
           conta_id: string
           created_at: string
           descricao: string
@@ -775,6 +805,7 @@ export type Database = {
         Insert: {
           ativo?: boolean
           categoria_id?: string | null
+          comeca_em?: string
           conta_id: string
           created_at?: string
           descricao: string
@@ -791,6 +822,7 @@ export type Database = {
         Update: {
           ativo?: boolean
           categoria_id?: string | null
+          comeca_em?: string
           conta_id?: string
           created_at?: string
           descricao?: string

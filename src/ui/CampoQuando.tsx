@@ -68,6 +68,7 @@ export function CampoQuando({
   dia,
   regra,
   feriados,
+  aPartirDe,
   aoMudarDia,
   aoMudarRegra,
 }: {
@@ -75,11 +76,17 @@ export function CampoQuando({
   dia: string;
   regra: RegraDoDia;
   feriados: Feriados;
+  /** De quando contar a próxima. Respeita a data de início escolhida abaixo. */
+  aPartirDe?: DataISO;
   aoMudarDia: (dia: string) => void;
   aoMudarRegra: (regra: RegraDoDia) => void;
 }) {
   const numero = Number(dia);
   const valido = diaEhValido(numero, regra);
+
+  // Sem isto a tela se contradizia: "a próxima cai em 10/09" logo acima de
+  // "começa em novembro".
+  const base = aPartirDe && aPartirDe > hoje() ? aPartirDe : hoje();
 
   return (
     <Campo rotulo={rotulo}>
@@ -108,7 +115,7 @@ export function CampoQuando({
           <p className="text-xs text-slate-500">
             {rotuloDoDia(numero, regra)} · a próxima cai em{' '}
             <span className="text-slate-300">
-              {formatarBR(proximaOcorrencia(hoje(), numero, regra, feriados))}
+              {formatarBR(proximaOcorrencia(base, numero, regra, feriados))}
             </span>
             .
           </p>
@@ -116,6 +123,46 @@ export function CampoQuando({
       </div>
     </Campo>
   );
+}
+
+/**
+ * Quando a recorrência passa a valer.
+ *
+ * Vazio significa "de hoje em diante", que é o caso comum. Existe para o outro:
+ * a assinatura que só começa em novembro, ou a que começou em março e está
+ * sendo cadastrada agora. Antes disto a geração usava a data de CADASTRO, então
+ * nada podia começar no futuro — e o que começou no passado começava errado.
+ *
+ * A granularidade é o mês porque o dia já foi respondido acima: "começa em
+ * novembro" mais "todo dia 10" é 10 de novembro, sem uma segunda chance de
+ * dizer dois dias diferentes.
+ */
+export function CampoInicio({
+  mes,
+  aoMudar,
+}: {
+  mes: string;
+  aoMudar: (mes: string) => void;
+}) {
+  return (
+    <Campo rotulo="Começa em (opcional)">
+      <input type="month" value={mes} onChange={(e) => aoMudar(e.target.value)} className={ENTRADA} />
+      <p className="mt-1.5 text-xs text-slate-500">
+        {/^\d{4}-\d{2}$/.test(mes)
+          ? `A primeira ocorrência cai em ${formatarBR(inicioDoMes(mes))} ou depois.`
+          : 'Em branco, vale de hoje em diante.'}
+      </p>
+    </Campo>
+  );
+}
+
+/** O primeiro dia do mês escolhido, que é o que o banco guarda. */
+export function inicioDoMes(mes: string): DataISO {
+  return `${mes}-01`;
+}
+
+export function inicioEscolhido(mes: string): DataISO {
+  return /^\d{4}-\d{2}$/.test(mes) ? inicioDoMes(mes) : hoje();
 }
 
 export function CampoPrazo({

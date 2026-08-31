@@ -46,6 +46,21 @@ export type Agenda = {
   terminaEm: DataISO | null;
 };
 
+/**
+ * Ocorrências que o usuário apagou de propósito (§13.3).
+ *
+ * A idempotência da geração se apoia na EXISTÊNCIA da transação: sem esta
+ * lista, apagar um lançamento gerado não adianta nada — a próxima abertura
+ * conclui que a ocorrência falta e a cria de novo, e a única saída fica sendo
+ * arquivar a recorrência inteira, perdendo os outros meses junto.
+ */
+export type Puladas = ReadonlySet<string>;
+
+/** A mesma chave da geração: recorrência mais competência. */
+export function chaveDaOcorrencia(recorrenciaId: string, data: DataISO): string {
+  return `${recorrenciaId}|${data}`;
+}
+
 const ORDINAIS = ['', '1º', '2º', '3º', '4º', '5º', '6º', '7º', '8º', '9º', '10º'];
 
 function ordinal(n: number): string {

@@ -9,9 +9,11 @@ import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
 import {
+  CampoInicio,
   CampoPrazo,
   CampoQuando,
   diaEhValido,
+  inicioEscolhido,
   terminoEscolhido,
   type ModoDePrazo,
 } from '../ui/CampoQuando';
@@ -711,6 +713,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
   const [valor, setValor] = useState<Centavos>(0);
   const [dia, setDia] = useState('');
   const [regra, setRegra] = useState<RegraDoDia>('fixo');
+  const [mesInicial, setMesInicial] = useState('');
   const [modoPrazo, setModoPrazo] = useState<ModoDePrazo>('sem');
   const [parcelas, setParcelas] = useState('');
   const [mesFinal, setMesFinal] = useState('');
@@ -741,6 +744,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
         natureza: 'fixa',
         dia: diaNum,
         regra,
+        comecaEm: inicioEscolhido(mesInicial),
         terminaEm,
       }),
     onSuccess: async () => {
@@ -754,6 +758,7 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
       setValor(0);
       setDia('');
       setRegra('fixo');
+      setMesInicial('');
       setModoPrazo('sem');
       setParcelas('');
       setMesFinal('');
@@ -796,9 +801,11 @@ function PassoDespesasFixas({ aoAvancar }: { aoAvancar: () => void }) {
           dia={dia}
           regra={regra}
           feriados={feriados}
+          aPartirDe={inicioEscolhido(mesInicial)}
           aoMudarDia={setDia}
           aoMudarRegra={setRegra}
         />
+        <CampoInicio mes={mesInicial} aoMudar={setMesInicial} />
         <CampoPrazo
           modo={modoPrazo}
           parcelas={parcelas}

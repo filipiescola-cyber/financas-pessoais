@@ -7,7 +7,7 @@
 // e já entra na projeção do §8 desde o primeiro dia.
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
-import type { DataISO } from '../dominio/datas';
+import { hoje, type DataISO } from '../dominio/datas';
 import type { Natureza } from '../dominio/natureza';
 import type { RegraDoDia } from '../dominio/recorrencias';
 import { supabase } from './supabase';
@@ -24,6 +24,8 @@ export type Recorrencia = {
   dia: number;
   /** Com regra de dia útil, `dia` é ordinal e não data. */
   regra: RegraDoDia;
+  /** Primeiro dia em que ela vale. Pode ser no futuro. */
+  comecaEm: DataISO;
   /** Data da última ocorrência, quando a recorrência tem prazo. */
   terminaEm: DataISO | null;
   ativo: boolean;
@@ -39,6 +41,7 @@ export type NovaRecorrencia = {
   frequencia?: 'mensal' | 'semanal' | 'anual';
   dia: number;
   regra?: RegraDoDia;
+  comecaEm?: DataISO;
   terminaEm?: DataISO | null;
 };
 
@@ -61,6 +64,7 @@ export async function listarRecorrencias(): Promise<Recorrencia[]> {
     frequencia: linha.frequencia as Recorrencia['frequencia'],
     dia: linha.dia,
     regra: linha.regra_do_dia as RegraDoDia,
+    comecaEm: linha.comeca_em,
     terminaEm: linha.termina_em,
     ativo: linha.ativo,
   }));
@@ -80,6 +84,7 @@ export async function criarRecorrencia(nova: NovaRecorrencia): Promise<string> {
       frequencia: nova.frequencia ?? 'mensal',
       dia: nova.dia,
       regra_do_dia: nova.regra ?? 'fixo',
+      comeca_em: nova.comecaEm ?? hoje(),
       termina_em: nova.terminaEm ?? null,
     })
     .select('id')

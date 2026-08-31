@@ -57,12 +57,25 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
     (jaExistentes ?? []).map((linha) => `${linha.recorrencia_id}|${linha.data_competencia}`),
   );
 
+  // O que o usuário apagou de propósito. Sem esta lista a exclusão é inútil:
+  // some a transação, some a chave de idempotência, e a próxima abertura recria
+  // o lançamento como se ele estivesse faltando (§13.3).
+  const { data: dispensadas, error: erroPuladas } = await supabase
+    .from('ocorrencias_puladas')
+    .select('recorrencia_id, data_competencia');
+  if (erroPuladas) throw erroPuladas;
+
+  const puladas = new Set(
+    (dispensadas ?? []).map((linha) => `${linha.recorrencia_id}|${linha.data_competencia}`),
+  );
+
   let geradas = 0;
 
   for (const recorrencia of recorrencias) {
-    const criadaEm = (recorrencia.created_at ?? referencia).slice(0, 10);
+    // `comeca_em` e não `created_at`: cadastrar hoje uma assinatura que começa
+    // em novembro não pode despejar lançamentos de setembro e outubro.
     const vencimentos = vencimentosPendentes(
-      criadaEm,
+      recorrencia.comeca_em,
       referencia,
       {
         dia: recorrencia.dia,
@@ -74,6 +87,7 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
 
     for (const competencia of vencimentos) {
       if (jaGeradas.has(`${recorrencia.id}|${competencia}`)) continue;
+      if (puladas.has(`${recorrencia.id}|${competencia}`)) continue;
 
       const cartao = porConta.get(recorrencia.conta_id);
       const configuracao = cartao
@@ -197,20 +211,81 @@ export async function gerarUmaOcorrencia(
 
   const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);
   if (erroInsercao) throw new Error(erroInsercao.message);
+
+  // Lançar de novo desfaz a dispensa: quem pede a ocorrência explicitamente não
+  // quer que ela continue marcada como apagada de propósito.
+  await retomarOcorrencia(recorrenciaId, competencia);
+
   return 'criada';
 }
 
-/** O que já foi gerado no período, para saber o que ainda falta. */
-export async function ocorrenciasJaGeradas(de: DataISO, ate: DataISO): Promise<Set<string>> {
-  const { data, error } = await supabase
-    .from('transacoes')
-    .select('recorrencia_id, data_competencia')
-    .not('recorrencia_id', 'is', null)
-    .gte('data_competencia', de)
-    .lte('data_competencia', ate);
-  if (error) throw error;
+/**
+ * O que já aconteceu com as recorrências no período.
+ *
+ * As duas listas juntas porque toda tela que precisa de uma precisa da outra:
+ * `geradas` diz o que já virou lançamento, `puladas` diz o que foi dispensado
+ * de propósito. Sem a segunda, a ocorrência apagada reaparece como pendência
+ * atrasada — o mesmo problema da geração, um andar acima.
+ */
+export async function ocorrenciasDoPeriodo(
+  de: DataISO,
+  ate: DataISO,
+): Promise<{ geradas: Set<string>; puladas: Set<string> }> {
+  const [transacoes, dispensadas] = await Promise.all([
+    supabase
+      .from('transacoes')
+      .select('recorrencia_id, data_competencia')
+      .not('recorrencia_id', 'is', null)
+      .gte('data_competencia', de)
+      .lte('data_competencia', ate),
+    supabase
+      .from('ocorrencias_puladas')
+      .select('recorrencia_id, data_competencia')
+      .gte('data_competencia', de)
+      .lte('data_competencia', ate),
+  ]);
 
-  return new Set(
-    (data ?? []).map((linha) => `${linha.recorrencia_id}|${linha.data_competencia}`),
-  );
+  if (transacoes.error) throw transacoes.error;
+  if (dispensadas.error) throw dispensadas.error;
+
+  const chave = (l: { recorrencia_id: string | null; data_competencia: string }) =>
+    `${l.recorrencia_id}|${l.data_competencia}`;
+
+  return {
+    geradas: new Set((transacoes.data ?? []).map(chave)),
+    puladas: new Set((dispensadas.data ?? []).map(chave)),
+  };
+}
+
+/**
+ * Registra que uma ocorrência foi dispensada.
+ *
+ * Chamada ao apagar um lançamento que veio de recorrência. Não é bloqueio: o
+ * mês em que o freela não veio, ou o aluguel que foi perdoado, são fatos, e a
+ * recorrência continua valendo para todos os outros meses.
+ */
+export async function pularOcorrencia(
+  recorrenciaId: string,
+  competencia: DataISO,
+): Promise<void> {
+  const { error } = await supabase
+    .from('ocorrencias_puladas')
+    .upsert(
+      { recorrencia_id: recorrenciaId, data_competencia: competencia },
+      { onConflict: 'recorrencia_id,data_competencia' },
+    );
+  if (error) throw new Error(error.message);
+}
+
+/** Desfaz o pulo, para a geração voltar a criar aquela ocorrência. */
+export async function retomarOcorrencia(
+  recorrenciaId: string,
+  competencia: DataISO,
+): Promise<void> {
+  const { error } = await supabase
+    .from('ocorrencias_puladas')
+    .delete()
+    .eq('recorrencia_id', recorrenciaId)
+    .eq('data_competencia', competencia);
+  if (error) throw new Error(error.message);
 }
