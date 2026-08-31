@@ -12,7 +12,9 @@ import { primeiroMesNegativo, projetarFluxo } from '../dominio/projecao';
 import type { EntradaDosAlertas } from '../dominio/alertas';
 import { listarOrcamentos } from './orcamentos';
 import { montarDadosDaProjecao } from './projecao';
-import { dataDaOcorrencia, type RegraDoDia } from '../dominio/recorrencias';
+import type { RegraDoDia } from '../dominio/recorrencias';
+import { previstoDoMes } from '../dominio/previsto';
+import { ocorrenciasDoPeriodo } from './geracaoRecorrencias';
 import { somarDias } from '../dominio/datas';
 import { listarFeriados } from './indicadores';
 import { supabase } from './supabase';
@@ -47,7 +49,7 @@ export async function montarEntradaDosAlertas(
         .eq('status', 'aberta'),
       supabase
         .from('recorrencias')
-        .select('id, descricao, dia, regra_do_dia, termina_em')
+        .select('id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo')
         .eq('ativo', true),
       supabase
         .from('contas')
@@ -152,31 +154,42 @@ export async function montarEntradaDosAlertas(
   });
 
   // --- recorrência que não aconteceu -------------------------------------
-  const { data: geradas } = await supabase
-    .from('transacoes')
-    .select('recorrencia_id')
-    .gte('data_competencia', mes)
-    .lte('data_competencia', ultimoDiaDoMes(mes))
-    .not('recorrencia_id', 'is', null);
 
-  const jaGeradas = new Set((geradas ?? []).map((t) => t.recorrencia_id));
-  const feriados = await listarFeriados();
+  // Quem decide o que está pendente é `previstoDoMes`, não uma segunda conta
+  // aqui. Esta função já teve DUAS versões erradas da mesma regra: alertava
+  // recorrência que ainda nem começou, e alertava ocorrência que o usuário
+  // apagou de propósito. Reimplementar o cálculo é reimplementar as exceções —
+  // e a cópia sempre fica uma exceção atrás.
+  const [ocorrencias, feriados] = await Promise.all([
+    ocorrenciasDoPeriodo(mes, ultimoDiaDoMes(mes)),
+    listarFeriados(),
+  ]);
 
-  // A data esperada é calculada, nunca lida direto da coluna `dia`: com regra de
-  // dia útil aquele número é ORDINAL, e comparar "5" com o dia de hoje daria um
-  // alerta de atraso no dia 8 de todo mês para quem recebe no 5º dia útil.
-  const recorrenciasFaltando = (recorrencias.data ?? []).flatMap((r) => {
-    const esperada = dataDaOcorrencia(mes, r.dia, r.regra_do_dia as RegraDoDia, feriados);
-
-    // Recorrência que já terminou não está atrasada: acabou.
-    if (r.termina_em !== null && esperada > r.termina_em) return [];
+  const recorrenciasFaltando = previstoDoMes(
+    (recorrencias.data ?? []).map((r) => ({
+      id: r.id,
+      descricao: r.descricao,
+      tipo: r.tipo as 'receita' | 'despesa',
+      valorPrevisto: r.valor_previsto === null ? null : paraCentavos(r.valor_previsto),
+      dia: r.dia,
+      regra: r.regra_do_dia as RegraDoDia,
+      comecaEm: r.comeca_em,
+      terminaEm: r.termina_em,
+    })),
+    ocorrencias.geradas,
+    mes,
+    referencia,
+    feriados,
+    ocorrencias.puladas,
+  )
+    .filter((item) => item.situacao === 'atrasado')
     // Folga de 2 dias: cobrar no próprio dia geraria alerta para conta que ainda
     // vai cair à noite.
-    if (somarDias(esperada, 2) >= referencia) return [];
-    if (jaGeradas.has(r.id)) return [];
-
-    return [{ descricao: r.descricao, diaEsperado: Number(esperada.slice(8, 10)) }];
-  });
+    .filter((item) => somarDias(item.dataPrevista, 2) < referencia)
+    .map((item) => ({
+      descricao: item.descricao,
+      diaEsperado: Number(item.dataPrevista.slice(8, 10)),
+    }));
 
   // --- conta Empresa ------------------------------------------------------
   const contaEmpresa = (contas.data ?? []).find((c) => c.tipo === 'empresa');
