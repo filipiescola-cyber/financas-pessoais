@@ -149,9 +149,8 @@ export function taxaImplicita(
   parcelas: number,
 ): number | null {
   if (principal <= 0 || parcela <= 0 || parcelas <= 0) return null;
+  // Parcela vezes prazo até o financiado seria juro zero ou negativo.
   if (parcela * parcelas <= principal) return null;
-  // Acima de 100% ao mês não é financiamento, é erro de digitação.
-  if (parcela > principal * 1.5) return null;
 
   let baixo = 0;
   let alto = 1;
@@ -167,5 +166,11 @@ export function taxaImplicita(
   // exatamente o número que o usuário digitou. O ponto médio pode cair um
   // centavo abaixo — e um centavo de diferença aqui vira dezenas de reais de
   // saldo devedor errado ao longo de 360 parcelas.
+  // A busca vive em [0, 100% ao mês]. Parcela alta demais para caber nessa
+  // faixa devolve null em vez de um número plausível e errado — antes havia um
+  // corte arbitrário em "parcela acima de 1,5x o financiado", que recusava
+  // casos legítimos de prazo curto e ainda deixava passar os impossíveis.
+  if (parcelaPrice(principal, alto, parcelas) !== parcela) return null;
+
   return alto > 0 ? alto : null;
 }

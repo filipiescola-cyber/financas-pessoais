@@ -38,6 +38,7 @@ import { usarContas } from '../dados/usarContas';
 import { usarCartoes } from '../dados/usarCartoes';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
+import { ROTULO_TIPO_CONTA, type TipoDeConta } from '../dados/tipos';
 import { listarDividas } from '../dados/dividas';
 import { FormularioDeDivida } from './Dividas';
 
@@ -229,11 +230,41 @@ function Avancar({
   );
 }
 
-function Pular({ aoClicar }: { aoClicar: () => void }) {
+/**
+ * As duas saídas de um passo opcional (§4.1).
+ *
+ * Eram uma só, e isso confundia duas coisas diferentes: "vou preencher depois"
+ * e "isso não existe na minha vida". Quem não tem cartão não tem fatura aberta,
+ * e ficava com um aviso de configuração incompleta no Início para sempre —
+ * cobrando um dado que nunca vai existir.
+ *
+ * Só o ADIAR marca pendência. O "não tenho" resolve o passo: ele foi
+ * respondido, e a resposta foi não.
+ */
+function SaidasDoPasso({
+  naoTenho,
+  aoDispensar,
+  aoAdiar,
+}: {
+  naoTenho: string;
+  aoDispensar: () => void;
+  aoAdiar: () => void;
+}) {
   return (
-    <button onClick={aoClicar} className="w-full py-2 text-sm text-slate-500 hover:text-slate-300">
-      Pular por enquanto
-    </button>
+    <div className="space-y-1">
+      <button
+        onClick={aoDispensar}
+        className="w-full py-2 text-sm text-slate-400 hover:text-slate-200"
+      >
+        {naoTenho}
+      </button>
+      <button
+        onClick={aoAdiar}
+        className="w-full py-1 text-xs text-slate-600 hover:text-slate-400"
+      >
+        Tenho, mas preencho depois
+      </button>
+    </div>
   );
 }
 
@@ -289,6 +320,7 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
   const [nome, setNome] = useState('');
   const [instituicao, setInstituicao] = useState('');
   const [cor, setCor] = useState<string | null>(null);
+  const [tipo, setTipo] = useState<TipoDeConta>('corrente');
   const [saldo, setSaldo] = useState<Centavos>(0);
 
   const bancarias = (contas.data ?? []).filter((c) =>
@@ -296,13 +328,13 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
   );
 
   const criar = useMutation({
-    mutationFn: () =>
-      criarConta({ nome, tipo: 'corrente', instituicao, cor, saldoInicial: saldo }),
+    mutationFn: () => criarConta({ nome, tipo, instituicao, cor, saldoInicial: saldo }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['contas'] });
       setNome('');
       setInstituicao('');
       setCor(null);
+      setTipo('corrente');
       setSaldo(0);
     },
   });
@@ -353,6 +385,25 @@ function PassoContas({ dataDeCorte, aoAvancar }: { dataDeCorte: string; aoAvanca
           placeholder="Nome da conta"
           className="w-full rounded-lg border border-borda-forte bg-superficie-alta px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
         />
+        {/* O tipo estava fixo em corrente: poupança e conta de investimento só
+            dava para cadastrar depois, fora do onboarding — e quem tem as duas
+            saía daqui com metade do dinheiro fora do app. */}
+        <div className="flex flex-wrap gap-2">
+          {(['corrente', 'poupanca', 'investimento'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTipo(t)}
+              className={`rounded-full px-3 py-1.5 text-sm ${
+                tipo === t
+                  ? 'bg-emerald-600 text-white'
+                  : 'border border-borda-forte text-slate-300'
+              }`}
+            >
+              {ROTULO_TIPO_CONTA[t]}
+            </button>
+          ))}
+        </div>
+
         <CampoInstituicao
           instituicao={instituicao}
           cor={cor}
@@ -590,7 +641,11 @@ function PassoFaturaAberta({
       </div>
 
       <Avancar aoClicar={() => gravar.mutate()} desabilitado={gravar.isPending} />
-      <Pular aoClicar={aoPular} />
+      <SaidasDoPasso
+        naoTenho="Não tenho fatura em aberto"
+        aoDispensar={aoAvancar}
+        aoAdiar={aoPular}
+      />
     </div>
   );
 }
@@ -742,7 +797,11 @@ function PassoParcelamentos({
       </div>
 
       <Avancar aoClicar={aoAvancar} />
-      <Pular aoClicar={aoPular} />
+      <SaidasDoPasso
+        naoTenho="Não tenho parcelamento em andamento"
+        aoDispensar={aoAvancar}
+        aoAdiar={aoPular}
+      />
     </div>
   );
 }

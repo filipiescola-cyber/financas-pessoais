@@ -128,3 +128,31 @@ describe('taxa implícita', () => {
     expect(parcelaPrice(5000000, taxa, 120)).toBe(65000);
   });
 });
+
+describe('taxa implícita: o que ela recusa', () => {
+  it('devolve a taxa quando ela existe, mesmo em prazo curto', () => {
+    // O corte antigo era "parcela acima de 1,5x o financiado": recusava casos
+    // legítimos de poucas parcelas, que é onde a parcela é naturalmente alta.
+    const taxa = taxaImplicita(10000, 6000, 2);
+    expect(taxa).not.toBeNull();
+    expect(parcelaPrice(10000, taxa!, 2)).toBe(6000);
+  });
+
+  it('recusa o que não cabe em 100% ao mês, em vez de devolver número errado', () => {
+    // Antes, uma parcela absurda podia sair da faixa da bisseção e devolver
+    // uma taxa plausível que não reproduz a parcela informada.
+    expect(taxaImplicita(10000, 500000, 3)).toBeNull();
+  });
+
+  it('toda taxa devolvida reproduz exatamente a parcela informada', () => {
+    for (const [principal, parcela, n] of [
+      [100000, 8885, 12],
+      [5000000, 65000, 120],
+      [250000, 30000, 10],
+    ] as const) {
+      const taxa = taxaImplicita(principal, parcela, n);
+      if (taxa === null) continue;
+      expect(parcelaPrice(principal, taxa, n)).toBe(parcela);
+    }
+  });
+});

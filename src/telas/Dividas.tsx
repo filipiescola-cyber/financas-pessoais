@@ -367,6 +367,22 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
 
   const valido = nome.trim() !== '' && podeCalcular && n >= 1;
 
+  // Botão desabilitado sem dizer por quê é a pior forma de recusar: quem está
+  // preenchendo não descobre qual campo falta e conclui que a tela quebrou.
+  const faltando = [
+    nome.trim() === '' && 'o nome',
+    valor <= 0 && 'o valor financiado',
+    n < 1 && 'o número de parcelas',
+    modoDaTaxa === 'taxa' && taxaAnual.trim() === '' && 'a taxa',
+    modoDaTaxa === 'parcela' && valorDaParcela <= 0 && 'o valor da parcela',
+    modoDaTaxa === 'parcela' &&
+      valorDaParcela > 0 &&
+      n >= 1 &&
+      valor > 0 &&
+      taxaMensal === null &&
+      'uma parcela compatível: com esse valor não existe taxa possível',
+  ].filter((item): item is string => typeof item === 'string');
+
   const criar = useMutation({
     mutationFn: () =>
       criarDivida({
@@ -578,6 +594,12 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
       )}
 
       {criar.isError && <p className="text-sm text-red-400">{(criar.error as Error).message}</p>}
+
+      {faltando.length > 0 && (
+        <p className="text-xs leading-relaxed text-amber-400/80">
+          Falta {faltando.join(', ')}.
+        </p>
+      )}
 
       <div className="flex gap-2">
         <Botao aoClicar={() => criar.mutate()} desabilitado={!valido || criar.isPending}>
