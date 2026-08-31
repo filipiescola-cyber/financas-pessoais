@@ -26,6 +26,7 @@ import { usarContas } from '../dados/usarContas';
 import { podePagarFatura } from '../dominio/saldo';
 import type { CartaoComConta } from '../dados/tipos';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
+import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 
 export function Cartoes() {
   const cartoes = usarCartoes(true);
@@ -33,6 +34,9 @@ export function Cartoes() {
   const contas = usarContas();
   const atualizar = usarAtualizarCartao();
   const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
+
+  // O "+" da tela abre esta ficha, não a folha de lançamento (§5.1).
+  usarAcaoDaPagina('Novo cartão', () => setMostrandoFormulario(true));
 
   const pagadoras = (contas.data ?? []).filter(podePagarFatura);
 

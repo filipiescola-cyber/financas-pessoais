@@ -40,6 +40,7 @@ import {
 import { usarAviso } from '../ui/Aviso';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
+import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 
 const TIPOS: TipoDeInvestimento[] = [
   'cdb',
@@ -63,6 +64,9 @@ const TIPOS: TipoDeInvestimento[] = [
  */
 export function Investimentos() {
   const [criando, setCriando] = useState(false);
+
+  // O "+" da tela abre esta ficha, não a folha de lançamento (§5.1).
+  usarAcaoDaPagina('Nova aplicação', () => setCriando(true));
   const investimentos = useQuery({ queryKey: ['investimentos'], queryFn: () => calcularTodos() });
   const [agrupamento, setAgrupamento] = useState<Agrupamento>('instituicao');
   const [ordenacao, setOrdenacao] = useState<Ordenacao>('valor');

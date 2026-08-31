@@ -16,6 +16,7 @@ import { ALVO_DE_TOQUE, Botao, Cartao, Pagina, Secao } from '../ui/base';
 import { EscolherIcone } from '../ui/EscolherIcone';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import { ConfirmacaoDeExclusao } from '../ui/ConfirmacaoDeExclusao';
+import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 import type { TipoDeCategoria } from '../dados/tipos';
 
 const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
@@ -30,6 +31,9 @@ const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
 export function Categorias() {
   const [tipo, setTipo] = useState<TipoDeCategoria>('despesa');
   const [criando, setCriando] = useState(false);
+
+  // O "+" da tela abre esta ficha, não a folha de lançamento (§5.1).
+  usarAcaoDaPagina('Nova categoria', () => setCriando(true));
   const categorias = usarCategorias(true);
 
   const doTipo = (categorias.data ?? []).filter((c) => c.tipo === tipo);

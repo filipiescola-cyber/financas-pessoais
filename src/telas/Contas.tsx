@@ -14,6 +14,7 @@ import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { empresaComSaldoSuspeito, entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { CampoValor } from '../ui/CampoValor';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 import {
   usarAtualizarConta,
   usarContas,
@@ -34,6 +35,9 @@ export function Contas() {
   const contas = usarContasComSaldo();
   const todas = usarContas(true);
   const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
+
+  // O "+" da tela abre esta ficha, não a folha de lançamento (§5.1).
+  usarAcaoDaPagina('Nova conta', () => setMostrandoFormulario(true));
 
   if (contas.isPending) {
     return (

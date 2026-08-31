@@ -8,6 +8,7 @@ import { IconeMais, IconeOlho } from './icones';
 import { Logo } from './Logo';
 import { TEMAS, usarTema } from './Tema';
 import { ABAS_DO_CELULAR, GRUPOS, PRIMEIRO, type ItemDeNavegacao } from './navegacao';
+import { ProvedorDeAcao, usarAcaoAtual } from './AcaoDaPagina';
 
 /**
  * Casca do app, responsiva de propósito.
@@ -17,11 +18,22 @@ import { ABAS_DO_CELULAR, GRUPOS, PRIMEIRO, type ItemDeNavegacao } from './naveg
  * No desktop: barra lateral fixa, que dá espaço para o nome de cada seção e
  * deixa o conteúdo respirar.
  *
- * O botão de lançar é fixo e visível em TODAS as telas (§5.1).
+ * O botão de ação é fixo e visível em TODAS as telas (§5.1). Ele lança, exceto
+ * onde a página declara outra coisa — em Investimentos, o "+" grande prometia
+ * lançamento e a tela toda fala de aplicação (ver `AcaoDaPagina`).
  */
 export function Layout() {
+  return (
+    <ProvedorDeAcao>
+      <Casca />
+    </ProvedorDeAcao>
+  );
+}
+
+function Casca() {
   const { privado, alternar } = usarPrivacidade();
   const [lancando, setLancando] = useState(false);
+  const acaoDaPagina = usarAcaoAtual();
 
   // Nada roda sozinho neste app: quem dispara é a abertura (§13.3).
   usarRotinasDeAbertura();
@@ -47,8 +59,9 @@ export function Layout() {
       {/* O "+" é desenhado, não escrito: como texto ele depende das métricas da
           fonte e fica visivelmente fora do centro do círculo. */}
       <button
-        onClick={() => setLancando(true)}
-        aria-label="Lançar"
+        onClick={() => (acaoDaPagina ? acaoDaPagina.aoAtivar() : setLancando(true))}
+        aria-label={acaoDaPagina?.rotulo ?? 'Lançar'}
+        title={acaoDaPagina?.rotulo ?? 'Lançar'}
         className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xl shadow-emerald-950/50 transition hover:bg-emerald-500 active:scale-95 md:bottom-8 md:right-8 md:h-16 md:w-16"
       >
         <svg

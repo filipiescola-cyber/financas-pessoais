@@ -23,6 +23,7 @@ import { usarContasComSaldo } from '../dados/usarContas';
 import { calcularTodos } from '../dados/investimentos';
 import { CampoValor } from '../ui/CampoValor';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 
 /**
  * Metas e reserva de emergência (§8.8).
@@ -34,6 +35,9 @@ import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Dinheiro, ENTRADA
  */
 export function Metas() {
   const [criando, setCriando] = useState(false);
+
+  // O "+" da tela abre esta ficha, não a folha de lançamento (§5.1).
+  usarAcaoDaPagina('Nova meta', () => setCriando(true));
   const contas = usarContasComSaldo();
   const projecao = useQuery({ queryKey: ['projecao'], queryFn: () => montarDadosDaProjecao() });
   const metas = useQuery({ queryKey: ['metas'], queryFn: listarMetas });
