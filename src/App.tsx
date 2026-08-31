@@ -36,6 +36,7 @@ const Relatorios = tela(() => import('./telas/Relatorios'), 'Relatorios');
 const Orcamento = tela(() => import('./telas/Orcamento'), 'Orcamento');
 const Metas = tela(() => import('./telas/Metas'), 'Metas');
 const Investimentos = tela(() => import('./telas/Investimentos'), 'Investimentos');
+const Dividas = tela(() => import('./telas/Dividas'), 'Dividas');
 const Conferencia = tela(() => import('./telas/Conferencia'), 'Conferencia');
 const FluxoDeCaixa = tela(() => import('./telas/FluxoDeCaixa'), 'FluxoDeCaixa');
 const Fechamento = tela(() => import('./telas/Fechamento'), 'Fechamento');
@@ -97,6 +98,7 @@ export function App() {
                       <Route path="/orcamento" element={<Orcamento />} />
                       <Route path="/metas" element={<Metas />} />
                       <Route path="/investimentos" element={<Investimentos />} />
+                      <Route path="/dividas" element={<Dividas />} />
                       <Route path="/conferencia" element={<Conferencia />} />
                       <Route path="/fluxo" element={<FluxoDeCaixa />} />
                       <Route path="/fechamento" element={<Fechamento />} />

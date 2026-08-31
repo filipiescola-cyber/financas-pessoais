@@ -247,6 +247,68 @@ export type Database = {
           },
         ]
       }
+      dividas: {
+        Row: {
+          ativo: boolean
+          cor: string | null
+          created_at: string
+          id: string
+          instituicao: string | null
+          nome: string
+          parcelas: number
+          parcelas_pagas: number
+          primeira_parcela: string
+          quitada_em: string | null
+          recorrencia_id: string | null
+          sistema: string
+          taxa_mensal: number
+          usuario_id: string
+          valor_financiado: number
+        }
+        Insert: {
+          ativo?: boolean
+          cor?: string | null
+          created_at?: string
+          id?: string
+          instituicao?: string | null
+          nome: string
+          parcelas: number
+          parcelas_pagas?: number
+          primeira_parcela: string
+          quitada_em?: string | null
+          recorrencia_id?: string | null
+          sistema?: string
+          taxa_mensal?: number
+          usuario_id?: string
+          valor_financiado: number
+        }
+        Update: {
+          ativo?: boolean
+          cor?: string | null
+          created_at?: string
+          id?: string
+          instituicao?: string | null
+          nome?: string
+          parcelas?: number
+          parcelas_pagas?: number
+          primeira_parcela?: string
+          quitada_em?: string | null
+          recorrencia_id?: string | null
+          sistema?: string
+          taxa_mensal?: number
+          usuario_id?: string
+          valor_financiado?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dividas_recorrencia_id_fkey"
+            columns: ["recorrencia_id"]
+            isOneToOne: false
+            referencedRelation: "recorrencias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       faturas: {
         Row: {
           cartao_id: string

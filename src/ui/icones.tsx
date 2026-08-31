@@ -106,6 +106,17 @@ export function IconeOrcamento(p: Props) {
   );
 }
 
+/** Dívida: a seta que aponta para baixo, saindo. */
+export function IconeDividas(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M3 7h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M12 11v5M9.5 13.5 12 16l2.5-2.5" />
+    </Svg>
+  );
+}
+
 export function IconeInvestimentos(p: Props) {
   return (
     <Svg {...p}>

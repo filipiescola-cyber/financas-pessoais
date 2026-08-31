@@ -529,13 +529,17 @@ Conta do tipo `empresa`, opcional, criada no onboarding para quem tem MEI ou tra
 
 ### 4.7 Dívidas e financiamentos
 
-Financiamento, empréstimo, crediário fora do cartão. Modelar como conta do tipo `divida`, com saldo devedor que diminui.
+Financiamento, empréstimo, crediário fora do cartão. Tabela `dividas` própria, guardando os **parâmetros do contrato**.
 
-- Cadastro: valor total, número de parcelas, valor da parcela, taxa de juros, data da primeira.
-- Cada parcela paga é transferência da conta corrente para a dívida, reduzindo o saldo devedor.
+- Cadastro: valor financiado, número de parcelas, taxa, sistema de amortização, data da primeira, quantas já foram pagas.
+- **Com juros, sempre.** Cada parcela se divide em amortização e juros. Tratar a parcela inteira como abatimento erra o saldo devedor em centenas de milhares de reais num financiamento de 30 anos — e erra para menos, dizendo que você está quase quitando quando ainda falta metade.
+- Dois sistemas, porque os dois são usados no Brasil: **Price** (parcela constante — crédito pessoal, carro, consignado) e **SAC** (amortização constante, parcela decrescente — padrão do imobiliário, paga menos juros no total).
+- A taxa quase nunca está à mão. Aceitar os dois caminhos: quem sabe a taxa informa a taxa; quem sabe a parcela informa a parcela e o app deduz a taxa por bisseção.
 - Mostrar **quanto falta** e **em que mês acaba**. A data do fim é a informação que ninguém sabe de cabeça.
-- Entra na projeção do §8 como despesa fixa até a última parcela.
+- Entra na projeção do §8 como despesa fixa até a última parcela, via recorrência com prazo (§5.2) criada junto no cadastro. No SAC ela entra sem valor previsto, porque a parcela muda todo mês.
 - Com mais de uma dívida, ordenar por **taxa de juros**, nunca por valor. A mais cara primeiro.
+
+**Desvio consciente da versão anterior desta seção**, que mandava modelar como conta do tipo `divida` com saldo reduzido por transferências. O saldo devedor é função exata de (valor, taxa, prazo, sistema, parcelas pagas) — então ele é **calculado, nunca armazenado** (§13.2). Guardá-lo numa conta criaria o mesmo fato em dois lugares, e o segundo ficaria para trás na primeira correção do número de parcelas pagas. O tipo `divida` de conta continua existindo para dívida sem contrato conhecido.
 
 ### 4.8 Arquivar, nunca excluir
 
