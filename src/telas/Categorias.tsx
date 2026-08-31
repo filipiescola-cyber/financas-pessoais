@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROTULOS, type Natureza } from '../dominio/natureza';
 import {
   arquivarCategoria,
+  excluirCategoria,
+  previaDaExclusao,
   atualizarCategoria,
   criarCategoria,
   desarquivarCategoria,
@@ -13,6 +15,7 @@ import { usarAviso } from '../ui/Aviso';
 import { ALVO_DE_TOQUE, Botao, Cartao, Pagina, Secao } from '../ui/base';
 import { EscolherIcone } from '../ui/EscolherIcone';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
+import { ConfirmacaoDeExclusao } from '../ui/ConfirmacaoDeExclusao';
 import type { TipoDeCategoria } from '../dados/tipos';
 
 const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
@@ -126,6 +129,8 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
     },
   });
 
+  const [excluindo, setExcluindo] = useState(false);
+
   const arquivar = useMutation({
     mutationFn: () => arquivarCategoria(categoria.id),
     onSuccess: invalidar,
@@ -164,14 +169,25 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
           )}
         </div>
         {!categoria.sistema && (
-          <button
-            onClick={() => arquivar.mutate()}
-            className={`shrink-0 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-          >
-            Arquivar
-          </button>
+          <div className="flex shrink-0 gap-3">
+            <button
+              onClick={() => arquivar.mutate()}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              Arquivar
+            </button>
+            <button
+              onClick={() => setExcluindo((v) => !v)}
+              title="Para a categoria criada por engano, que nunca classificou nada."
+              className={`text-xs text-slate-600 hover:text-red-400 ${ALVO_DE_TOQUE}`}
+            >
+              {excluindo ? 'Cancelar' : 'Excluir'}
+            </button>
+          </div>
         )}
       </div>
+
+      {excluindo && <ExclusaoDeCategoria categoria={categoria} aoTerminar={() => setExcluindo(false)} />}
 
       {escolhendoIcone && (
         <div className="mt-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
@@ -290,5 +306,82 @@ function LinhaArquivada({
         Reativar
       </button>
     </li>
+  );
+}
+
+/**
+ * Excluir uma categoria que nunca foi usada (§4.3).
+ *
+ * A regra aqui é mais dura que a do investimento, e por um motivo: lá, os
+ * lançamentos do aporte foram INVENTADOS pelo app, e desfazê-los conserta o
+ * saldo. Aqui os lançamentos são do usuário e a categoria só os classifica —
+ * apagá-la com uso tiraria a classificação de meses já fechados.
+ *
+ * Então a exclusão vale só para a categoria virgem: a duplicada, a com nome
+ * errado, a criada e abandonada no mesmo minuto. Com qualquer uso, a tela diz
+ * ONDE ela está sendo usada em vez de só recusar — saber que são 47 lançamentos
+ * responde a próxima pergunta antes que ela seja feita.
+ */
+function ExclusaoDeCategoria({
+  categoria,
+  aoTerminar,
+}: {
+  categoria: { id: string; nome: string };
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const { mostrar } = usarAviso();
+
+  const previa = useQuery({
+    queryKey: ['categoria-previa-exclusao', categoria.id],
+    queryFn: () => previaDaExclusao(categoria.id),
+  });
+
+  const excluir = useMutation({
+    mutationFn: () => excluirCategoria(categoria.id),
+    onSuccess: async () => {
+      await cliente.invalidateQueries();
+      mostrar(`Categoria "${categoria.nome}" excluída.`);
+    },
+  });
+
+  if (previa.isPending) {
+    return (
+      <p className="mt-3 rounded-lg border border-borda-forte p-3 text-sm text-slate-400">
+        Vendo onde esta categoria é usada…
+      </p>
+    );
+  }
+
+  const usos = previa.data
+    ? [
+        [previa.data.transacoes, 'lançamento'],
+        [previa.data.recorrencias, 'recorrência'],
+        [previa.data.orcamentos, 'orçamento'],
+        [previa.data.modelos, 'modelo'],
+        [previa.data.subcategorias, 'subcategoria'],
+      ]
+        .filter(([n]) => (n as number) > 0)
+        .map(([n, nome]) => `${n} ${nome}${(n as number) > 1 ? 's' : ''}`)
+    : [];
+
+  return (
+    <ConfirmacaoDeExclusao
+      consequencia="Esta categoria nunca foi usada: excluir não mexe em lançamento nenhum."
+      impedimento={
+        previa.data?.podeExcluir
+          ? null
+          : `Esta categoria está em uso: ${usos.join(', ')}. Arquive em vez de excluir — apagar tiraria a classificação de meses que já fecharam.`
+      }
+      ajuda={
+        previa.data?.podeExcluir
+          ? 'Se ela já classificou alguma coisa, o certo é Arquivar: ela some dos seletores e o histórico continua íntegro.'
+          : undefined
+      }
+      emAndamento={excluir.isPending}
+      erro={excluir.isError ? (excluir.error as Error).message : null}
+      aoConfirmar={() => excluir.mutate()}
+      aoCancelar={aoTerminar}
+    />
   );
 }

@@ -110,6 +110,33 @@ export async function arquivarRecorrenciasDaConta(contaId: string): Promise<void
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Excluir recorrência: a regra é para o CADASTRO, não para o que ele gerou.
+ *
+ * Arquivar para de gerar e mantém a recorrência na história. Não serve para o
+ * cadastro errado — a linha some da lista, mas nada apaga o registro de uma
+ * regra que nunca deveria ter existido.
+ *
+ * Os lançamentos JÁ GERADOS ficam. Eles são dinheiro que se moveu de verdade, e
+ * apagá-los junto reescreveria meses fechados por causa de um erro de cadastro.
+ * Eles só perdem o vínculo e viram lançamentos comuns — o banco cuida disso com
+ * `on delete set null`. Quem quiser apagá-los também faz um a um, na lista, e
+ * a tela diz quantos são antes de decidir.
+ */
+export async function contarGeradosDaRecorrencia(id: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('transacoes')
+    .select('id', { count: 'exact', head: true })
+    .eq('recorrencia_id', id);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function excluirRecorrencia(id: string): Promise<void> {
+  const { error } = await supabase.from('recorrencias').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function arquivarRecorrencia(id: string): Promise<void> {
   const { error } = await supabase.from('recorrencias').update({ ativo: false }).eq('id', id);
   if (error) throw new Error(error.message);

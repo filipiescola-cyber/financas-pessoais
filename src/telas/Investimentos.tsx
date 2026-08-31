@@ -1174,7 +1174,9 @@ function ExclusaoDoInvestimento({
           <p className="text-sm text-slate-200">
             {previa.data!.lancamentos === 0
               ? 'Nada foi lançado por esta aplicação: excluir não mexe em conta nenhuma.'
-              : `Excluir vai apagar ${previa.data!.lancamentos} lançamento(s) e mudar o saldo dos meses em que eles caem.`}
+              : previa.data!.lancamentos === 1
+                ? 'Excluir vai apagar 1 lançamento e mudar o saldo do mês em que ele cai.'
+                : `Excluir vai apagar ${previa.data!.lancamentos} lançamentos e mudar o saldo dos meses em que eles caem.`}
           </p>
 
           {previa.data!.efeitos.length > 0 && (

@@ -82,6 +82,82 @@ export async function atualizarCategoria(
 }
 
 /** Categoria de sistema não pode ser arquivada — "Ajuste de saldo" (§4.3, §5.3). */
+/** O que impede a exclusão de uma categoria, item a item. */
+export type PrevisaoDeCategoria = {
+  transacoes: number;
+  recorrencias: number;
+  orcamentos: number;
+  modelos: number;
+  subcategorias: number;
+  podeExcluir: boolean;
+};
+
+/**
+ * Excluir categoria é para a que NUNCA foi usada (§4.3).
+ *
+ * Arquivar é para a categoria que você parou de usar: ela some dos seletores e
+ * os lançamentos antigos continuam classificados. Não serve para o erro de
+ * digitação — "Alimentaçao" criada por engano fica escondida para sempre.
+ *
+ * A diferença com investimento é o que a exclusão desfaria: lá, os lançamentos
+ * do aporte foram INVENTADOS pelo app e apagá-los conserta o saldo. Aqui, os
+ * lançamentos são seus e a categoria só os classifica — apagá-la junto perderia
+ * a classificação de meses fechados. Por isso a regra é mais dura: com qualquer
+ * uso, o caminho é arquivar, e a tela diz onde ela está sendo usada.
+ */
+export async function previaDaExclusao(id: string): Promise<PrevisaoDeCategoria> {
+  const contar = async (tabela: 'transacoes' | 'recorrencias' | 'orcamentos' | 'modelos') => {
+    const { count } = await supabase
+      .from(tabela)
+      .select('id', { count: 'exact', head: true })
+      .eq('categoria_id', id);
+    return count ?? 0;
+  };
+
+  const { count: filhas } = await supabase
+    .from('categorias')
+    .select('id', { count: 'exact', head: true })
+    .eq('categoria_pai_id', id);
+
+  const [transacoes, recorrencias, orcamentos, modelos] = await Promise.all([
+    contar('transacoes'),
+    contar('recorrencias'),
+    contar('orcamentos'),
+    contar('modelos'),
+  ]);
+
+  const subcategorias = filhas ?? 0;
+
+  return {
+    transacoes,
+    recorrencias,
+    orcamentos,
+    modelos,
+    subcategorias,
+    podeExcluir:
+      transacoes === 0 &&
+      recorrencias === 0 &&
+      orcamentos === 0 &&
+      modelos === 0 &&
+      subcategorias === 0,
+  };
+}
+
+export async function excluirCategoria(id: string): Promise<void> {
+  const previa = await previaDaExclusao(id);
+  if (!previa.podeExcluir) {
+    throw new Error(
+      'Esta categoria já está em uso. Arquive em vez de excluir — apagar tiraria a classificação de lançamentos que já aconteceram.',
+    );
+  }
+
+  // A memória de descrição aponta com `on delete set null`: o autocomplete
+  // apenas esquece a sugestão, que é o comportamento certo para uma categoria
+  // que nunca chegou a classificar nada.
+  const { error } = await supabase.from('categorias').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function arquivarCategoria(id: string): Promise<void> {
   const { data, error: erroLeitura } = await supabase
     .from('categorias')
