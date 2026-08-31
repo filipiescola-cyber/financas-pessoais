@@ -379,6 +379,14 @@ export function Transacoes() {
                     categoria={buscarCategoria(linha.transacao.categoriaId)}
                     aoEditar={() => setEditando(linha.transacao)}
                   />
+                ) : linha.tipo === 'transferencia' ? (
+                  <ItemDeTransferencia
+                    key={linha.saida.id}
+                    saida={linha.saida}
+                    entrada={linha.entrada}
+                    nomeDaConta={(id) => nomeConta.get(id) ?? '—'}
+                    aoEditar={() => setEditando(linha.saida)}
+                  />
                 ) : (
                   <ItemPrevistoNaLista
                     key={`${linha.previsto.recorrenciaId}-${linha.previsto.dataPrevista}`}
@@ -399,6 +407,7 @@ export function Transacoes() {
 /** Uma linha da lista: um lançamento, uma fatura inteira, ou uma recorrência por vir. */
 type LinhaDoDia =
   | { tipo: 'lancamento'; transacao: Transacao }
+  | { tipo: 'transferencia'; saida: Transacao; entrada: Transacao }
   | { tipo: 'fatura'; bloco: BlocoDeFatura<Transacao> }
   | { tipo: 'previsto'; previsto: ItemPrevisto };
 
@@ -418,10 +427,12 @@ function agruparPorDiaDeCaixa(
   for (const { dia, linhas } of agruparPorCaixa(lista)) {
     mapa.set(
       dia,
-      linhas.map((linha) =>
+      linhas.map((linha): LinhaDoDia =>
         linha.tipo === 'fatura'
-          ? { tipo: 'fatura' as const, bloco: linha }
-          : { tipo: 'lancamento' as const, transacao: linha.transacao },
+          ? { tipo: 'fatura', bloco: linha }
+          : linha.tipo === 'transferencia'
+            ? { tipo: 'transferencia', saida: linha.saida, entrada: linha.entrada }
+            : { tipo: 'lancamento', transacao: linha.transacao },
       ),
     );
   }
@@ -873,5 +884,110 @@ function ChipDeFiltroDeConta({
         {conta.nome}
       </span>
     </FiltroChip>
+  );
+}
+
+/**
+ * Transferência numa linha só (§2.3).
+ *
+ * O banco guarda duas pernas porque é assim que o saldo de CADA conta se mexe,
+ * e isso não muda. Mas na lista as duas linhas seguidas — mesmo nome, mesmo
+ * valor com o sinal trocado — leem-se como lançamento duplicado, e o usuário
+ * fica se perguntando se lançou duas vezes.
+ *
+ * É um evento só: o dinheiro saiu de um lugar e entrou em outro. A seta diz o
+ * que os dois sinais diziam, e o valor aparece SEM sinal e sem cor de
+ * receita/despesa — transferência não é ganho nem gasto, o patrimônio não se
+ * mexeu (§2.3, §14).
+ */
+function ItemDeTransferencia({
+  saida,
+  entrada,
+  nomeDaConta,
+  aoEditar,
+}: {
+  saida: Transacao;
+  entrada: Transacao;
+  nomeDaConta: (id: string) => string;
+  aoEditar: () => void;
+}) {
+  const invalidar = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+
+  const excluir = useMutation({
+    mutationFn: () => excluirTransacao(saida),
+    onSuccess: async () => {
+      await invalidar();
+      mostrar('Transferência excluída — as duas pontas.');
+    },
+  });
+
+  // Revisar marca as DUAS pernas: metade revisada não é estado nenhum, e
+  // deixaria a linha voltando a pedir conferência a cada recarga.
+  const revisar = useMutation({
+    mutationFn: async () => {
+      await marcarRevisado(saida.id, true);
+      await marcarRevisado(entrada.id, true);
+    },
+    onSuccess: () => invalidar(),
+  });
+
+  const futura = saida.dataCompetencia > hoje();
+
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-2.5">
+          <Marcador
+            futura={futura}
+            revisado={saida.revisado && entrada.revisado}
+            aoRevisar={() => revisar.mutate()}
+          />
+
+          <div className="min-w-0">
+            <p className="truncate text-slate-100">{saida.descricao || 'Transferência'}</p>
+            <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500">
+              <span className="truncate">{nomeDaConta(saida.contaId)}</span>
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5 shrink-0 text-slate-600"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-label="para"
+              >
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+              <span className="truncate">{nomeDaConta(entrada.contaId)}</span>
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              <Etiqueta titulo="Não conta como receita nem como despesa">transferência</Etiqueta>
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 text-right">
+          {/* Sem sinal e sem cor: o dinheiro mudou de lugar, não de dono. */}
+          <Dinheiro centavos={Math.abs(saida.valor)} className="text-slate-300" />
+          <div className="mt-1 flex justify-end gap-3">
+            <button
+              onClick={aoEditar}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              Editar
+            </button>
+            <button
+              onClick={() => excluir.mutate()}
+              disabled={excluir.isPending}
+              className={`text-xs text-slate-500 hover:text-red-400 ${ALVO_DE_TOQUE}`}
+            >
+              Excluir
+            </button>
+          </div>
+        </div>
+      </div>
+    </li>
   );
 }

@@ -28,6 +28,7 @@ export type TransacaoAgrupavel = {
   dataCaixa: DataISO;
   valor: Centavos;
   transacaoPaiId: string | null;
+  transferenciaParId: string | null;
 };
 
 export type BlocoDeFatura<T> = {
@@ -40,7 +41,64 @@ export type BlocoDeFatura<T> = {
   compras: T[];
 };
 
-export type LinhaDeCaixa<T> = { tipo: 'lancamento'; transacao: T } | BlocoDeFatura<T>;
+/**
+ * Transferência com as duas pernas juntas.
+ *
+ * Ela nasce como dois lançamentos ligados (§2.3) porque é assim que o saldo de
+ * cada conta se mexe — e isso continua verdade. Mas na lista as duas linhas
+ * seguidas, com o mesmo nome e o mesmo valor trocando de sinal, leem-se como
+ * duplicidade. É UM evento: dinheiro saiu daqui e entrou ali.
+ */
+export type LinhaDeTransferencia<T> = { tipo: 'transferencia'; saida: T; entrada: T };
+
+export type LinhaDeCaixa<T> =
+  | { tipo: 'lancamento'; transacao: T }
+  | LinhaDeTransferencia<T>
+  | BlocoDeFatura<T>;
+
+/**
+ * Junta as duas pernas quando as DUAS estão à vista.
+ *
+ * Com filtro de conta ligado só uma delas aparece, e aí ela continua sendo uma
+ * linha comum: do ponto de vista do Nubank, saíram R$ 300 — juntar mostraria um
+ * movimento que não é daquele extrato.
+ */
+function unirTransferencias<T extends TransacaoAgrupavel>(soltas: readonly T[]): LinhaDeCaixa<T>[] {
+  const porId = new Map(soltas.map((t) => [t.id, t]));
+  const usadas = new Set<string>();
+  const linhas: LinhaDeCaixa<T>[] = [];
+
+  for (const transacao of soltas) {
+    if (usadas.has(transacao.id)) continue;
+
+    const par = transacao.transferenciaParId
+      ? porId.get(transacao.transferenciaParId)
+      : undefined;
+
+    if (!par || usadas.has(par.id)) {
+      linhas.push({ tipo: 'lancamento', transacao });
+      continue;
+    }
+
+    usadas.add(transacao.id);
+    usadas.add(par.id);
+
+    // O sinal decide quem é quem; o id desempata no caso degenerado de valor
+    // zero, para a ordem não depender de como o banco devolveu as linhas.
+    const saiPrimeiro =
+      transacao.valor !== par.valor
+        ? transacao.valor < par.valor
+        : transacao.id < par.id;
+
+    linhas.push({
+      tipo: 'transferencia',
+      saida: saiPrimeiro ? transacao : par,
+      entrada: saiPrimeiro ? par : transacao,
+    });
+  }
+
+  return linhas;
+}
 
 export type DiaDeCaixa<T> = { dia: DataISO; linhas: LinhaDeCaixa<T>[] };
 
@@ -101,10 +159,7 @@ export function agruparPorCaixa<T extends TransacaoAgrupavel>(
 
       return {
         dia,
-        linhas: [
-          ...blocos,
-          ...registro.soltas.map((transacao) => ({ tipo: 'lancamento' as const, transacao })),
-        ],
+        linhas: [...blocos, ...unirTransferencias(registro.soltas)],
       };
     })
     .sort((a, b) => b.dia.localeCompare(a.dia));

@@ -12,6 +12,7 @@ function t(p: Partial<TransacaoAgrupavel> & { id: string }): TransacaoAgrupavel 
     faturaId: null,
     dataCompetencia: '2026-08-05',
     dataCaixa: '2026-08-05',
+    transferenciaParId: null,
     valor: -1000,
     transacaoPaiId: null,
     ...p,
@@ -132,5 +133,59 @@ describe('fatura no saldo previsto', () => {
   it('o sinal é o da própria fatura: saída é negativa', () => {
     const [saida] = faturasQueAindaVaoSair(blocos(), new Set(['quitada']));
     expect(saida!.valor).toBeLessThan(0);
+  });
+});
+
+describe('transferência em uma linha só', () => {
+  const base = {
+    faturaId: null,
+    dataCompetencia: '2026-08-30',
+    dataCaixa: '2026-08-30',
+    transacaoPaiId: null,
+  };
+
+  const saida = { ...base, id: 'a', contaId: 'nubank', valor: -30000, transferenciaParId: 'b' };
+  const entrada = { ...base, id: 'b', contaId: 'caixinha', valor: 30000, transferenciaParId: 'a' };
+
+  it('junta as duas pernas quando ambas estão à vista', () => {
+    const [dia] = agruparPorCaixa([saida, entrada]);
+    expect(dia!.linhas).toHaveLength(1);
+    expect(dia!.linhas[0]!.tipo).toBe('transferencia');
+  });
+
+  it('a saída é a de valor negativo, não a que veio primeiro na lista', () => {
+    const [dia] = agruparPorCaixa([entrada, saida]);
+    const linha = dia!.linhas[0]!;
+    if (linha.tipo !== 'transferencia') throw new Error('esperava transferência');
+    expect(linha.saida.contaId).toBe('nubank');
+    expect(linha.entrada.contaId).toBe('caixinha');
+  });
+
+  it('com filtro de conta, a perna sozinha continua sendo linha comum', () => {
+    // Do ponto de vista do Nubank saíram R$ 300. Juntar mostraria um movimento
+    // que não pertence àquele extrato.
+    const [dia] = agruparPorCaixa([saida]);
+    expect(dia!.linhas).toHaveLength(1);
+    expect(dia!.linhas[0]!.tipo).toBe('lancamento');
+  });
+
+  it('não junta lançamento comum que não é transferência', () => {
+    const comum = { ...base, id: 'c', contaId: 'nubank', valor: -5000, transferenciaParId: null };
+    const [dia] = agruparPorCaixa([comum, saida, entrada]);
+    expect(dia!.linhas.filter((l) => l.tipo === 'transferencia')).toHaveLength(1);
+    expect(dia!.linhas.filter((l) => l.tipo === 'lancamento')).toHaveLength(1);
+  });
+
+  it('duas transferências no mesmo dia viram duas linhas, cada uma com o seu par', () => {
+    const s2 = { ...base, id: 'x', contaId: 'itau', valor: -10000, transferenciaParId: 'y' };
+    const e2 = { ...base, id: 'y', contaId: 'wise', valor: 10000, transferenciaParId: 'x' };
+    const [dia] = agruparPorCaixa([saida, s2, entrada, e2]);
+
+    const pares = dia!.linhas.filter((l) => l.tipo === 'transferencia');
+    expect(pares).toHaveLength(2);
+    for (const par of pares) {
+      if (par.tipo !== 'transferencia') continue;
+      expect(par.saida.transferenciaParId).toBe(par.entrada.id);
+    }
   });
 });
