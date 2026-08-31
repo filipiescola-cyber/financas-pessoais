@@ -250,6 +250,8 @@ export type Database = {
       dividas: {
         Row: {
           ativo: boolean
+          categoria_juros_id: string | null
+          conta_id: string | null
           cor: string | null
           created_at: string
           id: string
@@ -259,7 +261,6 @@ export type Database = {
           parcelas_pagas: number
           primeira_parcela: string
           quitada_em: string | null
-          recorrencia_id: string | null
           sistema: string
           taxa_mensal: number
           usuario_id: string
@@ -267,6 +268,8 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          categoria_juros_id?: string | null
+          conta_id?: string | null
           cor?: string | null
           created_at?: string
           id?: string
@@ -276,7 +279,6 @@ export type Database = {
           parcelas_pagas?: number
           primeira_parcela: string
           quitada_em?: string | null
-          recorrencia_id?: string | null
           sistema?: string
           taxa_mensal?: number
           usuario_id?: string
@@ -284,6 +286,8 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          categoria_juros_id?: string | null
+          conta_id?: string | null
           cor?: string | null
           created_at?: string
           id?: string
@@ -293,7 +297,6 @@ export type Database = {
           parcelas_pagas?: number
           primeira_parcela?: string
           quitada_em?: string | null
-          recorrencia_id?: string | null
           sistema?: string
           taxa_mensal?: number
           usuario_id?: string
@@ -301,11 +304,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "dividas_recorrencia_id_fkey"
-            columns: ["recorrencia_id"]
+            foreignKeyName: "dividas_categoria_juros_id_fkey"
+            columns: ["categoria_juros_id"]
             isOneToOne: false
-            referencedRelation: "recorrencias"
+            referencedRelation: "categorias"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dividas_conta_id_fkey"
+            columns: ["conta_id"]
+            isOneToOne: false
+            referencedRelation: "contas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dividas_conta_id_fkey"
+            columns: ["conta_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_contas"
+            referencedColumns: ["conta_id"]
           },
         ]
       }
@@ -969,6 +986,8 @@ export type Database = {
           data_competencia: string
           descricao: string | null
           descricao_original: string | null
+          divida_id: string | null
+          divida_parcela: number | null
           fatura_id: string | null
           fatura_paga_id: string | null
           fitid: string | null
@@ -998,6 +1017,8 @@ export type Database = {
           data_competencia: string
           descricao?: string | null
           descricao_original?: string | null
+          divida_id?: string | null
+          divida_parcela?: number | null
           fatura_id?: string | null
           fatura_paga_id?: string | null
           fitid?: string | null
@@ -1027,6 +1048,8 @@ export type Database = {
           data_competencia?: string
           descricao?: string | null
           descricao_original?: string | null
+          divida_id?: string | null
+          divida_parcela?: number | null
           fatura_id?: string | null
           fatura_paga_id?: string | null
           fitid?: string | null
@@ -1069,6 +1092,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "saldos_contas"
             referencedColumns: ["conta_id"]
+          },
+          {
+            foreignKeyName: "transacoes_divida_id_fkey"
+            columns: ["divida_id"]
+            isOneToOne: false
+            referencedRelation: "dividas"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transacoes_fatura_fk"

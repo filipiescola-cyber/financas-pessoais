@@ -8,7 +8,7 @@
 // sumir sozinha no mês da quitação. Aqui só se guarda o vínculo, para o
 // cadastro criar as duas pontas de uma vez.
 
-import { primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
+import { hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import {
   resumoDaDivida,
@@ -17,8 +17,10 @@ import {
   type ResumoDaDivida,
   type SistemaDeAmortizacao,
 } from '../dominio/divida';
-import { criarRecorrencia } from './recorrencias';
 import { supabase } from './supabase';
+import type { Database } from './tipos-gerados';
+
+type InsercaoTransacao = Database['public']['Tables']['transacoes']['Insert'];
 
 export type Divida = {
   id: string;
@@ -31,7 +33,8 @@ export type Divida = {
   sistema: SistemaDeAmortizacao;
   primeiraParcela: DataISO;
   parcelasPagas: number;
-  recorrenciaId: string | null;
+  contaId: string | null;
+  categoriaJurosId: string | null;
   ativo: boolean;
 };
 
@@ -54,7 +57,8 @@ function daLinha(linha: {
   sistema: string;
   primeira_parcela: string;
   parcelas_pagas: number;
-  recorrencia_id: string | null;
+  conta_id: string | null;
+  categoria_juros_id: string | null;
   ativo: boolean;
 }): Divida {
   return {
@@ -68,7 +72,8 @@ function daLinha(linha: {
     sistema: linha.sistema as SistemaDeAmortizacao,
     primeiraParcela: linha.primeira_parcela,
     parcelasPagas: linha.parcelas_pagas,
-    recorrenciaId: linha.recorrencia_id,
+    contaId: linha.conta_id,
+    categoriaJurosId: linha.categoria_juros_id,
     ativo: linha.ativo,
   };
 }
@@ -123,48 +128,16 @@ export type NovaDivida = {
 };
 
 /**
- * Cadastra a dívida e, opcionalmente, a recorrência que lança a parcela.
+ * Cadastra a dívida.
  *
- * As duas pontas de uma vez porque separá-las é onde o usuário desiste: a
- * dívida sem recorrência não aparece no fluxo de caixa, e descobrir isso três
- * meses depois é descobrir que a projeção estava otimista o tempo todo.
+ * Não cria recorrência: a parcela de um financiamento não é despesa inteira, e
+ * uma recorrência de valor fixo não sabe dividi-la. Quem lança é `pagarParcela`,
+ * que consulta a tabela de amortização.
  *
- * No SAC a parcela cai todo mês, então a recorrência entra sem valor previsto:
- * ela vira uma pendência de revisão, com o número certo à mão na tabela. Fixar
- * o valor da primeira faria a projeção errar para mais durante anos.
+ * A dívida pesa no fluxo de caixa mesmo assim — a projeção lê as dívidas
+ * diretamente, como compromisso com prazo (§8.2).
  */
 export async function criarDivida(nova: NovaDivida): Promise<string> {
-  const tabela = tabelaDeAmortizacao(
-    nova.valorFinanciado,
-    nova.taxaMensal,
-    nova.parcelas,
-    nova.sistema,
-  );
-
-  let recorrenciaId: string | null = null;
-
-  if (nova.contaId) {
-    const restantes = nova.parcelas - nova.parcelasPagas;
-    const proxima = somarMeses(nova.primeiraParcela, nova.parcelasPagas);
-    const ultima = somarMeses(nova.primeiraParcela, nova.parcelas - 1);
-    const dia = Number(nova.primeiraParcela.slice(8, 10));
-
-    if (restantes > 0) {
-      recorrenciaId = await criarRecorrencia({
-        descricao: nova.nome,
-        valorPrevisto: nova.sistema === 'price' ? (tabela[0]?.valor ?? 0) : null,
-        categoriaId: nova.categoriaId ?? null,
-        contaId: nova.contaId,
-        tipo: 'despesa',
-        natureza: 'fixa',
-        dia,
-        regra: 'fixo',
-        comecaEm: proxima,
-        terminaEm: ultima,
-      });
-    }
-  }
-
   const { data, error } = await supabase
     .from('dividas')
     .insert({
@@ -177,7 +150,8 @@ export async function criarDivida(nova: NovaDivida): Promise<string> {
       sistema: nova.sistema,
       primeira_parcela: nova.primeiraParcela,
       parcelas_pagas: nova.parcelasPagas,
-      recorrencia_id: recorrenciaId,
+      conta_id: nova.contaId ?? null,
+      categoria_juros_id: nova.categoriaId ?? null,
     })
     .select('id')
     .single();
@@ -193,6 +167,103 @@ export async function atualizarParcelasPagas(id: string, pagas: number): Promise
     .update({ parcelas_pagas: Math.max(0, Math.trunc(pagas)) })
     .eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Paga a próxima parcela, em DUAS linhas (§2.1, §14).
+ *
+ * A amortização sai como transferência: ela repaga um gasto que já foi contado
+ * quando a compra aconteceu, e lançá-la como despesa dobraria o mês — é o mesmo
+ * defeito que o §14 proíbe para pagamento de fatura.
+ *
+ * Os juros saem como despesa, porque são custo novo: é o preço do dinheiro, e o
+ * único pedaço da parcela que merece aparecer num relatório de gasto.
+ *
+ * Sem conta cadastrada, nenhuma linha é gravada: só o contador anda. É o caso
+ * de quem acompanha a dívida sem lançar o pagamento no app.
+ */
+export async function pagarParcela(dividaId: string, data: DataISO = hoje()): Promise<void> {
+  const { data: linha, error } = await supabase
+    .from('dividas')
+    .select('*')
+    .eq('id', dividaId)
+    .single();
+  if (error) throw new Error(error.message);
+
+  const divida = daLinha(linha);
+  const tabela = tabelaDeAmortizacao(
+    divida.valorFinanciado,
+    divida.taxaMensal,
+    divida.parcelas,
+    divida.sistema,
+  );
+
+  const proxima = tabela[divida.parcelasPagas];
+  if (!proxima) throw new Error('Esta dívida já está quitada.');
+
+  if (divida.contaId) {
+    const comum = {
+      conta_id: divida.contaId,
+      data_competencia: data,
+      data_caixa: data,
+      origem: 'manual' as const,
+      revisado: true,
+      // A ponta que permite desfazer sem deixar lançamento órfão.
+      divida_id: dividaId,
+      divida_parcela: proxima.numero,
+    };
+
+    const linhas: InsercaoTransacao[] = [
+      {
+        ...comum,
+        valor: paraNumerico(-proxima.amortizacao),
+        tipo: 'transferencia',
+        descricao: `${divida.nome} — parcela ${proxima.numero}/${divida.parcelas}`,
+      },
+    ];
+
+    if (proxima.juros > 0) {
+      linhas.push({
+        ...comum,
+        valor: paraNumerico(-proxima.juros),
+        tipo: 'despesa',
+        categoria_id: divida.categoriaJurosId,
+        descricao: `${divida.nome} — juros da ${proxima.numero}ª`,
+      });
+    }
+
+    const { error: erroLinhas } = await supabase.from('transacoes').insert(linhas);
+    if (erroLinhas) throw new Error(erroLinhas.message);
+  }
+
+  await atualizarParcelasPagas(dividaId, divida.parcelasPagas + 1);
+}
+
+/**
+ * Desfaz a última parcela paga: apaga os lançamentos dela e volta o contador.
+ *
+ * Voltar só o contador deixaria as duas linhas para trás, e o mesmo dinheiro
+ * passaria a existir como saldo devedor E como lançamento na conta — a família
+ * de defeito que já apareceu na fatura paga sem pagamento e no aporte que sumia
+ * sozinho.
+ */
+export async function desfazerParcela(dividaId: string): Promise<void> {
+  const { data: divida, error } = await supabase
+    .from('dividas')
+    .select('parcelas_pagas')
+    .eq('id', dividaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (divida.parcelas_pagas <= 0) throw new Error('Nenhuma parcela paga para desfazer.');
+
+  const { error: erroApagar } = await supabase
+    .from('transacoes')
+    .delete()
+    .eq('divida_id', dividaId)
+    .eq('divida_parcela', divida.parcelas_pagas);
+  if (erroApagar) throw new Error(erroApagar.message);
+
+  await atualizarParcelasPagas(dividaId, divida.parcelas_pagas - 1);
 }
 
 export async function quitarDivida(id: string, data: DataISO): Promise<void> {

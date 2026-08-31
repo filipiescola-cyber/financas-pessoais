@@ -11,8 +11,9 @@ import {
   type SistemaDeAmortizacao,
 } from '../dominio/divida';
 import {
-  atualizarParcelasPagas,
+  desfazerParcela,
   criarDivida,
+  pagarParcela,
   excluirDivida,
   listarDividas,
   quitarDivida,
@@ -150,15 +151,19 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
   const invalidar = () => cliente.invalidateQueries();
 
   const pagar = useMutation({
-    mutationFn: () => atualizarParcelasPagas(divida.id, resumo.parcelasPagas + 1),
+    mutationFn: () => pagarParcela(divida.id),
     onSuccess: async () => {
       await invalidar();
-      mostrar('Parcela registrada.');
+      mostrar(
+        divida.contaId
+          ? 'Parcela registrada: amortização como transferência, juros como despesa.'
+          : 'Parcela registrada. Sem conta cadastrada, nenhum lançamento foi criado.',
+      );
     },
   });
 
   const desfazer = useMutation({
-    mutationFn: () => atualizarParcelasPagas(divida.id, resumo.parcelasPagas - 1),
+    mutationFn: () => desfazerParcela(divida.id),
     onSuccess: invalidar,
   });
 

@@ -25,6 +25,7 @@ import { lerConfig } from './config';
 import { previstoDoMes, resumirPrevisto } from '../dominio/previsto';
 import { ocorrenciasDoPeriodo } from './geracaoRecorrencias';
 import { listarFeriados } from './indicadores';
+import { listarDividas } from './dividas';
 import type { RegraDoDia } from '../dominio/recorrencias';
 import { supabase } from './supabase';
 
@@ -164,6 +165,22 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       valor: Math.abs(paraCentavos(r.valor_previsto ?? 0)),
       ate: r.termina_em!,
     }));
+
+  // As dívidas entram aqui, e não como recorrência: a parcela de financiamento
+  // não é despesa inteira (a amortização repaga gasto já contado), então ela não
+  // pode virar lançamento de despesa todo mês. Mas ela É compromisso de caixa
+  // com data para acabar, que é exatamente o que `fixasComPrazo` descreve.
+  //
+  // No SAC a parcela cai ao longo do tempo e aqui entra a PRÓXIMA, constante até
+  // o fim: erra para mais nos últimos anos, que é o lado seguro de errar numa
+  // projeção (§8.2).
+  for (const item of await listarDividas()) {
+    if (item.resumo.proxima === null) continue;
+    fixasComPrazo.push({
+      valor: item.resumo.proxima.valor,
+      ate: somarMeses(item.divida.primeiraParcela, item.divida.parcelas - 1),
+    });
+  }
 
   // Fonte de renda fixa vira recorrência de receita (§4.5), e o §4.5 promete que
   // ela entra na projeção desde o primeiro dia. Só vale enquanto não há

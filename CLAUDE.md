@@ -536,7 +536,8 @@ Financiamento, empréstimo, crediário fora do cartão. Tabela `dividas` própri
 - Dois sistemas, porque os dois são usados no Brasil: **Price** (parcela constante — crédito pessoal, carro, consignado) e **SAC** (amortização constante, parcela decrescente — padrão do imobiliário, paga menos juros no total).
 - A taxa quase nunca está à mão. Aceitar os dois caminhos: quem sabe a taxa informa a taxa; quem sabe a parcela informa a parcela e o app deduz a taxa por bisseção.
 - Mostrar **quanto falta** e **em que mês acaba**. A data do fim é a informação que ninguém sabe de cabeça.
-- Entra na projeção do §8 como despesa fixa até a última parcela, via recorrência com prazo (§5.2) criada junto no cadastro. No SAC ela entra sem valor previsto, porque a parcela muda todo mês.
+- **A parcela não é despesa inteira.** A amortização repaga um gasto já contado quando a compra aconteceu; lançá-la como despesa dobra o mês, que é o mesmo defeito que o §14 proíbe para pagamento de fatura. Só os juros são custo novo. "Paguei mais uma" grava duas linhas: transferência da amortização e despesa dos juros, com a divisão vinda da tabela.
+- Por isso a parcela **não** é uma recorrência: no Price a amortização cresce mês a mês, e valor fixo não sabe dividir. A projeção do §8 lê as dívidas diretamente, como compromisso com prazo.
 - Com mais de uma dívida, ordenar por **taxa de juros**, nunca por valor. A mais cara primeiro.
 
 **Desvio consciente da versão anterior desta seção**, que mandava modelar como conta do tipo `divida` com saldo reduzido por transferências. O saldo devedor é função exata de (valor, taxa, prazo, sistema, parcelas pagas) — então ele é **calculado, nunca armazenado** (§13.2). Guardá-lo numa conta criaria o mesmo fato em dois lugares, e o segundo ficaria para trás na primeira correção do número de parcelas pagas. O tipo `divida` de conta continua existindo para dívida sem contrato conhecido.
