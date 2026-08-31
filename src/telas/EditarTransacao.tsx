@@ -12,9 +12,12 @@ import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import {
   atualizarParcelamento,
   atualizarTransacao,
+  excluirParcelamento,
+  excluirTransacao,
   type EscopoDeParcelamento,
   type Transacao,
 } from '../dados/transacoes';
+import { ConfirmacaoDeExclusao } from '../ui/ConfirmacaoDeExclusao';
 
 /**
  * Edição de lançamento. Abre na mesma folha de baixo do lançamento rápido —
@@ -47,6 +50,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
   const [descricao, setDescricao] = useState(transacao.descricao ?? '');
   const [data, setData] = useState<DataISO>(transacao.dataCompetencia);
   const [escopo, setEscopo] = useState<EscopoDeParcelamento>('esta');
+  const [excluindo, setExcluindo] = useState(false);
 
   const ehParcelado = transacao.grupoParcelamentoId !== null;
   const ehTransferencia = transacao.tipo === 'transferencia';
@@ -77,6 +81,49 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
       aoFechar();
     },
   });
+
+  /**
+   * Excluir daqui de dentro (§2.2, §5.4).
+   *
+   * Da lista de Lançamentos dá para excluir pela própria linha; da fatura, a
+   * única porta é esta folha — e ela só sabia editar. Quem lançou a compra
+   * errada no cartão ficava sem saída, ou pior: mudava o valor para zero, que
+   * deixa uma linha morta na fatura para sempre.
+   *
+   * Em parcelamento vale o MESMO escopo já escolhido acima. Apagar as 12
+   * parcelas quando se queria corrigir uma é destrutivo e silencioso — é a
+   * regra do §2.2, e ela não muda por a exclusão ter mudado de lugar.
+   */
+  const excluir = useMutation({
+    mutationFn: async () => {
+      if (ehParcelado && escopo !== 'esta') {
+        await excluirParcelamento(
+          transacao.grupoParcelamentoId!,
+          escopo,
+          transacao.dataCompetencia,
+        );
+        return;
+      }
+      await excluirTransacao(transacao);
+    },
+    onSuccess: async () => {
+      await invalidar();
+      mostrar('Lançamento excluído.');
+      aoFechar();
+    },
+  });
+
+  const oQueSome = ehParcelado
+    ? escopo === 'esta'
+      ? `Some só a parcela ${transacao.parcelaNum} de ${transacao.parcelaTotal}. As outras ficam.`
+      : escopo === 'esta-e-futuras'
+        ? 'Somem esta parcela e todas as futuras. As já pagas ficam.'
+        : `Somem as ${transacao.parcelaTotal} parcelas, inclusive as já pagas.`
+    : ehTransferencia
+      ? 'Some das duas contas ao mesmo tempo: deixar uma ponta sozinha desequilibraria dois saldos.'
+      : cartao
+        ? 'Some da fatura, e o total dela cai.'
+        : 'O saldo da conta volta ao que era antes deste lançamento.';
 
   return (
     <BottomSheet aberto aoFechar={aoFechar}>
@@ -177,21 +224,40 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
 
         {salvar.isError && <p className="text-sm text-red-400">{(salvar.error as Error).message}</p>}
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => salvar.mutate()}
-            disabled={valor <= 0 || salvar.isPending}
-            className="flex-1 rounded-lg bg-emerald-600 px-4 py-3 font-medium text-white disabled:opacity-40"
-          >
-            {salvar.isPending ? 'Salvando…' : 'Salvar'}
-          </button>
-          <button
-            onClick={aoFechar}
-            className="rounded-lg border border-borda-forte px-4 py-3 text-sm text-slate-300"
-          >
-            Cancelar
-          </button>
-        </div>
+        {excluindo ? (
+          <ConfirmacaoDeExclusao
+            consequencia={oQueSome}
+            emAndamento={excluir.isPending}
+            erro={excluir.isError ? (excluir.error as Error).message : null}
+            aoConfirmar={() => excluir.mutate()}
+            aoCancelar={() => setExcluindo(false)}
+          />
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <button
+                onClick={() => salvar.mutate()}
+                disabled={valor <= 0 || salvar.isPending}
+                className="flex-1 rounded-lg bg-emerald-600 px-4 py-3 font-medium text-white disabled:opacity-40"
+              >
+                {salvar.isPending ? 'Salvando…' : 'Salvar'}
+              </button>
+              <button
+                onClick={aoFechar}
+                className="rounded-lg border border-borda-forte px-4 py-3 text-sm text-slate-300"
+              >
+                Cancelar
+              </button>
+            </div>
+
+            <button
+              onClick={() => setExcluindo(true)}
+              className="w-full text-center text-xs text-slate-500 transition hover:text-red-400"
+            >
+              Excluir lançamento
+            </button>
+          </>
+        )}
       </div>
     </BottomSheet>
   );
