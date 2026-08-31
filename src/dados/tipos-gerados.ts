@@ -970,6 +970,7 @@ export type Database = {
           descricao: string | null
           descricao_original: string | null
           fatura_id: string | null
+          fatura_paga_id: string | null
           fitid: string | null
           grupo_parcelamento_id: string | null
           id: string
@@ -998,6 +999,7 @@ export type Database = {
           descricao?: string | null
           descricao_original?: string | null
           fatura_id?: string | null
+          fatura_paga_id?: string | null
           fitid?: string | null
           grupo_parcelamento_id?: string | null
           id?: string
@@ -1026,6 +1028,7 @@ export type Database = {
           descricao?: string | null
           descricao_original?: string | null
           fatura_id?: string | null
+          fatura_paga_id?: string | null
           fitid?: string | null
           grupo_parcelamento_id?: string | null
           id?: string
@@ -1070,6 +1073,13 @@ export type Database = {
           {
             foreignKeyName: "transacoes_fatura_fk"
             columns: ["fatura_id"]
+            isOneToOne: false
+            referencedRelation: "faturas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transacoes_fatura_paga_id_fkey"
+            columns: ["fatura_paga_id"]
             isOneToOne: false
             referencedRelation: "faturas"
             referencedColumns: ["id"]

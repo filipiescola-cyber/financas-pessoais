@@ -10,7 +10,12 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
-import { faturaEscolhida, proximasFaturas, type ConfiguracaoDoCartao } from '../dominio/fatura';
+import {
+  faturaEscolhida,
+  proximasFaturas,
+  saldoDaFatura,
+  type ConfiguracaoDoCartao,
+} from '../dominio/fatura';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -247,16 +252,24 @@ export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> 
   if (error) throw error;
   if (!faturas || faturas.length === 0) return new Map();
 
-  const { data: linhas, error: erroLinhas } = await supabase
-    .from('transacoes')
-    .select('valor, fatura_id')
-    .in(
-      'fatura_id',
-      faturas.map((f) => f.id),
-    )
-    // Filha de divisão não soma: o pai já está na fatura (§5.5).
-    .is('transacao_pai_id', null);
-  if (erroLinhas) throw erroLinhas;
+  const ids = faturas.map((f) => f.id);
+
+  const [compras, pagamentos] = await Promise.all([
+    supabase
+      .from('transacoes')
+      .select('valor, fatura_id')
+      // Filha de divisão não soma: o pai já está na fatura (§5.5).
+      .is('transacao_pai_id', null)
+      .in('fatura_id', ids),
+    // Pagamento parcial abate sem quitar. Sem descontá-lo aqui, "o que você
+    // deve" mostraria a fatura cheia depois de já ter pago metade dela.
+    supabase.from('transacoes').select('valor, fatura_paga_id').in('fatura_paga_id', ids),
+  ]);
+
+  if (compras.error) throw compras.error;
+  if (pagamentos.error) throw pagamentos.error;
+
+  const linhas = compras.data;
 
   const daFatura = new Map(faturas.map((f) => [f.id, f]));
   const porCartao = new Map<string, { total: Centavos; vencimentos: DataISO[] }>();
@@ -268,6 +281,15 @@ export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> 
     atual.total += Math.abs(paraCentavos(linha.valor));
     atual.vencimentos.push(fatura.data_vencimento);
     porCartao.set(fatura.cartao_id, atual);
+  }
+
+  for (const linha of pagamentos.data ?? []) {
+    const fatura = linha.fatura_paga_id === null ? undefined : daFatura.get(linha.fatura_paga_id);
+    if (fatura === undefined) continue;
+    const atual = porCartao.get(fatura.cartao_id);
+    if (!atual) continue;
+    // Nunca abaixo de zero: pagar a mais não vira crédito (§2.1).
+    atual.total = Math.max(0, atual.total - Math.abs(paraCentavos(linha.valor)));
   }
 
   return new Map(
@@ -374,33 +396,37 @@ export async function fecharFaturasVencidas(referencia: DataISO = hoje()): Promi
  * tenha passado — e não sempre para `aberta`, senão uma fatura de três meses
  * atrás reabriria como se ainda aceitasse compra.
  */
+/**
+ * Desfaz UM pagamento — o mais recente (§2.1).
+ *
+ * Com pagamento parcial há vários, e apagar todos por causa de um clique seria
+ * destruir o que não foi pedido. Desfazer duas vezes desfaz dois.
+ *
+ * O status não é escolhido aqui: `acertarStatusDaFatura` recalcula depois da
+ * remoção. Se ainda restava outro pagamento cobrindo tudo, a fatura continua
+ * paga — e isso é o certo.
+ */
 export async function desfazerPagamentoDeFatura(faturaId: string): Promise<void> {
-  const { data: fatura, error } = await supabase
-    .from('faturas')
-    .select('transacao_pagamento_id, data_fechamento')
-    .eq('id', faturaId)
-    .single();
-  if (error) throw new Error(error.message);
-  if (!fatura.transacao_pagamento_id) throw new Error('Esta fatura não tem pagamento registrado.');
-
-  const { data: saida, error: erroSaida } = await supabase
+  const { data: pagamentos, error } = await supabase
     .from('transacoes')
     .select('id, transferencia_par_id')
-    .eq('id', fatura.transacao_pagamento_id)
-    .maybeSingle();
-  if (erroSaida) throw new Error(erroSaida.message);
+    .eq('fatura_paga_id', faturaId)
+    .order('data_caixa', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
 
-  // Solta o vínculo antes de apagar: a fatura referencia a transação.
+  const entrada = pagamentos?.[0];
+  if (!entrada) throw new Error('Esta fatura não tem pagamento registrado.');
+
+  // Solta o vínculo antes de apagar: a fatura ainda pode referenciar a saída.
   const { error: erroSolta } = await supabase
     .from('faturas')
-    .update({
-      status: fatura.data_fechamento <= hoje() ? 'fechada' : 'aberta',
-      transacao_pagamento_id: null,
-    })
+    .update({ transacao_pagamento_id: null })
     .eq('id', faturaId);
   if (erroSolta) throw new Error(erroSolta.message);
 
-  const paraApagar = [saida?.id, saida?.transferencia_par_id].filter(
+  const paraApagar = [entrada.id, entrada.transferencia_par_id].filter(
     (id): id is string => typeof id === 'string',
   );
   if (paraApagar.length === 0) return;
@@ -414,6 +440,8 @@ export async function desfazerPagamentoDeFatura(faturaId: string): Promise<void>
 
   const { error: erroApagar } = await supabase.from('transacoes').delete().in('id', paraApagar);
   if (erroApagar) throw new Error(erroApagar.message);
+
+  await acertarStatusDaFatura(faturaId);
 }
 
 export async function pagarFatura(dados: {
@@ -438,9 +466,9 @@ export async function pagarFatura(dados: {
     .insert([
       { ...comum, conta_id: dados.contaOrigemId, valor: paraNumerico(-valor) },
       // A entrada no cartão abate o que está devido. Não entra em fatura
-      // nenhuma: fatura_id fica nulo, senão o pagamento reduziria o próprio
-      // total que ele está pagando.
-      { ...comum, conta_id: dados.cartaoId, valor: paraNumerico(valor) },
+      // nenhuma: `fatura_id` fica nulo, senão o pagamento reduziria o próprio
+      // total que ele está pagando. Quem guarda a ligação é `fatura_paga_id`.
+      { ...comum, conta_id: dados.cartaoId, valor: paraNumerico(valor), fatura_paga_id: dados.faturaId },
     ])
     .select('id');
 
@@ -454,16 +482,58 @@ export async function pagarFatura(dados: {
     supabase.from('transacoes').update({ transferencia_par_id: saida.id }).eq('id', entrada.id),
   ]);
 
-  const { error: erroFatura } = await supabase
+  await acertarStatusDaFatura(dados.faturaId, saida.id);
+}
+
+/**
+ * Recalcula o que a fatura deve e ajusta o status (§13.2).
+ *
+ * `paga` deixa de ser gravado por decisão de quem clicou: ele é o que sobra
+ * quando não falta mais nada. Um pagamento parcial mantém a fatura devendo, e
+ * é isso que faz o resto continuar aparecendo em "o que você deve".
+ *
+ * Não quitada, o status volta a ser o do ciclo — `fechada` se a data de
+ * fechamento já passou, `aberta` se não. É a mesma regra que o gatilho de
+ * reabertura usa: pagamento e ciclo são dimensões diferentes da mesma coluna, e
+ * misturá-las foi o que criou o defeito.
+ */
+export async function acertarStatusDaFatura(
+  faturaId: string,
+  transacaoPagamentoId?: string | null,
+): Promise<void> {
+  const [total, pago, fatura] = await Promise.all([
+    totalDaFatura(faturaId),
+    totalPagoDaFatura(faturaId),
+    supabase.from('faturas').select('data_fechamento').eq('id', faturaId).single(),
+  ]);
+
+  const saldo = saldoDaFatura(total, pago);
+  const doCiclo =
+    (fatura.data?.data_fechamento ?? hoje()) <= hoje() ? ('fechada' as const) : ('aberta' as const);
+
+  const { error } = await supabase
     .from('faturas')
     .update({
-      status: 'paga',
-      transacao_pagamento_id: saida.id,
-      valor_total: paraNumerico(await totalDaFatura(dados.faturaId)),
+      status: saldo.quitada ? 'paga' : doCiclo,
+      valor_total: paraNumerico(total),
+      ...(transacaoPagamentoId !== undefined
+        ? { transacao_pagamento_id: transacaoPagamentoId }
+        : {}),
     })
-    .eq('id', dados.faturaId);
+    .eq('id', faturaId);
 
-  if (erroFatura) throw new Error(erroFatura.message);
+  if (error) throw new Error(error.message);
+}
+
+/** Soma de tudo que já foi pago nesta fatura. Vários pagamentos somam. */
+export async function totalPagoDaFatura(faturaId: string): Promise<Centavos> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('valor')
+    .eq('fatura_paga_id', faturaId);
+  if (error) throw error;
+
+  return (data ?? []).reduce((soma, linha) => soma + Math.abs(paraCentavos(linha.valor)), 0);
 }
 
 /**

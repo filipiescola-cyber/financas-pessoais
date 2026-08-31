@@ -5,6 +5,7 @@ import {
   faturaDoMes,
   faturaEscolhida,
   proximasFaturas,
+  saldoDaFatura,
 } from '../src/dominio/fatura';
 
 // Fecha dia 4, vence dia 10 — o exemplo do §4.2.
@@ -162,5 +163,38 @@ describe('escolher a fatura na mão', () => {
     const antes = faturaEscolhida('2026-08-10', cartao, 1).mesReferencia;
     const depois = faturaEscolhida('2026-09-10', cartao, 1).mesReferencia;
     expect(depois > antes).toBe(true);
+  });
+});
+
+describe('saldo da fatura', () => {
+  it('pagamento parcial deixa o resto devendo', () => {
+    // O bug que isto conserta: pagar R$ 200 de R$ 500 marcava a fatura inteira
+    // como paga, e os R$ 300 sumiam de "o que você deve".
+    const saldo = saldoDaFatura(50000, 20000);
+    expect(saldo.falta).toBe(30000);
+    expect(saldo.quitada).toBe(false);
+  });
+
+  it('só fica quitada quando não falta nada', () => {
+    expect(saldoDaFatura(50000, 50000).quitada).toBe(true);
+    expect(saldoDaFatura(50000, 49999).quitada).toBe(false);
+  });
+
+  it('vários pagamentos somados quitam', () => {
+    expect(saldoDaFatura(50000, 20000 + 30000).quitada).toBe(true);
+  });
+
+  it('pagar a mais não vira crédito nem falta negativa', () => {
+    const saldo = saldoDaFatura(50000, 50100);
+    expect(saldo.falta).toBe(0);
+    expect(saldo.quitada).toBe(true);
+  });
+
+  it('fatura sem compra nenhuma não está "quitada": não havia o que quitar', () => {
+    expect(saldoDaFatura(0, 0).quitada).toBe(false);
+  });
+
+  it('o sinal do valor não importa: fatura cobra, sempre', () => {
+    expect(saldoDaFatura(-50000, -20000).falta).toBe(30000);
   });
 });

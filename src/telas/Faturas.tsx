@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
-import { descreverFatura, faturaDeReferencia, faturaDoMes } from '../dominio/fatura';
+import {
+  descreverFatura,
+  faturaDeReferencia,
+  faturaDoMes,
+  saldoDaFatura,
+} from '../dominio/fatura';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
@@ -15,6 +20,7 @@ import {
   desfazerPagamentoDeFatura,
   listarFaturas,
   pagarFatura,
+  totalPagoDaFatura,
   type Fatura,
 } from '../dados/faturas';
 import { listarTransacoesDaFatura, type Transacao } from '../dados/transacoes';
@@ -227,7 +233,16 @@ function CartaoDeFatura({
     },
   });
 
-  const vencida = fatura.status !== 'paga' && fatura.dataVencimento < hoje();
+  const pagamentos = useQuery({
+    queryKey: ['fatura-pago', fatura.id],
+    queryFn: () => totalPagoDaFatura(fatura.id),
+  });
+
+  // O que falta é calculado, nunca lido do status: pagamento parcial marcava a
+  // fatura inteira como paga e o resto sumia de "o que você deve" (§13.2).
+  const saldo = saldoDaFatura(total, pagamentos.data ?? 0);
+  const parcial = saldo.pago > 0 && !saldo.quitada;
+  const vencida = !saldo.quitada && fatura.dataVencimento < hoje();
 
   return (
     <article className="rounded-xl border border-borda bg-superficie">
@@ -237,19 +252,24 @@ function CartaoDeFatura({
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wider text-slate-500">
-            {fatura.status === 'paga' ? 'Você pagou' : 'Você deve'}
+            {saldo.quitada ? 'Você pagou' : parcial ? 'Ainda falta' : 'Você deve'}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
             {vencida ? 'Venceu' : 'Vence'} em {formatarBR(fatura.dataVencimento)}
             {vencida && ' · vencida'}
           </p>
+          {parcial && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              Já pagos {formatar(saldo.pago)} de {formatar(saldo.total)}.
+            </p>
+          )}
         </div>
         <span
           className={`dinheiro shrink-0 text-2xl font-semibold ${
             vencida ? 'text-amber-400' : 'text-slate-100'
           }`}
         >
-          {formatar(Math.abs(total))}
+          {formatar(saldo.quitada ? saldo.total : saldo.falta)}
         </span>
       </div>
 
@@ -308,7 +328,7 @@ function CartaoDeFatura({
             })}
           </ul>
 
-          {fatura.status === 'paga' ? (
+          {saldo.quitada ? (
             <div className="space-y-2 rounded-md border border-borda-forte px-3 py-2">
               <p className="text-xs leading-relaxed text-slate-400">
                 Fatura paga. O pagamento quitou uma dívida; ele não é despesa, porque a despesa já
@@ -326,13 +346,31 @@ function CartaoDeFatura({
               )}
             </div>
           ) : (
-            <PagamentoDeFatura
-              faturaId={fatura.id}
-              cartaoId={cartaoId}
-              nomeDoCartao={nomeDoCartao}
-              total={Math.abs(total)}
-              vencimento={fatura.dataVencimento}
-            />
+            <>
+              {parcial && (
+                <div className="rounded-md border border-borda-forte px-3 py-2">
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    Pagamento parcial registrado. O que falta continua contando em "o que você
+                    deve" e no limite do cartão — e você pode registrar outro pagamento abaixo.
+                  </p>
+                  <button
+                    onClick={() => desfazer.mutate()}
+                    disabled={desfazer.isPending}
+                    className={`mt-1 text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+                  >
+                    {desfazer.isPending ? 'Desfazendo…' : 'Desfazer o último pagamento'}
+                  </button>
+                </div>
+              )}
+
+              <PagamentoDeFatura
+                faturaId={fatura.id}
+                cartaoId={cartaoId}
+                nomeDoCartao={nomeDoCartao}
+                total={saldo.falta}
+                vencimento={fatura.dataVencimento}
+              />
+            </>
           )}
       </div>
 

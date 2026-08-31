@@ -90,8 +90,11 @@ export function Cartoes() {
                   <p className="truncate text-slate-100">{cartao.conta.nome}</p>
                   <p className="text-xs text-slate-500">
                     Fecha dia {cartao.diaFechamento} · vence dia {cartao.diaVencimento}
-                    {cartao.limite !== null && ` · limite ${formatar(cartao.limite)}`}
                   </p>
+                  <LimiteDoCartao
+                    limite={cartao.limite}
+                    usado={dividas.data?.get(cartao.contaId)?.total ?? 0}
+                  />
                 </div>
                 <div className="flex shrink-0 gap-3">
                   <EditarCartao cartao={cartao} />
@@ -633,6 +636,41 @@ function EditarCartao({ cartao }: { cartao: CartaoComConta }) {
         <Botao tipo="secundario" aoClicar={() => setAberto(false)}>
           Cancelar
         </Botao>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Limite DISPONÍVEL, não o contratado (§4.2).
+ *
+ * "Limite R$ 5.000" era um número morto: ele nunca mudava, e a pergunta que se
+ * faz na frente da maquininha é a outra — quanto ainda dá para gastar. O
+ * disponível é o contratado menos o que já está devido nas faturas em aberto,
+ * já descontado o que foi pago parcialmente.
+ *
+ * A barra fica âmbar acima de 70% e vermelha acima de 90%, porque limite
+ * estourado costuma virar rotativo — a dívida mais cara que existe.
+ */
+function LimiteDoCartao({ limite, usado }: { limite: Centavos | null; usado: Centavos }) {
+  if (limite === null || limite <= 0) return null;
+
+  const proporcao = Math.min(1, usado / limite);
+  const disponivel = Math.max(0, limite - usado);
+
+  const cor =
+    proporcao >= 0.9 ? 'bg-red-500' : proporcao >= 0.7 ? 'bg-amber-500' : 'bg-emerald-600';
+
+  return (
+    <div className="mt-1.5 max-w-xs">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-slate-500">
+          <Dinheiro centavos={disponivel} className="text-slate-300" /> disponíveis
+        </span>
+        <span className="text-slate-600">de {formatar(limite)}</span>
+      </div>
+      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-superficie-alta">
+        <div className={`h-full rounded-full ${cor}`} style={{ width: `${proporcao * 100}%` }} />
       </div>
     </div>
   );

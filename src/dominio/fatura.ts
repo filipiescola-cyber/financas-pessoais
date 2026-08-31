@@ -18,6 +18,7 @@
 // fecha em outubro, independente de quando vence.
 
 import { diaNoMes, primeiroDiaDoMes, somarDias, somarMeses, type DataISO } from './datas';
+import type { Centavos } from './dinheiro';
 
 export type Fatura = {
   /** Primeiro dia do mês de referência, como o banco guarda (`mes_referencia`). */
@@ -138,4 +139,40 @@ function diaEMes(data: DataISO): string {
  */
 export function descreverFatura(fatura: Fatura): string {
   return `Compras de ${diaEMes(fatura.periodoInicio)} a ${diaEMes(fatura.periodoFim)} entram na fatura que vence em ${diaEMes(fatura.dataVencimento)}.`;
+}
+
+export type SaldoDaFatura = {
+  /** Soma das compras. Sempre positivo: é o que a fatura cobra. */
+  total: Centavos;
+  pago: Centavos;
+  /** O que ainda falta. Nunca negativo — pagar a mais não vira crédito aqui. */
+  falta: Centavos;
+  quitada: boolean;
+};
+
+/**
+ * Quanto ainda se deve numa fatura (§2.1, §13.2).
+ *
+ * `status = 'paga'` era gravado por decisão de quem clicava, e um pagamento
+ * parcial marcava a fatura inteira como quitada: o resto sumia de "o que você
+ * deve". Aqui `quitada` deixa de ser opinião e vira consequência — ela é
+ * verdadeira quando, e só quando, não falta mais nada.
+ *
+ * Pagar a MAIS não gera crédito nem falta negativa. Acontece por arredondamento
+ * ou por quem paga a fatura inteira num boleto com centavos a mais, e um número
+ * negativo aqui apareceria como "a fatura te deve", que não é uma ideia que
+ * este app tenha.
+ */
+export function saldoDaFatura(total: Centavos, pago: Centavos): SaldoDaFatura {
+  const cobrado = Math.abs(total);
+  const quitado = Math.abs(pago);
+
+  return {
+    total: cobrado,
+    pago: quitado,
+    falta: Math.max(0, cobrado - quitado),
+    // Fatura zerada não está "quitada": não havia o que quitar. A diferença
+    // importa na tela, que senão diria "você pagou" para um mês sem compra.
+    quitada: cobrado > 0 && quitado >= cobrado,
+  };
 }
