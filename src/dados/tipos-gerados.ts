@@ -60,6 +60,51 @@ export type Database = {
         }
         Relationships: []
       }
+      aportes_meta: {
+        Row: {
+          created_at: string
+          data: string
+          id: string
+          meta_id: string
+          transacao_id: string | null
+          usuario_id: string
+          valor: number
+        }
+        Insert: {
+          created_at?: string
+          data: string
+          id?: string
+          meta_id: string
+          transacao_id?: string | null
+          usuario_id?: string
+          valor: number
+        }
+        Update: {
+          created_at?: string
+          data?: string
+          id?: string
+          meta_id?: string
+          transacao_id?: string | null
+          usuario_id?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aportes_meta_meta_id_fkey"
+            columns: ["meta_id"]
+            isOneToOne: false
+            referencedRelation: "metas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aportes_meta_transacao_id_fkey"
+            columns: ["transacao_id"]
+            isOneToOne: false
+            referencedRelation: "transacoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cartoes: {
         Row: {
           conta_id: string
@@ -590,46 +635,61 @@ export type Database = {
       }
       metas: {
         Row: {
-          conta_id: string | null
+          fonte: string
           id: string
           nome: string
           prazo: string | null
           usuario_id: string
           valor_alvo: number
-          valor_atual: number
         }
         Insert: {
-          conta_id?: string | null
+          fonte?: string
           id?: string
           nome: string
           prazo?: string | null
           usuario_id?: string
           valor_alvo: number
-          valor_atual?: number
         }
         Update: {
-          conta_id?: string | null
+          fonte?: string
           id?: string
           nome?: string
           prazo?: string | null
           usuario_id?: string
           valor_alvo?: number
-          valor_atual?: number
+        }
+        Relationships: []
+      }
+      metas_investimentos: {
+        Row: {
+          investimento_id: string
+          meta_id: string
+          usuario_id: string
+        }
+        Insert: {
+          investimento_id: string
+          meta_id: string
+          usuario_id?: string
+        }
+        Update: {
+          investimento_id?: string
+          meta_id?: string
+          usuario_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "metas_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: "metas_investimentos_investimento_id_fkey"
+            columns: ["investimento_id"]
             isOneToOne: false
-            referencedRelation: "contas"
+            referencedRelation: "investimentos"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "metas_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: "metas_investimentos_meta_id_fkey"
+            columns: ["meta_id"]
             isOneToOne: false
-            referencedRelation: "saldos_contas"
-            referencedColumns: ["conta_id"]
+            referencedRelation: "metas"
+            referencedColumns: ["id"]
           },
         ]
       }

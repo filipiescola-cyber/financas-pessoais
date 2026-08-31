@@ -142,7 +142,7 @@ export async function desarquivarConta(id: string): Promise<void> {
  * tela demorar cinco vezes mais para dizer a mesma coisa.
  */
 export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
-  const [saldo, recorrencias, futuros, metas, modelos, cartoes, historico] = await Promise.all([
+  const [saldo, recorrencias, futuros, modelos, cartoes, historico] = await Promise.all([
     saldoAte(hoje(), id),
     supabase
       .from('recorrencias')
@@ -156,13 +156,12 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
       .eq('conta_id', id)
       .gt('data_caixa', hoje())
       .order('data_caixa'),
-    supabase.from('metas').select('id, nome').eq('conta_id', id),
     supabase.from('modelos').select('id, nome').eq('conta_id', id).order('ordem'),
     supabase.from('cartoes').select('conta_id').eq('conta_pagamento_id', id),
     contaTemTransacoes(id),
   ]);
 
-  for (const consulta of [recorrencias, futuros, metas, modelos, cartoes]) {
+  for (const consulta of [recorrencias, futuros, modelos, cartoes]) {
     if (consulta.error) throw consulta.error;
   }
 
@@ -174,7 +173,6 @@ export async function situacaoDaConta(id: string): Promise<SituacaoDaConta> {
       rotulo: t.descricao || 'Sem descrição',
       detalhe: `${diaEMes(t.data_caixa)} · ${formatar(paraCentavos(t.valor))}`,
     })),
-    metasVinculadas: (metas.data ?? []).map((m) => ({ id: m.id, rotulo: m.nome })),
     cartoesQuePagam: await nomesDasContas((cartoes.data ?? []).map((c) => c.conta_id)),
     modelos: (modelos.data ?? []).map((m) => ({ id: m.id, rotulo: m.nome })),
     temHistorico: historico,

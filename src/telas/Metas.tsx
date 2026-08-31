@@ -6,23 +6,39 @@ import { calcularReserva, progressoDaMeta } from '../dominio/orcamento';
 import {
   HORIZONTE_MAXIMO_MESES,
   mesesParaAlcancar,
-  origemDoValor,
   projetarMeta,
 } from '../dominio/metas';
 import { entraNoConsolidado } from '../dominio/saldo';
 import {
+  aportarNaMeta,
   atualizarMeta,
-  atualizarValorDaMeta,
   criarMeta,
+  excluirAporte,
   excluirMeta,
+  listarAportes,
   listarMetas,
-  vincularMetaAConta,
+  vincularInvestimentos,
+  type FonteDaMeta,
+  type Meta,
 } from '../dados/orcamentos';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { calcularTodos } from '../dados/investimentos';
 import { CampoValor } from '../ui/CampoValor';
-import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import {
+  ALVO_DE_TOQUE,
+  Botao,
+  Campo,
+  Cartao,
+  CartaoIndicador,
+  Chip,
+  Dinheiro,
+  ENTRADA,
+  Nota,
+  Pagina,
+  Secao,
+  Vazio,
+} from '../ui/base';
 import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 
 /**
@@ -42,15 +58,19 @@ export function Metas() {
   const projecao = useQuery({ queryKey: ['projecao'], queryFn: () => montarDadosDaProjecao() });
   const metas = useQuery({ queryKey: ['metas'], queryFn: listarMetas });
 
-  // Cartão não guarda dinheiro: ele tem fatura, não saldo (§2.1). Meta
-  // apontada para um cartão leria um número que não quer dizer nada.
-  const ondeCabeDinheiro = (contas.data ?? []).filter(entraNoConsolidado);
 
   // Investimento com liquidez diária É reserva (§8.8): dinheiro num RDB que se
   // resgata hoje cobre uma emergência exatamente como o da conta corrente.
   // Preso até o vencimento não cobre, por maior que seja — e somar os dois daria
   // uma reserva no papel que não existe na hora em que ela precisa existir.
   const investimentos = useQuery({ queryKey: ['investimentos', 'calculados'], queryFn: () => calcularTodos() });
+
+  // As aplicações que uma meta pode marcar como sua.
+  const aplicacoes = (investimentos.data ?? []).map((item) => ({
+    id: item.investimento.id,
+    nome: item.investimento.nome,
+    saldo: item.saldoExibido,
+  }));
 
   const emConta = (contas.data ?? [])
     .filter(entraNoConsolidado)
@@ -128,13 +148,13 @@ export function Metas() {
         {(metas.data ?? []).length === 0 ? (
           <Vazio
             titulo="Nenhuma meta cadastrada"
-            descricao="Viagem, equipamento, troca de carro. Com prazo, a meta responde quanto guardar por mês. Vinculada a uma conta, ela para de depender de você lembrar quanto já juntou."
+            descricao="Viagem, equipamento, troca de carro. Com prazo, a meta responde quanto guardar por mês. O progresso vem do que você separou — ou do saldo de uma aplicação reservada."
             acao={<Botao aoClicar={() => setCriando(true)}>Criar a primeira</Botao>}
           />
         ) : (
           <div className="space-y-2">
             {(metas.data ?? []).map((meta) => (
-              <LinhaDaMeta key={meta.id} meta={meta} contas={ondeCabeDinheiro} />
+              <LinhaDaMeta key={meta.id} meta={meta} investimentos={aplicacoes} />
             ))}
           </div>
         )}
@@ -145,36 +165,23 @@ export function Metas() {
 
 function LinhaDaMeta({
   meta,
-  contas,
+  investimentos,
 }: {
-  meta: {
-    id: string;
-    nome: string;
-    valorAlvo: Centavos;
-    valorAtual: Centavos;
-    prazo: DataISO | null;
-    contaId: string | null;
-  };
-  contas: { id: string; nome: string; saldoAtual: Centavos }[];
+  meta: Meta;
+  investimentos: { id: string; nome: string; saldo: Centavos }[];
 }) {
   const cliente = useQueryClient();
   const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState<Centavos>(meta.valorAtual);
+  const [aportando, setAportando] = useState(false);
   const [alvo, setAlvo] = useState<Centavos>(meta.valorAlvo);
   const [prazo, setPrazo] = useState(meta.prazo ?? '');
 
-  const contaVinculada = contas.find((c) => c.id === meta.contaId) ?? null;
-
-  // Vinculada, o "quanto já tem" é o saldo real da conta. Sem vínculo, é o
-  // número que o usuário informou — e a tela precisa dizer qual dos dois é.
-  const valorAtual = contaVinculada ? contaVinculada.saldoAtual : meta.valorAtual;
-  const origem = origemDoValor(contaVinculada ? meta.contaId : null);
-
+  const valorAtual = meta.valorAtual;
   const progresso = progressoDaMeta(meta.valorAlvo, valorAtual);
   const projecao = projetarMeta(meta.valorAlvo, valorAtual, meta.prazo, hoje());
 
   const vincular = useMutation({
-    mutationFn: (contaId: string | null) => vincularMetaAConta(meta.id, contaId),
+    mutationFn: (ids: string[]) => vincularInvestimentos(meta.id, ids),
     onSuccess: () => cliente.invalidateQueries({ queryKey: ['metas'] }),
   });
 
@@ -184,11 +191,8 @@ function LinhaDaMeta({
   });
 
   const salvar = useMutation({
-    mutationFn: async () => {
-      await atualizarMeta(meta.id, { valorAlvo: alvo, prazo: prazo === '' ? null : prazo });
-      // O valor só é editável quando é declarado: vinculado, ele vem da conta.
-      if (origem === 'declarado') await atualizarValorDaMeta(meta.id, valor);
-    },
+    mutationFn: () =>
+      atualizarMeta(meta.id, { valorAlvo: alvo, prazo: prazo === '' ? null : prazo }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['metas'] });
       setEditando(false);
@@ -216,7 +220,6 @@ function LinhaDaMeta({
               // definido pelo atalho da projeção desde a última vez.
               if (!editando) {
                 setAlvo(meta.valorAlvo);
-                setValor(meta.valorAtual);
                 setPrazo(meta.prazo ?? '');
               }
               setEditando((v) => !v);
@@ -275,37 +278,62 @@ function LinhaDaMeta({
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-[11px] uppercase tracking-wider text-slate-600">onde está</span>
-        {contas.map((conta) => (
+      {meta.fonte === 'aporte' ? (
+        <div className="mt-2">
           <button
-            key={conta.id}
-            onClick={() => vincular.mutate(meta.contaId === conta.id ? null : conta.id)}
-            className={`rounded-full px-2.5 py-1 text-xs transition ${
-              meta.contaId === conta.id
-                ? 'bg-sky-900/60 text-sky-200'
-                : 'border border-borda text-slate-500 hover:border-borda-forte'
-            }`}
+            onClick={() => setAportando((v) => !v)}
+            className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
           >
-            {conta.nome}
+            {aportando ? 'Fechar' : 'Guardei mais'}
           </button>
-        ))}
-      </div>
 
-      {origem === 'declarado' && (
-        <p className="mt-2 text-xs leading-relaxed text-amber-400/70">
-          Este valor foi digitado por você e o app não tem como confirmar. Vinculando a meta à
-          conta onde o dinheiro está de fato, ele passa a vir do saldo real.
-        </p>
+          {aportando && (
+            <AporteNaMeta metaId={meta.id} aoTerminar={() => setAportando(false)} />
+          )}
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wider text-slate-600">aplicações</span>
+          {investimentos.map((investimento) => {
+            const marcado = meta.investimentoIds.includes(investimento.id);
+            return (
+              <button
+                key={investimento.id}
+                onClick={() =>
+                  vincular.mutate(
+                    marcado
+                      ? meta.investimentoIds.filter((id) => id !== investimento.id)
+                      : [...meta.investimentoIds, investimento.id],
+                  )
+                }
+                className={`rounded-full px-2.5 py-1 text-xs transition ${
+                  marcado
+                    ? 'bg-sky-900/60 text-sky-200'
+                    : 'border border-borda text-slate-500 hover:border-borda-forte'
+                }`}
+              >
+                {investimento.nome}
+              </button>
+            );
+          })}
+          {investimentos.length === 0 && (
+            <span className="text-xs text-slate-600">
+              Nenhuma aplicação cadastrada ainda.
+            </span>
+          )}
+        </div>
       )}
+
+      <p className="mt-2 text-xs leading-relaxed text-slate-600">
+        {meta.fonte === 'aporte'
+          ? 'O progresso é a soma do que você registrou ter separado — não o saldo de nenhuma conta.'
+          : 'O progresso é o saldo das aplicações marcadas. Elas contam inteiras, então marque só o que estiver reservado para esta meta.'}
+      </p>
 
       {editando && (
         <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
           <CampoValor valor={alvo} aoMudar={setAlvo} rotulo="Quanto quer juntar" />
 
-          {origem === 'declarado' && (
-            <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto já foi juntado" />
-          )}
 
           <Campo
             rotulo="Prazo"
@@ -333,23 +361,45 @@ function LinhaDaMeta({
   );
 }
 
+/**
+ * Cadastro de meta (§8.8).
+ *
+ * A pergunta que define tudo é ONDE o dinheiro está — e antes ela era
+ * respondida com uma conta, o que fazia o saldo inteiro dela virar progresso.
+ * Conta corrente nunca é dedicada a uma meta: o app dizia que a viagem estava
+ * quase paga porque o salário tinha acabado de cair.
+ *
+ * As duas respostas honestas:
+ *
+ *   APORTE — você separa por decisão e registra. O progresso é a soma do que
+ *   você disse ter guardado, e o app é explícito em que isso é declaração.
+ *
+ *   APLICAÇÕES — o dinheiro está numa aplicação reservada. Aqui o saldo inteiro
+ *   conta, e conta certo, porque a aplicação É dedicada.
+ */
 function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
   const cliente = useQueryClient();
   const [nome, setNome] = useState('');
   const [valorAlvo, setValorAlvo] = useState<Centavos>(0);
-  const [valorAtual, setValorAtual] = useState<Centavos>(0);
+  const [valorInicial, setValorInicial] = useState<Centavos>(0);
   const [prazo, setPrazo] = useState('');
-  const [contaId, setContaId] = useState<string | null>(null);
-  const contas = usarContasComSaldo();
+  const [fonte, setFonte] = useState<FonteDaMeta>('aporte');
+  const [escolhidos, setEscolhidos] = useState<string[]>([]);
+
+  const investimentos = useQuery({
+    queryKey: ['investimentos', 'calculados'],
+    queryFn: () => calcularTodos(),
+  });
 
   const criar = useMutation({
     mutationFn: () =>
       criarMeta({
         nome,
         valorAlvo,
-        valorAtual,
         prazo: prazo === '' ? null : prazo,
-        contaId,
+        fonte,
+        valorInicial,
+        investimentoIds: escolhidos,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['metas'] });
@@ -372,29 +422,63 @@ function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
       <CampoValor valor={valorAlvo} aoMudar={setValorAlvo} rotulo="Quanto quer juntar" />
 
       <Campo
-        rotulo="Onde o dinheiro está (opcional)"
-        ajuda="Vinculando a meta a uma conta, o quanto você já tem passa a vir do saldo real em vez de ser digitado. Dizer que guardou sem ter o saldo em lugar nenhum é acreditar, não saber."
+        rotulo="Como você guarda"
+        ajuda={
+          fonte === 'aporte'
+            ? 'O progresso é a soma do que você registrar ter separado. Serve para quem mantém o dinheiro misturado e controla por decisão.'
+            : 'O progresso é o saldo das aplicações escolhidas — elas contam inteiras, então escolha só o que estiver reservado para esta meta.'
+        }
       >
         <div className="flex flex-wrap gap-2">
-          {(contas.data ?? []).filter(entraNoConsolidado).map((conta) => (
-            <button
-              key={conta.id}
-              type="button"
-              onClick={() => setContaId(contaId === conta.id ? null : conta.id)}
-              className={`rounded-full px-3 py-1.5 text-sm transition ${
-                contaId === conta.id
-                  ? 'bg-sky-900/60 text-sky-200'
-                  : 'border border-borda-forte text-slate-300'
-              }`}
-            >
-              {conta.nome}
-            </button>
-          ))}
+          <Chip ativo={fonte === 'aporte'} aoClicar={() => setFonte('aporte')}>
+            Vou separando
+          </Chip>
+          <Chip ativo={fonte === 'investimentos'} aoClicar={() => setFonte('investimentos')}>
+            Está numa aplicação
+          </Chip>
         </div>
       </Campo>
 
-      {contaId === null && (
-        <CampoValor valor={valorAtual} aoMudar={setValorAtual} rotulo="Quanto já tem" />
+      {fonte === 'aporte' ? (
+        <CampoValor
+          valor={valorInicial}
+          aoMudar={setValorInicial}
+          rotulo="Quanto já separou (opcional)"
+        />
+      ) : (
+        <Campo rotulo="Quais aplicações">
+          <div className="flex flex-wrap gap-2">
+            {(investimentos.data ?? []).map((item) => {
+              const marcado = escolhidos.includes(item.investimento.id);
+              return (
+                <button
+                  key={item.investimento.id}
+                  type="button"
+                  onClick={() =>
+                    setEscolhidos(
+                      marcado
+                        ? escolhidos.filter((id) => id !== item.investimento.id)
+                        : [...escolhidos, item.investimento.id],
+                    )
+                  }
+                  className={`rounded-full px-3 py-1.5 text-sm transition ${
+                    marcado
+                      ? 'bg-sky-900/60 text-sky-200'
+                      : 'border border-borda-forte text-slate-300'
+                  }`}
+                >
+                  {item.investimento.nome} · {formatar(item.saldoExibido)}
+                </button>
+              );
+            })}
+            {(investimentos.data ?? []).length === 0 && (
+              <p className="text-xs text-slate-500">
+                Nenhuma aplicação cadastrada. Cadastre em Investimentos, ou escolha "vou
+                separando".
+              </p>
+            )}
+          </div>
+        </Campo>
       )}
 
       <Campo rotulo="Prazo (opcional)">
@@ -420,6 +504,93 @@ function FormularioDeMeta({ aoTerminar }: { aoTerminar: () => void }) {
         </Botao>
       </div>
     </Cartao>
+  );
+}
+
+/**
+ * "Guardei mais R$ X" (§8.8).
+ *
+ * Não move dinheiro: separar para uma meta é uma decisão, não uma
+ * transferência. O app é explícito nisso em vez de fingir que o valor saiu de
+ * algum lugar — quem quiser que saia de fato aplica e usa a outra fonte.
+ *
+ * O histórico fica: sem ele, corrigir um número exigiria adivinhar quanto tinha
+ * antes, e o progresso viraria de novo um total digitado.
+ */
+function AporteNaMeta({ metaId, aoTerminar }: { metaId: string; aoTerminar: () => void }) {
+  const cliente = useQueryClient();
+  const [valor, setValor] = useState<Centavos>(0);
+  const [data, setData] = useState<DataISO>(hoje());
+
+  const aportes = useQuery({
+    queryKey: ['aportes-meta', metaId],
+    queryFn: () => listarAportes(metaId),
+  });
+
+  const invalidar = async () => {
+    await cliente.invalidateQueries({ queryKey: ['metas'] });
+    await cliente.invalidateQueries({ queryKey: ['aportes-meta', metaId] });
+  };
+
+  const guardar = useMutation({
+    mutationFn: () => aportarNaMeta(metaId, valor, data),
+    onSuccess: async () => {
+      await invalidar();
+      setValor(0);
+    },
+  });
+
+  const remover = useMutation({
+    mutationFn: (id: string) => excluirAporte(id),
+    onSuccess: invalidar,
+  });
+
+  return (
+    <div className="mt-2 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto separou agora" autoFocus />
+
+      <Campo rotulo="Quando">
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <div className="flex gap-2">
+        <Botao aoClicar={() => guardar.mutate()} desabilitado={valor <= 0 || guardar.isPending}>
+          Registrar
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Fechar
+        </Botao>
+      </div>
+
+      {(aportes.data ?? []).length > 0 && (
+        <ul className="space-y-1 border-t border-borda pt-2">
+          {aportes.data?.map((aporte) => (
+            <li key={aporte.id} className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="text-slate-500">{formatarBR(aporte.data)}</span>
+              <span className="flex items-baseline gap-3">
+                <Dinheiro centavos={aporte.valor} className="text-slate-300" />
+                <button
+                  onClick={() => remover.mutate(aporte.id)}
+                  className="text-slate-600 hover:text-red-400"
+                >
+                  remover
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        Registrar aqui não move dinheiro de conta nenhuma — é a sua decisão de ter separado. Para o
+        dinheiro sair do caixa de verdade, aplique e ligue a meta à aplicação.
+      </p>
+    </div>
   );
 }
 

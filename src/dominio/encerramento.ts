@@ -47,7 +47,6 @@ export type SituacaoDaConta = {
   recorrenciasAtivas: Item[];
   /** Parcelas e recorrências já gravadas com data à frente (§13.2). */
   lancamentosFuturos: Item[];
-  metasVinculadas: Item[];
   /** Cartões que têm esta conta como pagadora (§2.1). */
   cartoesQuePagam: Item[];
   /** Atalhos de um toque que preenchem esta conta (§5.2). */
@@ -89,9 +88,6 @@ export function conferirEncerramento(situacao: SituacaoDaConta): Encerramento {
   if (situacao.lancamentosFuturos.length > 0) {
     avisos.push({ motivo: 'lancamentos_futuros', itens: situacao.lancamentosFuturos });
   }
-  if (situacao.metasVinculadas.length > 0) {
-    avisos.push({ motivo: 'metas', itens: situacao.metasVinculadas });
-  }
   if (situacao.cartoesQuePagam.length > 0) {
     avisos.push({ motivo: 'cartoes', itens: situacao.cartoesQuePagam });
   }
@@ -107,7 +103,6 @@ export function conferirEncerramento(situacao: SituacaoDaConta): Encerramento {
     podeExcluir:
       !situacao.temHistorico &&
       situacao.recorrenciasAtivas.length === 0 &&
-      situacao.metasVinculadas.length === 0 &&
       situacao.cartoesQuePagam.length === 0 &&
       situacao.modelos.length === 0,
   };

@@ -14,7 +14,7 @@ const LIMPA: SituacaoDaConta = {
   saldo: 0,
   recorrenciasAtivas: [],
   lancamentosFuturos: [],
-  metasVinculadas: [],
+
   cartoesQuePagam: [],
   modelos: [],
   temHistorico: true,
@@ -57,12 +57,6 @@ describe('encerrar conta', () => {
     expect(r.avisos).toEqual([{ motivo: 'lancamentos_futuros', itens: [parcela] }]);
   });
 
-  it('meta vinculada avisa: ela passaria a ler o saldo de uma conta zerada', () => {
-    const meta: Item = { id: 'm1', rotulo: 'Reserva' };
-    expect(conferirEncerramento({ ...LIMPA, metasVinculadas: [meta] }).avisos).toEqual([
-      { motivo: 'metas', itens: [meta] },
-    ]);
-  });
 
   it('cartão que paga desta conta avisa: o padrão de pagamento fica velho', () => {
     const cartao: Item = { id: 'c1', rotulo: 'Nubank' };
@@ -92,14 +86,6 @@ describe('excluir de vez', () => {
     expect(conferirEncerramento(LIMPA).podeExcluir).toBe(false);
   });
 
-  it('sem histórico mas com meta apontando, não apaga', () => {
-    const r = conferirEncerramento({
-      ...LIMPA,
-      temHistorico: false,
-      metasVinculadas: [{ id: 'm1', rotulo: 'Reserva' }],
-    });
-    expect(r.podeExcluir).toBe(false);
-  });
 });
 
 const CARTAO_LIMPO: SituacaoDoCartao = {

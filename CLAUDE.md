@@ -275,9 +275,22 @@ orcamentos (
 )
 
 -- METAS (reserva de emergência, viagem, equipamento)
+-- Sem valor_atual: o progresso é calculado (§8.8, §13.2).
 metas (
-  id uuid pk, nome text, valor_alvo numeric,
-  valor_atual numeric, prazo date, conta_id uuid null
+  id uuid pk, nome text, valor_alvo numeric, prazo date,
+  fonte text            -- aporte | investimentos
+)
+
+-- O que foi separado para a meta, aporte a aporte
+aportes_meta (
+  id uuid pk, meta_id uuid fk, valor numeric, data date,
+  transacao_id uuid null
+)
+
+-- Quais aplicações contam para a meta, quando a fonte é `investimentos`
+metas_investimentos (
+  meta_id uuid fk, investimento_id uuid fk,
+  primary key (meta_id, investimento_id)
 )
 
 -- MODELOS (lançamentos favoritos de um toque — §5.2)
@@ -842,6 +855,13 @@ Gráfico de evolução mensal. É a tela mais motivadora do app e sai quase de g
 O denominador é a soma das despesas **fixas** (§2.5), não a despesa total: em emergência real as variáveis são a primeira coisa que se corta.
 
 Para renda variável, a referência usual é 6 meses em vez de 3, justamente porque a receita pode sumir por um período inteiro.
+
+**Meta não é o saldo de uma conta.** Vincular uma meta a uma conta corrente fazia o saldo INTEIRO dela virar progresso — o app dizia que a viagem estava quase paga porque o salário tinha acabado de cair. Duas fontes, e as duas honestas:
+
+- **Aporte** — você separa por decisão e registra. O progresso é a soma dos aportes, com histórico. Registrar não move dinheiro: separar para uma meta é uma decisão, não uma transferência.
+- **Aplicações** — o dinheiro está numa aplicação reservada. Aqui o saldo inteiro conta, e conta certo, porque a aplicação **é** dedicada — o que uma conta corrente nunca é.
+
+O total nunca é guardado (§13.2): com aporte é a soma dos aportes, com aplicação é a soma dos saldos.
 
 ### 8.9 Fora de escopo, de propósito
 
