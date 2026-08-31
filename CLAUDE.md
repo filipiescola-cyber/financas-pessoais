@@ -437,6 +437,19 @@ permissões de quem a criou e devolve os dados de todo mundo, sem erro nenhum.
 
 **A data de corte é o dia 1º do mês corrente, não hoje.** Começar no meio do mês produz um primeiro relatório pela metade, que parece quebrado justamente quando o hábito ainda é frágil. Começar no dia 1º e preencher os dias já passados — na mão ou por importação (§6) — entrega um mês fechado de verdade já na primeira virada.
 
+**Duas trilhas, escolhidas na primeira tela.**
+
+| Trilha | Tempo | O que tem |
+|---|---|---|
+| **Rápida** | ~8 min | Só o piso: carteira, contas, cartões, fatura aberta, parcelamentos em andamento, fontes de renda, categorias. |
+| **Completa** | ~20 min | O piso mais despesas fixas, conta Empresa e dívidas — e as telas que só explicam. |
+
+A diferença **não** é "cadastrar menos". As duas passam pelo mesmo piso, porque sem qualquer item dele o app dá número **errado**, não número incompleto. O que a completa acrescenta é contexto e explicação.
+
+**Os passos que só explicam** não pedem nada e existem porque três ideias deste app contrariam a intuição: pagar fatura não é despesa (§2.1), gasto e saída de dinheiro acontecem em datas diferentes (§2.4), e despesa não tem um total único (§2.5). Quem não entende essas três lê os próprios números como se estivessem errados. Eles ficam **todos fora da trilha rápida** — quem escolheu rápido escolheu cadastrar, não ler.
+
+A trilha completa fecha com um tour de uma tela por linha, dizendo o que cada uma responde. Não é para decorar: é para saber que existe quando a pergunta aparecer.
+
 Wizard curto, uma pergunta por tela:
 
 1. **Carteira** — criada automaticamente. O usuário só informa quanto tem em dinheiro físico. Sem extrato, sem importação (4.4).

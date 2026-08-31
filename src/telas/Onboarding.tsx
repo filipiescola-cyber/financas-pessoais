@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatarBR, hoje, primeiroDiaDoMes, somarMeses } from '../dominio/datas';
@@ -25,7 +25,9 @@ import { criarRecorrencia } from '../dados/recorrencias';
 import { criarLancamento, criarParcelamentoEmAndamento } from '../dados/transacoes';
 import {
   ADIAVEIS,
-  PASSOS,
+  passosDaTrilha,
+  trilhaDe,
+  type Trilha,
   gravarSementesDeRenda,
   gravarStatusOnboarding,
   lerStatusOnboarding,
@@ -36,6 +38,8 @@ import { usarContas } from '../dados/usarContas';
 import { usarCartoes } from '../dados/usarCartoes';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
+import { listarDividas } from '../dados/dividas';
+import { FormularioDeDivida } from './Dividas';
 
 /**
  * Onboarding (§4.1). Uma pergunta por tela, caminho MANUAL apenas.
@@ -63,6 +67,7 @@ export function Onboarding() {
   const status = useQuery({ queryKey: ['onboarding'], queryFn: lerStatusOnboarding });
   const [passo, setPasso] = useState<PassoDoOnboarding | null>(null);
   const [pulados, setPulados] = useState<PassoDoOnboarding[]>([]);
+  const [escolhida, setEscolhida] = useState<Trilha | undefined>(undefined);
 
   useEffect(() => {
     if (status.data && passo === null) {
@@ -71,11 +76,18 @@ export function Onboarding() {
       // deixava a tela sem nada para fazer.
       setPasso(passoDeEntrada(status.data));
       setPulados(status.data.pulados);
+      setEscolhida(status.data.trilha);
     }
   }, [status.data, passo]);
 
   const dataDeCorte = primeiroDiaDoMes(hoje());
-  const indice = passo ? PASSOS.indexOf(passo) : 0;
+
+  // A lista de passos é função da trilha escolhida (§4.1). Trocar de trilha no
+  // primeiro passo muda tudo que vem depois — inclusive a barra de progresso,
+  // que precisa contar sobre a trilha em uso e não sobre um total fixo.
+  const trilha = trilhaDe({ concluido: false, passoAtual: passo ?? 'trilha', pulados, trilha: escolhida });
+  const passos = passosDaTrilha(trilha);
+  const indice = passo ? Math.max(0, passos.indexOf(passo)) : 0;
 
   async function irPara(proximo: PassoDoOnboarding | 'fim', pulandoAtual = false) {
     const novosPulados =
@@ -85,8 +97,9 @@ export function Onboarding() {
     if (proximo === 'fim') {
       await gravarStatusOnboarding({
         concluido: true,
-        passoAtual: 'categorias',
+        passoAtual: passos[passos.length - 1]!,
         pulados: novosPulados,
+        trilha,
       });
       await cliente.invalidateQueries({ queryKey: ['onboarding'] });
       mostrar('Onboarding concluído.');
@@ -98,6 +111,7 @@ export function Onboarding() {
       concluido: false,
       passoAtual: proximo,
       pulados: novosPulados,
+      trilha,
     });
     await cliente.invalidateQueries({ queryKey: ['onboarding'] });
     setPasso(proximo);
@@ -105,7 +119,7 @@ export function Onboarding() {
   }
 
   function avancar(pulandoAtual = false) {
-    const proximo = PASSOS[indice + 1];
+    const proximo = passos[indice + 1];
     return irPara(proximo ?? 'fim', pulandoAtual);
   }
 
@@ -118,7 +132,7 @@ export function Onboarding() {
       <header className="space-y-2">
         <div className="flex items-center justify-between text-xs text-slate-500">
           <span>
-            Passo {indice + 1} de {PASSOS.length}
+            Passo {indice + 1} de {passos.length}
           </span>
           <button onClick={() => navegar('/')} className="hover:text-slate-300">
             Continuar depois
@@ -127,11 +141,18 @@ export function Onboarding() {
         <div className="h-1 w-full overflow-hidden rounded-full bg-superficie-alta">
           <div
             className="h-full bg-emerald-600 transition-all"
-            style={{ width: `${((indice + 1) / PASSOS.length) * 100}%` }}
+            style={{ width: `${((indice + 1) / passos.length) * 100}%` }}
           />
         </div>
       </header>
 
+      {passo === 'trilha' && (
+        <PassoTrilha
+          escolhida={trilha}
+          aoEscolher={setEscolhida}
+          aoAvancar={() => avancar()}
+        />
+      )}
       {passo === 'carteira' && <PassoCarteira aoAvancar={() => avancar()} />}
       {passo === 'contas' && <PassoContas dataDeCorte={dataDeCorte} aoAvancar={() => avancar()} />}
       {passo === 'cartoes' && <PassoCartoes aoAvancar={() => avancar()} />}
@@ -144,7 +165,16 @@ export function Onboarding() {
       {passo === 'despesas-fixas' && <PassoDespesasFixas aoAvancar={() => avancar()} />}
       {passo === 'fontes-de-renda' && <PassoFontesDeRenda aoAvancar={() => avancar()} />}
       {passo === 'empresa' && <PassoEmpresa aoAvancar={() => avancar()} />}
-      {passo === 'categorias' && <PassoCategorias aoConcluir={() => irPara('fim')} />}
+      {passo === 'conceito-cartao' && <ConceitoDoCartao aoAvancar={() => avancar()} />}
+      {passo === 'conceito-natureza' && <ConceitoDaNatureza aoAvancar={() => avancar()} />}
+      {passo === 'dividas' && <PassoDividas aoAvancar={() => avancar()} />}
+      {passo === 'categorias' && (
+        <PassoCategorias
+          aoConcluir={() => (trilha === 'completa' ? avancar() : irPara('fim'))}
+          ultimo={trilha !== 'completa'}
+        />
+      )}
+      {passo === 'tour' && <TourFinal aoConcluir={() => irPara('fim')} />}
 
       {ADIAVEIS.includes(passo) && (
         <p className="text-center text-xs text-slate-600">
@@ -1047,7 +1077,13 @@ function PassoEmpresa({ aoAvancar }: { aoAvancar: () => void }) {
 
 // ---------------------------------------------------------------- passo 9 --
 
-function PassoCategorias({ aoConcluir }: { aoConcluir: () => void }) {
+function PassoCategorias({
+  aoConcluir,
+  ultimo = true,
+}: {
+  aoConcluir: () => void;
+  ultimo?: boolean;
+}) {
   const categorias = usarCategorias();
   const total = (categorias.data ?? []).length;
 
@@ -1063,7 +1099,328 @@ function PassoCategorias({ aoConcluir }: { aoConcluir: () => void }) {
         esconderia justamente isso.
       </p>
 
+      <Avancar aoClicar={aoConcluir} rotulo={ultimo ? 'Concluir' : 'Continuar'} />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- trilha --
+
+/**
+ * A escolha que decide o tamanho de tudo (§4.1).
+ *
+ * Vem primeiro porque escolher no meio seria pedir para reavaliar um caminho já
+ * começado. E a rápida aparece antes na tela, não por ser melhor: o §4.1 é
+ * explícito em que onboarding longo é onde se abandona, e a opção que protege
+ * contra isso merece ser a que se lê primeiro.
+ *
+ * A diferença NÃO é "cadastrar menos". As duas passam pelo mesmo piso — saldo,
+ * cartão, fatura aberta, parcelamentos e renda —, porque sem qualquer um deles
+ * o app dá número errado, não número incompleto. O que a completa acrescenta é
+ * contexto e explicação.
+ */
+function PassoTrilha({
+  escolhida,
+  aoEscolher,
+  aoAvancar,
+}: {
+  escolhida: Trilha;
+  aoEscolher: (trilha: Trilha) => void;
+  aoAvancar: () => void;
+}) {
+  const opcoes: { valor: Trilha; titulo: string; tempo: string; descricao: string }[] = [
+    {
+      valor: 'rapida',
+      titulo: 'Rápida',
+      tempo: 'uns 8 minutos',
+      descricao:
+        'Só o que o app precisa para não mentir: onde está o seu dinheiro, os cartões, a fatura aberta, os parcelamentos que já rolam e de onde vem a renda. Dá para usar hoje mesmo.',
+    },
+    {
+      valor: 'completa',
+      titulo: 'Completa',
+      tempo: 'uns 20 minutos',
+      descricao:
+        'Tudo da rápida, mais despesas fixas, dívidas e conta Empresa — e três telas que explicam por que os números deste app são diferentes dos de uma planilha. Vale se você quiser entender o que está vendo.',
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Titulo ajuda="Dá para mudar depois: o progresso fica salvo, e nada do que você cadastrar se perde na troca.">
+        Como você quer começar?
+      </Titulo>
+
+      <div className="space-y-2">
+        {opcoes.map((opcao) => (
+          <button
+            key={opcao.valor}
+            onClick={() => aoEscolher(opcao.valor)}
+            className={`w-full rounded-xl border p-4 text-left transition ${
+              escolhida === opcao.valor
+                ? 'border-emerald-600 bg-emerald-950/20'
+                : 'border-borda bg-superficie hover:border-borda-forte'
+            }`}
+          >
+            <p className="flex items-baseline justify-between gap-3">
+              <span className="text-slate-100">{opcao.titulo}</span>
+              <span className="text-xs text-slate-500">{opcao.tempo}</span>
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">{opcao.descricao}</p>
+          </button>
+        ))}
+      </div>
+
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs leading-relaxed text-slate-400">
+        As duas cadastram o mesmo essencial. A rápida não é uma versão capada — é a mesma base sem
+        as explicações. O que fica de fora dela some da configuração, não do app: despesas fixas e
+        dívidas podem ser cadastradas depois, a qualquer momento.
+      </p>
+
+      <Avancar aoClicar={aoAvancar} rotulo="Começar" />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ conceitos --
+
+/** Caixa de conceito: o que se costuma achar, e o que é. */
+function Conceito({
+  titulo,
+  achamQue,
+  masE,
+}: {
+  titulo: string;
+  achamQue: string;
+  masE: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-borda bg-superficie p-4">
+      <p className="text-sm text-slate-100">{titulo}</p>
+      <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+        <span className="text-slate-600">Parece que: </span>
+        {achamQue}
+      </p>
+      <p className="mt-1.5 text-xs leading-relaxed text-slate-300">{masE}</p>
+    </div>
+  );
+}
+
+/**
+ * O cartão é onde a intuição mais erra (§2.1, §2.4, §14).
+ *
+ * Três ideias, e as três contrariam o senso comum. Quem não as entende lê os
+ * próprios números como se estivessem errados — e a reação natural é concluir
+ * que o app está somando duas vezes.
+ */
+function ConceitoDoCartao({ aoAvancar }: { aoAvancar: () => void }) {
+  return (
+    <div className="space-y-4">
+      <Titulo ajuda="Nada para preencher aqui. São três ideias que fazem o resto do app fazer sentido.">
+        Como o cartão funciona aqui
+      </Titulo>
+
+      <div className="space-y-2">
+        <Conceito
+          titulo="Comprar no cartão não tira dinheiro da conta"
+          achamQue="a compra de hoje deveria baixar o saldo hoje."
+          masE={
+            <>
+              Ela vira uma despesa <strong>de hoje</strong> — aparece no relatório do mês em que
+              você comprou — mas o dinheiro só sai no vencimento da fatura. Por isso a lista de
+              lançamentos mostra a compra dentro da fatura, no dia em que ela é paga.
+            </>
+          }
+        />
+        <Conceito
+          titulo="Pagar a fatura não é uma despesa"
+          achamQue="pagar R$ 1.200 de fatura é gastar R$ 1.200."
+          masE={
+            <>
+              O gasto já foi contado em cada compra. Contar de novo <strong>dobraria o mês</strong>{' '}
+              e jogaria tudo numa categoria só, em vez de Mercado, Transporte e o resto. Pagar a
+              fatura quita uma dívida: é transferência, não gasto.
+            </>
+          }
+        />
+        <Conceito
+          titulo="Parcelar sem juros é renda futura já gasta"
+          achamQue="12x sem juros não custa nada."
+          masE={
+            <>
+              Cada parcela é um pedaço dos seus próximos meses que já tem dono. O app soma isso e
+              chama de <strong>compromisso assumido</strong> — e mostra em que mês ele acaba, que é
+              a data que ninguém sabe de cabeça.
+            </>
+          }
+        />
+      </div>
+
+      <Avancar aoClicar={aoAvancar} />
+    </div>
+  );
+}
+
+/**
+ * Por que despesa não tem um total único (§2.5, §14).
+ *
+ * É a separação que permite responder "quanto preciso ganhar para nada atrasar"
+ * e "onde dá para cortar". Um número consolidado esconde as duas respostas.
+ */
+function ConceitoDaNatureza({ aoAvancar }: { aoAvancar: () => void }) {
+  return (
+    <div className="space-y-4">
+      <Titulo ajuda="Também nada para preencher. Isto explica por que você nunca vai ver um número só de despesa do mês.">
+        Fixa, variável e eventual
+      </Titulo>
+
+      <div className="space-y-2">
+        <Conceito
+          titulo="Fixa — o seu custo de vida mínimo"
+          achamQue="é só mais uma etiqueta."
+          masE={
+            <>
+              A soma das fixas responde{' '}
+              <strong>quanto precisa entrar todo mês para nada atrasar</strong>. É o piso, e é o
+              denominador da reserva de emergência.
+            </>
+          }
+        />
+        <Conceito
+          titulo="Variável — onde dá para cortar"
+          achamQue="mercado e lazer são gastos como quaisquer outros."
+          masE={
+            <>
+              São os únicos sobre os quais um corte é possível de verdade. Relatório de corte que
+              mistura aluguel com pizza não serve para decidir nada.
+            </>
+          }
+        />
+        <Conceito
+          titulo="Eventual — o que precisa de provisão"
+          achamQue="IPVA e seguro são imprevistos."
+          masE={
+            <>
+              Não são: você sabe que vêm. O app divide o valor anual por 12 e reserva todo mês.{' '}
+              <strong>Sem isso, janeiro sempre parece um desastre.</strong>
+            </>
+          }
+        />
+      </div>
+
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs leading-relaxed text-slate-400">
+        É por isso que o Início mostra os três blocos separados e nunca um total único: o número
+        consolidado esconde exatamente a informação que decide alguma coisa.
+      </p>
+
+      <Avancar aoClicar={aoAvancar} />
+    </div>
+  );
+}
+
+// --------------------------------------------------------------- tour --
+
+/** O que cada tela responde. Fecha a trilha completa (§11). */
+function TourFinal({ aoConcluir }: { aoConcluir: () => void }) {
+  const telas: { nome: string; responde: string }[] = [
+    { nome: 'Início', responde: 'O que exige atenção hoje, e como está o mês.' },
+    { nome: 'Lançamentos', responde: 'O que entrou e saiu de cada conta, dia a dia.' },
+    { nome: 'Em lote', responde: 'Ficou dias sem lançar? Dez de uma vez, numa tabela.' },
+    { nome: 'Faturas', responde: 'A fatura do mês inteira, com as compras que a formam.' },
+    { nome: 'Investimentos', responde: 'Quanto rende por dia — bruto e líquido, já com IR.' },
+    { nome: 'Dívidas', responde: 'Quanto ainda se deve e em que mês acaba. Com juros de verdade.' },
+    {
+      nome: 'Fluxo de caixa',
+      responde: 'Como fica o saldo nos próximos 12 meses, em três cenários.',
+    },
+    { nome: 'Simulador', responde: 'O que ESTA compra faz com o seu pior mês. Use dentro da loja.' },
+    { nome: 'Metas', responde: 'Quantos meses de custo fixo a sua reserva cobre.' },
+    { nome: 'Conferência', responde: 'O saldo do app bate com o do banco? Onde o erro entrou.' },
+    { nome: 'Fechamento', responde: 'O ritual de 10 minutos que mantém tudo confiável.' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Titulo ajuda="Você não precisa decorar nada disto. É só para saber que existe quando a pergunta aparecer.">
+        O que cada tela responde
+      </Titulo>
+
+      <ul className="divide-y divide-borda overflow-hidden rounded-xl border border-borda bg-superficie">
+        {telas.map((tela) => (
+          <li key={tela.nome} className="px-4 py-2.5">
+            <p className="text-sm text-slate-200">{tela.nome}</p>
+            <p className="text-xs leading-relaxed text-slate-500">{tela.responde}</p>
+          </li>
+        ))}
+      </ul>
+
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs leading-relaxed text-slate-400">
+        Uma coisa importa mais que todas as outras: <strong>lançar</strong>. O botão verde está em
+        toda tela e leva menos de dez segundos. App de finanças manual não morre por falta de
+        recurso — morre por preguiça de digitar.
+      </p>
+
       <Avancar aoClicar={aoConcluir} rotulo="Concluir" />
+    </div>
+  );
+}
+
+
+// ------------------------------------------------------------- dívidas --
+
+/**
+ * Financiamento e empréstimo no onboarding (§4.7).
+ *
+ * Entra só na trilha completa porque é o passo mais opcional de todos: muita
+ * gente não tem nenhuma. Mas quem tem, tem a maior despesa fixa da vida — e uma
+ * projeção de 12 meses que ignora a parcela do apartamento não serve para nada.
+ *
+ * O formulário é o MESMO da tela de Dívidas, importado. Duplicá-lo daria duas
+ * versões da regra de amortização para manter, e a segunda envelheceria calada.
+ */
+function PassoDividas({ aoAvancar }: { aoAvancar: () => void }) {
+  const [cadastrando, setCadastrando] = useState(false);
+  const dividas = useQuery({ queryKey: ['dividas'], queryFn: () => listarDividas() });
+  const quantas = dividas.data?.length ?? 0;
+
+  return (
+    <div className="space-y-4">
+      <Titulo ajuda="Financiamento de imóvel ou carro, empréstimo, crediário fora do cartão.">
+        Dívidas
+      </Titulo>
+
+      <p className="rounded-lg border border-borda bg-superficie p-3 text-xs leading-relaxed text-slate-400">
+        O app calcula o saldo devedor <strong>com juros</strong>, o que quase nenhuma planilha faz.
+        A diferença não é detalhe: num financiamento longo, tratar a parcela inteira como
+        abatimento diz que você está quase quitando quando ainda falta metade.
+      </p>
+
+      {quantas > 0 && (
+        <ul className="space-y-1">
+          {dividas.data?.map((item) => (
+            <li
+              key={item.divida.id}
+              className="flex justify-between rounded-lg border border-borda px-3 py-2 text-sm"
+            >
+              <span className="truncate text-slate-200">{item.divida.nome}</span>
+              <span className="shrink-0 text-slate-400">{formatar(item.resumo.saldoDevedor)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {cadastrando ? (
+        <FormularioDeDivida aoTerminar={() => setCadastrando(false)} />
+      ) : (
+        <button
+          onClick={() => setCadastrando(true)}
+          className="w-full rounded-lg border border-borda-forte px-4 py-2 text-sm text-slate-200"
+        >
+          {quantas > 0 ? 'Cadastrar outra' : 'Cadastrar uma dívida'}
+        </button>
+      )}
+
+      <Avancar aoClicar={aoAvancar} rotulo={quantas > 0 ? 'Continuar' : 'Não tenho dívidas'} />
     </div>
   );
 }

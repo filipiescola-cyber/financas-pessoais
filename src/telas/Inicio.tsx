@@ -5,7 +5,7 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import { hoje, primeiroDiaDoMes, ultimoDiaDoMes } from '../dominio/datas';
 import { entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { agruparEmArvore } from '../dominio/arvoreDeContas';
-import { ADIAVEIS, lerStatusOnboarding, PASSOS } from '../dados/config';
+import { ADIAVEIS, lerStatusOnboarding, passosDaTrilha, trilhaDe } from '../dados/config';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { usarTransacoes } from '../dados/usarTransacoes';
 import { usarCartoes } from '../dados/usarCartoes';
@@ -70,6 +70,7 @@ export function Inicio() {
   const status = onboarding.data;
   const pendente = status && !status.concluido;
   const adiados = (status?.pulados ?? []).filter((p) => ADIAVEIS.includes(p));
+  const passosDoUsuario = passosDaTrilha(status ? trilhaDe(status) : 'rapida');
   const nomeDoMes = MESES[Number(mes.split('-')[1]) - 1];
 
   const semDados = contas.isSuccess && disponiveis.length === 0;
@@ -83,7 +84,8 @@ export function Inicio() {
         >
           <p className="text-sm font-medium text-emerald-200">Terminar a configuração inicial</p>
           <p className="mt-1 text-xs leading-relaxed text-emerald-200/70">
-            Parou no passo {PASSOS.indexOf(status.passoAtual) + 1} de {PASSOS.length}. Leva menos de
+            Parou no passo {passosDoUsuario.indexOf(status.passoAtual) + 1} de{' '}
+            {passosDoUsuario.length}. Leva menos de
             10 minutos e é o que faz a projeção começar a funcionar.
           </p>
         </Link>

@@ -330,7 +330,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
  * A prévia ao vivo é o que transforma isso de burocracia em resposta: enquanto
  * se digita, a tela já mostra a parcela, o total de juros e o mês da quitação.
  */
-function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
+export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
   const cliente = useQueryClient();
   const contas = usarContas();
   const categorias = usarCategorias();
