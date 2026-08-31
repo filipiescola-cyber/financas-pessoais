@@ -9,6 +9,7 @@ import {
   atualizarSaldoManual,
   calcularTodos,
   conferirInvestimento,
+  aportarEmInvestimento,
   atualizarInvestimento,
   criarInvestimento,
   type Investimento,
@@ -76,7 +77,9 @@ export function Investimentos() {
     (soma, i) => soma + (i.resultado?.saldoLiquido ?? i.saldoExibido),
     0,
   );
-  const totalAplicado = lista.reduce((soma, i) => soma + i.investimento.valorAplicado, 0);
+  // Principal vivo, não `valorAplicado`: com aporte novo e resgate parcial o
+  // valor da primeira aplicação deixou de ser o que está aplicado hoje.
+  const totalAplicado = lista.reduce((soma, i) => soma + i.aplicado, 0);
 
   const semTaxa = lista.some(
     (i) => i.investimento.calculoAutomatico && i.resultado?.taxaAnualUsada === null,
@@ -321,6 +324,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
 
   const [resgatando, setResgatando] = useState(false);
   const [editando, setEditando] = useState(false);
+  const [aportando, setAportando] = useState(false);
 
   const arquivar = useMutation({
     mutationFn: () => arquivarInvestimento(item.investimento.id),
@@ -331,7 +335,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const [saldo, setSaldo] = useState<Centavos>(item.saldoExibido);
 
   const { investimento: inv, resultado } = item;
-  const rendimento = item.saldoExibido - inv.valorAplicado;
+  const rendimento = item.saldoExibido - item.aplicado;
 
   const salvarManual = useMutation({
     mutationFn: () => atualizarSaldoManual(inv.id, saldo),
@@ -426,6 +430,12 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           {editando ? 'Cancelar' : 'Editar'}
         </button>
         <button
+          onClick={() => setAportando((v) => !v)}
+          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {aportando ? 'Cancelar' : 'Aplicar mais'}
+        </button>
+        <button
           onClick={() => setResgatando((v) => !v)}
           className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
@@ -443,6 +453,14 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
 
       {editando && (
         <EdicaoDoInvestimento investimento={inv} aoTerminar={() => setEditando(false)} />
+      )}
+
+      {aportando && (
+        <AporteNoInvestimento
+          investimentoId={inv.id}
+          nome={inv.nome}
+          aoTerminar={() => setAportando(false)}
+        />
       )}
 
       {resgatando && (
@@ -805,6 +823,14 @@ function ResgateDoInvestimento({
       <p className="text-xs leading-relaxed text-slate-500">
         Veio preenchido com a estimativa do app. O número certo é o do extrato, já com IR e IOF
         descontados.
+        {valor > 0 && valor < saldoEstimado && (
+          <>
+            {' '}
+            Resgate parcial: sobram cerca de{' '}
+            <span className="text-slate-300">{formatar(saldoEstimado - valor)}</span> aplicados,
+            rendendo normalmente.
+          </>
+        )}
       </p>
 
       <Campo rotulo="Para qual conta">
@@ -980,5 +1006,102 @@ function CampoDeLiquidez({
         </Chip>
       </div>
     </Campo>
+  );
+}
+
+/**
+ * Aporte novo numa aplicação que já existe (§7.4).
+ *
+ * Antes isto não existia: para aplicar mais R$ 100 no mesmo RDB era preciso
+ * criar um segundo investimento com o mesmo nome, e a carteira enchia de linhas
+ * repetidas que são a mesma aplicação.
+ *
+ * Cada aporte rende a partir da SUA data — não de uma média —, porque é o que
+ * acontece no banco: dinheiro que entrou em março não rendeu em janeiro, e a
+ * alíquota de IR dele conta a partir de março.
+ */
+function AporteNoInvestimento({
+  investimentoId,
+  nome,
+  aoTerminar,
+}: {
+  investimentoId: string;
+  nome: string;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const { mostrar } = usarAviso();
+  const contas = usarContas();
+  const [valor, setValor] = useState<Centavos>(0);
+  const [data, setData] = useState<DataISO>(hoje());
+  const [contaOrigemId, setContaOrigemId] = useState<string | null>(null);
+
+  const aportar = useMutation({
+    mutationFn: () =>
+      aportarEmInvestimento({
+        investimentoId,
+        nome,
+        valor,
+        data,
+        contaOrigemId: contaOrigemId!,
+      }),
+    onSuccess: async () => {
+      await cliente.invalidateQueries();
+      aoTerminar();
+      mostrar('Aporte registrado.');
+    },
+  });
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto aplicar" autoFocus />
+
+      <Campo rotulo="De qual conta">
+        <div className="flex flex-wrap gap-2">
+          {(contas.data ?? []).filter(podePagarFatura).map((conta) => (
+            <Chip
+              key={conta.id}
+              ativo={contaOrigemId === conta.id}
+              aoClicar={() => setContaOrigemId(conta.id)}
+            >
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+                />
+                {conta.nome}
+              </span>
+            </Chip>
+          ))}
+        </div>
+      </Campo>
+
+      <Campo rotulo="Data">
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      {aportar.isError && <p className="text-sm text-red-400">{(aportar.error as Error).message}</p>}
+
+      <div className="flex gap-2">
+        <Botao
+          aoClicar={() => aportar.mutate()}
+          desabilitado={valor <= 0 || contaOrigemId === null || aportar.isPending}
+        >
+          {aportar.isPending ? 'Aplicando…' : 'Registrar aporte'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        O dinheiro sai da conta como transferência, não como despesa: aplicar não é gastar.
+      </p>
+    </div>
   );
 }

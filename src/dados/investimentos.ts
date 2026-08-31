@@ -5,7 +5,8 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
-import { calcular, type Indexador, type Resultado } from '../dominio/rendimento';
+import { calcularPosicao, parcelasVivas, principalVivo, type Movimento } from '../dominio/posicao';
+import type { Indexador, Resultado } from '../dominio/rendimento';
 import { listarFeriados, tabelaDeIR, taxasVigentes } from './indicadores';
 import { criarTransferencia } from './transacoes';
 import { supabase } from './supabase';
@@ -160,14 +161,16 @@ export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
     .single();
 
   if (error) throw new Error(error.message);
-  if (!novo.contaOrigemId) return;
 
+  // O aporte é gravado SEMPRE: é dele que sai o principal (§13.2). Sem conta de
+  // origem, só a transferência deixa de existir — a aplicação continua valendo
+  // o que foi aplicado, em vez de aparecer zerada.
   await registrarMovimento({
     investimentoId: criado.id,
     tipo: 'aporte',
     valor: novo.valorAplicado,
     data: novo.dataAplicacao,
-    contaDoCaixa: novo.contaOrigemId,
+    contaDoCaixa: novo.contaOrigemId ?? null,
     descricao: `Aplicação em ${novo.nome.trim()}`,
   });
 }
@@ -180,24 +183,33 @@ export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
  * o patrimônio não muda em nenhum dos dois, só muda de lugar. O rendimento é
  * que é ganho, e ele só vira receita quando realizado.
  */
+/**
+ * Grava o movimento e, quando há conta envolvida, a transferência que o move.
+ *
+ * `contaDoCaixa` nulo é o caso de quem cadastra uma aplicação que já existia
+ * antes do app: o principal precisa ser registrado — é dele que sai o saldo
+ * (§13.2) — mas nenhuma conta pode se mexer, porque esse dinheiro saiu de lá
+ * meses atrás e o lançamento seria inventado.
+ */
 async function registrarMovimento(dados: {
   investimentoId: string;
   tipo: 'aporte' | 'resgate';
   valor: Centavos;
   data: DataISO;
-  contaDoCaixa: string;
+  contaDoCaixa: string | null;
   descricao: string;
 }): Promise<void> {
-  const contaInvestimentos = await contaDeInvestimentos();
   const ehAporte = dados.tipo === 'aporte';
 
-  const ids = await criarTransferencia({
-    valor: dados.valor,
-    contaOrigemId: ehAporte ? dados.contaDoCaixa : contaInvestimentos,
-    contaDestinoId: ehAporte ? contaInvestimentos : dados.contaDoCaixa,
-    data: dados.data,
-    descricao: dados.descricao,
-  });
+  const ids = dados.contaDoCaixa
+    ? await criarTransferencia({
+        valor: dados.valor,
+        contaOrigemId: ehAporte ? dados.contaDoCaixa : await contaDeInvestimentos(),
+        contaDestinoId: ehAporte ? await contaDeInvestimentos() : dados.contaDoCaixa,
+        data: dados.data,
+        descricao: dados.descricao,
+      })
+    : [];
 
   const { error } = await supabase.from('movimentacoes_investimento').insert({
     investimento_id: dados.investimentoId,
@@ -307,6 +319,8 @@ export async function desarquivarInvestimento(id: string): Promise<void> {
 }
 
 export type InvestimentoCalculado = {
+  /** Principal ainda aplicado: aportes menos resgates (§13.2). */
+  aplicado: Centavos;
   investimento: Investimento;
   resultado: Resultado | null;
   /** O que vale hoje: calculado, manual ou conferido. */
@@ -323,38 +337,48 @@ export type InvestimentoCalculado = {
  * desperdício num plano gratuito.
  */
 export async function calcularTodos(ate: DataISO = hoje()): Promise<InvestimentoCalculado[]> {
-  const [investimentos, feriados, taxas, tabela] = await Promise.all([
+  const [investimentos, feriados, taxas, tabela, movimentos] = await Promise.all([
     listarInvestimentos(),
     listarFeriados(),
     taxasVigentes(),
     tabelaDeIR(),
+    listarMovimentos(),
   ]);
 
   return investimentos.map((investimento) => {
-    if (!investimento.calculoAutomatico) {
-      const saldo = investimento.saldoManual ?? investimento.valorAplicado;
-      return {
-        investimento,
-        resultado: null,
-        saldoExibido: saldo,
-        divergencia: null,
-      };
-    }
+    const doInvestimento = movimentos.get(investimento.id) ?? [];
+
+    const papel = {
+      indexador: investimento.indexador,
+      percentualIndexador: investimento.percentualIndexador,
+      taxaPrefixada: investimento.taxaPrefixada,
+      isentoIR: investimento.isentoIR,
+    };
 
     const taxaDoIndexador =
       investimento.indexador && investimento.indexador !== 'PREFIXADO'
         ? (taxas.get(investimento.indexador)?.taxaAnual ?? null)
         : null;
 
-    const resultado = calcular(
-      {
-        valorAplicado: investimento.valorAplicado,
-        dataAplicacao: investimento.dataAplicacao,
-        indexador: investimento.indexador,
-        percentualIndexador: investimento.percentualIndexador,
-        taxaPrefixada: investimento.taxaPrefixada,
-        isentoIR: investimento.isentoIR,
-      },
+    // Principal de hoje: a soma dos aportes menos o que já saiu (§13.2). Nunca
+    // `valor_aplicado`, que é só o registro da primeira aplicação.
+    const aplicado = principalVivo(
+      parcelasVivas(papel, doInvestimento, taxaDoIndexador, feriados),
+    );
+
+    if (!investimento.calculoAutomatico) {
+      return {
+        investimento,
+        aplicado,
+        resultado: null,
+        saldoExibido: investimento.saldoManual ?? aplicado,
+        divergencia: null,
+      };
+    }
+
+    const resultado = calcularPosicao(
+      papel,
+      doInvestimento,
       taxaDoIndexador,
       ate,
       feriados,
@@ -363,6 +387,7 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
 
     return {
       investimento,
+      aplicado,
       resultado,
       saldoExibido: resultado.saldoBruto,
       divergencia:
@@ -370,5 +395,52 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
           ? null
           : resultado.saldoBruto - investimento.saldoConferido,
     };
+  });
+}
+
+/** Os movimentos de todas as aplicações, numa consulta só, já agrupados. */
+async function listarMovimentos(): Promise<Map<string, Movimento[]>> {
+  const { data, error } = await supabase
+    .from('movimentacoes_investimento')
+    .select('investimento_id, tipo, valor, data')
+    .order('data');
+  if (error) throw error;
+
+  const porInvestimento = new Map<string, Movimento[]>();
+
+  for (const linha of data ?? []) {
+    const lista = porInvestimento.get(linha.investimento_id) ?? [];
+    lista.push({
+      tipo: linha.tipo as 'aporte' | 'resgate',
+      valor: paraCentavos(linha.valor),
+      data: linha.data,
+    });
+    porInvestimento.set(linha.investimento_id, lista);
+  }
+
+  return porInvestimento;
+}
+
+/**
+ * Aporte novo numa aplicação que já existe (§7.4).
+ *
+ * Antes, aportar de novo exigia criar um segundo investimento com o mesmo nome.
+ * O dinheiro sai da conta como transferência, igual ao primeiro aporte: aplicar
+ * não é gastar.
+ */
+export async function aportarEmInvestimento(dados: {
+  investimentoId: string;
+  nome: string;
+  valor: Centavos;
+  data: DataISO;
+  contaOrigemId: string;
+}): Promise<void> {
+  await registrarMovimento({
+    investimentoId: dados.investimentoId,
+    tipo: 'aporte',
+    valor: dados.valor,
+    data: dados.data,
+    contaDoCaixa: dados.contaOrigemId,
+    descricao: `Aplicação em ${dados.nome.trim()}`,
   });
 }
