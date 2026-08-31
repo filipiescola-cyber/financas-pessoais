@@ -9,13 +9,14 @@
 // daquele momento é gravado. Enquanto aberta, quem pergunta soma as transações.
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
-import { hoje, type DataISO } from '../dominio/datas';
+import { hoje, somarMeses, type DataISO } from '../dominio/datas';
 import {
   faturaEscolhida,
   proximasFaturas,
   saldoDaFatura,
   type ConfiguracaoDoCartao,
 } from '../dominio/fatura';
+import { criarDivida } from './dividas';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -396,6 +397,70 @@ export async function fecharFaturasVencidas(referencia: DataISO = hoje()): Promi
  * tenha passado — e não sempre para `aberta`, senão uma fatura de três meses
  * atrás reabriria como se ainda aceitasse compra.
  */
+/**
+ * Parcelar o que falta da fatura (§2.1, §4.7).
+ *
+ * O banco tira o restante DESTA fatura e recobra em N vezes com juros. São dois
+ * fatos, e os dois precisam existir:
+ *
+ *   A fatura fica quitada. Não por pagamento — nenhum dinheiro saiu de conta
+ *   nenhuma —, mas porque o saldo devedor mudou de lugar. É o que a linha de
+ *   rolagem registra: entrada no cartão, sem contrapartida em caixa.
+ *
+ *   Nasce uma DÍVIDA, com taxa e prazo. É ela que responde quanto ainda se deve
+ *   e quanto o parcelamento custou de juros — pergunta que a fatura sozinha não
+ *   responde, porque ela só conhece o mês dela.
+ *
+ * Onde a parcela é cobrada é escolha de quem parcela, e muda o que aparece:
+ * cobrada no CARTÃO, ela cai nas próximas faturas, que é como o banco faz
+ * quando o parcelamento é do próprio cartão. Cobrada numa CONTA, é empréstimo
+ * separado e vive só em Dívidas.
+ */
+export async function parcelarFatura(dados: {
+  faturaId: string;
+  cartaoId: string;
+  nomeDoCartao: string;
+  restante: Centavos;
+  parcelas: number;
+  taxaMensal: number;
+  /** Cartão (cai nas próximas faturas) ou conta (empréstimo à parte). */
+  cobrarEm: string;
+  categoriaId?: string | null;
+  data: DataISO;
+}): Promise<void> {
+  const restante = Math.abs(dados.restante);
+  if (restante <= 0) throw new Error('Não há saldo para parcelar nesta fatura.');
+
+  await criarDivida({
+    nome: `Parcelamento da fatura ${dados.nomeDoCartao}`,
+    valorFinanciado: restante,
+    taxaMensal: dados.taxaMensal,
+    parcelas: dados.parcelas,
+    sistema: 'price',
+    primeiraParcela: somarMeses(dados.data, 1),
+    parcelasPagas: 0,
+    contaId: dados.cobrarEm,
+    categoriaId: dados.categoriaId ?? null,
+  });
+
+  // A rolagem: entrada no cartão que zera esta fatura, sem par em caixa nenhum
+  // porque dinheiro nenhum se moveu — a dívida só trocou de forma.
+  const { error } = await supabase.from('transacoes').insert({
+    conta_id: dados.cartaoId,
+    valor: paraNumerico(restante),
+    tipo: 'transferencia',
+    data_competencia: dados.data,
+    data_caixa: dados.data,
+    descricao: 'Parcelamento da fatura',
+    origem: 'manual',
+    revisado: true,
+    fatura_paga_id: dados.faturaId,
+  });
+  if (error) throw new Error(error.message);
+
+  await acertarStatusDaFatura(dados.faturaId);
+}
+
 /**
  * Desfaz UM pagamento — o mais recente (§2.1).
  *

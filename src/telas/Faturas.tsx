@@ -13,6 +13,11 @@ import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
 import type { CartaoComConta } from '../dados/tipos';
 import { podePagarFatura } from '../dominio/saldo';
+import {
+  tabelaDeAmortizacao,
+  taxaImplicita,
+  taxaMensalDeAnual,
+} from '../dominio/divida';
 import { usarContas } from '../dados/usarContas';
 import { usarBuscaDeCategoria } from '../dados/usarTransacoes';
 import {
@@ -20,12 +25,21 @@ import {
   desfazerPagamentoDeFatura,
   listarFaturas,
   pagarFatura,
+  parcelarFatura,
   totalPagoDaFatura,
   type Fatura,
 } from '../dados/faturas';
 import { listarTransacoesDaFatura, type Transacao } from '../dados/transacoes';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
-import { ALVO_DE_TOQUE, Botao, Chip, Pagina, Vazio } from '../ui/base';
+import {
+  ALVO_DE_TOQUE,
+  Botao,
+  Campo,
+  Chip,
+  ENTRADA,
+  Pagina,
+  Vazio,
+} from '../ui/base';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import { EditarTransacao } from './EditarTransacao';
 
@@ -370,6 +384,13 @@ function CartaoDeFatura({
                 total={saldo.falta}
                 vencimento={fatura.dataVencimento}
               />
+
+              <ParcelamentoDaFatura
+                faturaId={fatura.id}
+                cartaoId={cartaoId}
+                nomeDoCartao={nomeDoCartao}
+                restante={saldo.falta}
+              />
             </>
           )}
       </div>
@@ -504,6 +525,177 @@ function PagamentoDeFatura({
         >
           Cancelar
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Parcelar o que falta da fatura (§2.1, §4.7).
+ *
+ * O banco tira o restante desta fatura e recobra com juros. A fatura fica
+ * quitada — não por pagamento, mas porque a dívida mudou de forma — e nasce uma
+ * dívida com taxa e prazo, que é quem sabe responder quanto isso custou.
+ *
+ * Onde a parcela é cobrada muda o que aparece, e é a pergunta que a tela faz:
+ * no CARTÃO ela cai nas próximas faturas, que é como o banco faz no
+ * parcelamento do próprio cartão; numa CONTA é empréstimo à parte.
+ *
+ * A taxa aceita os dois caminhos do cadastro de dívida — quem tem a proposta do
+ * banco informa a taxa, quem tem só o valor da parcela informa a parcela.
+ */
+function ParcelamentoDaFatura({
+  faturaId,
+  cartaoId,
+  nomeDoCartao,
+  restante,
+}: {
+  faturaId: string;
+  cartaoId: string;
+  nomeDoCartao: string;
+  restante: Centavos;
+}) {
+  const invalidar = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+  const contas = usarContas();
+
+  const [aberto, setAberto] = useState(false);
+  const [parcelas, setParcelas] = useState('');
+  const [modo, setModo] = useState<'taxa' | 'parcela'>('taxa');
+  const [taxaAnual, setTaxaAnual] = useState('');
+  const [valorDaParcela, setValorDaParcela] = useState<Centavos>(0);
+  const [cobrarEm, setCobrarEm] = useState<string>(cartaoId);
+
+  const n = Number(parcelas);
+
+  const taxaMensal =
+    modo === 'taxa'
+      ? taxaMensalDeAnual((Number(taxaAnual.replace(',', '.')) || 0) / 100)
+      : taxaImplicita(restante, valorDaParcela, n);
+
+  const podeCalcular = restante > 0 && n >= 1 && taxaMensal !== null;
+  const tabela = podeCalcular ? tabelaDeAmortizacao(restante, taxaMensal, n, 'price') : [];
+  const juros = tabela.reduce((soma, p) => soma + p.juros, 0);
+
+  const parcelar = useMutation({
+    mutationFn: () =>
+      parcelarFatura({
+        faturaId,
+        cartaoId,
+        nomeDoCartao,
+        restante,
+        parcelas: n,
+        taxaMensal: taxaMensal ?? 0,
+        cobrarEm,
+        data: hoje(),
+      }),
+    onSuccess: async () => {
+      await invalidar();
+      setAberto(false);
+      mostrar('Fatura parcelada. A dívida aparece em Dívidas, com os juros.');
+    },
+  });
+
+  if (restante <= 0) return null;
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        className={`w-full text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+      >
+        Parcelar o restante
+      </button>
+    );
+  }
+
+  const cobraveis = [
+    { id: cartaoId, nome: `${nomeDoCartao} — nas próximas faturas`, cor: null as string | null },
+    ...(contas.data ?? [])
+      .filter(podePagarFatura)
+      .map((c) => ({ id: c.id, nome: `${c.nome} — empréstimo à parte`, cor: c.cor })),
+  ];
+
+  return (
+    <div className="space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <p className="text-xs leading-relaxed text-slate-400">
+        Parcelar tira os <strong>{formatar(restante)}</strong> desta fatura e recobra com juros. A
+        fatura fica quitada — nenhum dinheiro sai agora — e a dívida passa a viver em{' '}
+        <strong>Dívidas</strong>, onde dá para ver o saldo devedor e o quanto os juros custaram.
+      </p>
+
+      <Campo rotulo="Em quantas vezes">
+        <input
+          inputMode="numeric"
+          value={parcelas}
+          onChange={(e) => setParcelas(e.target.value.replace(/\D/g, '').slice(0, 2))}
+          placeholder="12"
+          className={ENTRADA}
+        />
+      </Campo>
+
+      <Campo rotulo="Juros">
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Chip ativo={modo === 'taxa'} aoClicar={() => setModo('taxa')}>
+              Sei a taxa
+            </Chip>
+            <Chip ativo={modo === 'parcela'} aoClicar={() => setModo('parcela')}>
+              Sei a parcela
+            </Chip>
+          </div>
+
+          {modo === 'taxa' ? (
+            <input
+              inputMode="decimal"
+              value={taxaAnual}
+              onChange={(e) => setTaxaAnual(e.target.value)}
+              placeholder="Taxa ao ano (%)"
+              className={ENTRADA}
+            />
+          ) : (
+            <CampoValor valor={valorDaParcela} aoMudar={setValorDaParcela} rotulo="Valor da parcela" />
+          )}
+        </div>
+      </Campo>
+
+      <Campo
+        rotulo="Onde a parcela é cobrada"
+        ajuda="No cartão ela cai nas próximas faturas, como o banco faz no parcelamento do próprio cartão. Numa conta, é empréstimo à parte."
+      >
+        <div className="flex flex-wrap gap-2">
+          {cobraveis.map((opcao) => (
+            <Chip key={opcao.id} ativo={cobrarEm === opcao.id} aoClicar={() => setCobrarEm(opcao.id)}>
+              {opcao.nome}
+            </Chip>
+          ))}
+        </div>
+      </Campo>
+
+      {podeCalcular && tabela.length > 0 && (
+        <p className="rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-sm text-slate-200">
+          {n}x de <strong>{formatar(tabela[0]!.valor)}</strong> ·{' '}
+          <span className="text-slate-400">
+            {formatar(juros)} de juros ao todo, {((juros / restante) * 100).toFixed(0)}% do que foi
+            parcelado
+          </span>
+        </p>
+      )}
+
+      {parcelar.isError && (
+        <p className="text-sm text-red-400">{(parcelar.error as Error).message}</p>
+      )}
+
+      <div className="flex gap-2">
+        <Botao
+          aoClicar={() => parcelar.mutate()}
+          desabilitado={!podeCalcular || parcelar.isPending}
+        >
+          {parcelar.isPending ? 'Parcelando…' : 'Parcelar'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={() => setAberto(false)}>
+          Cancelar
+        </Botao>
       </div>
     </div>
   );
