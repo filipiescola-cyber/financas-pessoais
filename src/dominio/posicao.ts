@@ -16,18 +16,18 @@
 // O resgate reduz as parcelas PROPORCIONALMENTE, não a mais antiga primeiro.
 // Tirar 10% da posição tira 10% de cada parcela, o que preserva a idade média
 // do que restou — e a idade é o que decide a alíquota do que sair depois.
+//
+// E o valor do resgate é o LÍQUIDO, porque é o que o banco credita e o que a
+// tela pergunta. Descontá-lo do bruto deixaria para trás justamente o IR e o
+// IOF retidos: resgatar uma posição de R$ 1.000 por inteiro deixava R$ 17 de
+// saldo fantasma rendendo para sempre. Como bruto, rendimento, IOF e IR são
+// todos lineares no principal, tirar a fração `líquido / líquido total` de cada
+// parcela remove exatamente o que saiu.
 
 import type { Centavos } from './dinheiro';
 import type { DataISO } from './datas';
 import { diasCorridosEntre, diasUteisEntre, type Feriados } from './diasUteis';
-import {
-  calcular,
-  saldoBruto,
-  taxaAnual,
-  type Aplicacao,
-  type FaixaDeIR,
-  type Resultado,
-} from './rendimento';
+import { calcular, type Aplicacao, type FaixaDeIR, type Resultado } from './rendimento';
 
 export type Movimento = {
   tipo: 'aporte' | 'resgate';
@@ -56,9 +56,8 @@ export function parcelasVivas(
   movimentos: readonly Movimento[],
   taxaDoIndexador: number | null,
   feriados: Feriados,
+  tabelaDeIR: readonly FaixaDeIR[],
 ): Parcela[] {
-  const taxa = taxaAnual({ ...papel, valorAplicado: 0, dataAplicacao: '2000-01-01' }, taxaDoIndexador);
-
   const ordenados = [...movimentos].sort((a, b) =>
     a.data === b.data
       ? Number(a.tipo === 'resgate') - Number(b.tipo === 'resgate')
@@ -73,25 +72,31 @@ export function parcelasVivas(
       continue;
     }
 
-    // Quanto a posição valia no dia do resgate. Sem taxa conhecida, vale o
-    // principal — mesma degradação honesta do resto do cálculo (§13.5).
-    const bruto = parcelas.reduce(
+    // Quanto a posição PAGARIA no dia do resgate, já com IR e IOF descontados:
+    // é com esse número que o valor informado se compara. Sem taxa conhecida o
+    // líquido é o próprio principal — mesma degradação honesta do resto do
+    // cálculo (§13.5).
+    const liquido = parcelas.reduce(
       (total, parcela) =>
         total +
-        (taxa === null
-          ? parcela.valor
-          : saldoBruto(parcela.valor, taxa, diasUteisEntre(parcela.data, movimento.data, feriados))),
+        calcular(
+          aplicacaoDaParcela(papel, parcela),
+          taxaDoIndexador,
+          movimento.data,
+          feriados,
+          tabelaDeIR,
+        ).saldoLiquido,
       0,
     );
 
-    if (bruto <= 0) {
+    if (liquido <= 0) {
       parcelas = [];
       continue;
     }
 
     // Resgatar mais do que existe zera a posição em vez de virar principal
     // negativo, que faria o saldo do app render para baixo para sempre.
-    const fatorQueSobra = Math.max(0, 1 - movimento.valor / bruto);
+    const fatorQueSobra = Math.max(0, 1 - movimento.valor / liquido);
 
     parcelas = parcelas
       .map((parcela) => ({ ...parcela, valor: Math.round(parcela.valor * fatorQueSobra) }))
@@ -132,7 +137,7 @@ export function calcularPosicao(
   feriados: Feriados,
   tabelaDeIR: readonly FaixaDeIR[],
 ): Resultado {
-  const parcelas = parcelasVivas(papel, movimentos, taxaDoIndexador, feriados);
+  const parcelas = parcelasVivas(papel, movimentos, taxaDoIndexador, feriados, tabelaDeIR);
   if (parcelas.length === 0) return ZERADO;
 
   const somados = parcelas.reduce(

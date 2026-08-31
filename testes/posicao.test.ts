@@ -48,7 +48,7 @@ describe('aporte novo na mesma posição', () => {
   ];
 
   it('soma o principal dos dois', () => {
-    expect(principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS))).toBe(150000);
+    expect(principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS, TABELA_IR))).toBe(150000);
   });
 
   it('cada parcela rende a partir da SUA data, não de uma média', () => {
@@ -92,7 +92,7 @@ describe('resgate parcial', () => {
       { tipo: 'resgate', valor: 40000, data: '2026-06-01' },
     ];
 
-    const principal = principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS));
+    const principal = principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS, TABELA_IR));
     expect(principal).toBeLessThan(100000);
     expect(principal).toBeGreaterThan(55000);
   });
@@ -104,7 +104,7 @@ describe('resgate parcial', () => {
       { tipo: 'resgate', valor: 50000, data: '2026-07-01' },
     ];
 
-    const parcelas = parcelasVivas(PAPEL, movimentos, CDI, FERIADOS);
+    const parcelas = parcelasVivas(PAPEL, movimentos, CDI, FERIADOS, TABELA_IR);
     expect(parcelas).toHaveLength(2);
     // As duas encolheram, e a mais nova continua menor que a mais velha por
     // ter rendido menos — nenhuma foi consumida inteira.
@@ -118,7 +118,7 @@ describe('resgate parcial', () => {
       { tipo: 'resgate', valor: 500000, data: '2026-06-01' },
     ];
 
-    expect(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS)).toEqual([]);
+    expect(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS, TABELA_IR)).toEqual([]);
     expect(calcularPosicao(PAPEL, movimentos, CDI, '2026-08-30', FERIADOS, TABELA_IR).saldoBruto)
       .toBe(0);
   });
@@ -131,7 +131,7 @@ describe('resgate parcial', () => {
       { tipo: 'aporte', valor: 20000, data: '2026-03-01' },
     ];
 
-    expect(principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS))).toBe(20000);
+    expect(principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS, TABELA_IR))).toBe(20000);
   });
 
   it('no mesmo dia, o aporte entra antes do resgate', () => {
@@ -141,7 +141,7 @@ describe('resgate parcial', () => {
     ];
 
     // Ordem inversa zeraria tudo: não dá para resgatar o que ainda não entrou.
-    expect(principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS))).toBe(50000);
+    expect(principalVivo(parcelasVivas(PAPEL, movimentos, CDI, FERIADOS, TABELA_IR))).toBe(50000);
   });
 });
 
@@ -152,6 +152,37 @@ describe('sem taxa conhecida', () => {
       { tipo: 'resgate', valor: 25000, data: '2026-06-01' },
     ];
 
-    expect(principalVivo(parcelasVivas(PAPEL, movimentos, null, FERIADOS))).toBe(75000);
+    expect(principalVivo(parcelasVivas(PAPEL, movimentos, null, FERIADOS, TABELA_IR))).toBe(75000);
+  });
+});
+
+describe('o valor do resgate é o LÍQUIDO, que é o que o banco credita', () => {
+  const aporte: Movimento[] = [{ tipo: 'aporte', valor: 100000, data: '2026-01-05' }];
+
+  it('resgatar tudo não deixa saldo fantasma', () => {
+    // Descontando o líquido do BRUTO sobrava justamente o IR e o IOF retidos:
+    // R$ 17,17 de uma posição de R$ 1.000, rendendo para sempre dentro do app.
+    const posicao = calcularPosicao(PAPEL, aporte, CDI, '2026-08-30', FERIADOS, TABELA_IR);
+
+    const tudo: Movimento[] = [
+      ...aporte,
+      { tipo: 'resgate', valor: posicao.saldoLiquido, data: '2026-08-30' },
+    ];
+
+    expect(principalVivo(parcelasVivas(PAPEL, tudo, CDI, FERIADOS, TABELA_IR))).toBe(0);
+  });
+
+  it('resgatar metade do líquido deixa metade da posição', () => {
+    const posicao = calcularPosicao(PAPEL, aporte, CDI, '2026-08-30', FERIADOS, TABELA_IR);
+
+    const metade: Movimento[] = [
+      ...aporte,
+      { tipo: 'resgate', valor: Math.round(posicao.saldoLiquido / 2), data: '2026-08-30' },
+    ];
+
+    const depois = calcularPosicao(PAPEL, metade, CDI, '2026-08-30', FERIADOS, TABELA_IR);
+    // Metade do líquido saiu, metade do líquido fica — com um centavo de folga
+    // para o arredondamento de cada parcela.
+    expect(Math.abs(depois.saldoLiquido - posicao.saldoLiquido / 2)).toBeLessThanOrEqual(2);
   });
 });
