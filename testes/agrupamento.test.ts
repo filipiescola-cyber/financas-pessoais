@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   agruparPorCaixa,
   faturasQueAindaVaoSair,
+  juntarPrevistasNaFatura,
   type BlocoDeFatura,
+  type CobrancaPrevista,
   type TransacaoAgrupavel,
 } from '../src/dominio/agrupamento';
 
@@ -204,5 +206,70 @@ describe('transferência em uma linha só', () => {
       if (par.tipo !== 'transferencia') continue;
       expect(par.saida.transferenciaParId).toBe(par.entrada.id);
     }
+  });
+});
+
+describe('cobrança prevista dentro da fatura', () => {
+  const previsto = (extra: Partial<CobrancaPrevista> = {}): CobrancaPrevista => ({
+    chave: 'r1|2026-09-10',
+    contaId: 'cartao',
+    descricao: 'Curso de Inglês',
+    valor: 72900,
+    dataCompetencia: '2026-09-10',
+    vencimento: '2026-10-14',
+    ...extra,
+  });
+
+  const comFatura = () =>
+    agruparPorCaixa([
+      t({ id: 'a', contaId: 'cartao', faturaId: 'out', dataCaixa: '2026-10-14', valor: -20063 }),
+    ]);
+
+  it('entra na fatura e no total dela', () => {
+    // O defeito: a fatura dizia "R$ 200,63" com R$ 729 de curso logo abaixo,
+    // fora da conta — e não era isso que ia ser cobrado.
+    const [dia] = juntarPrevistasNaFatura(comFatura(), [previsto()]);
+    const bloco = dia!.linhas[0] as BlocoDeFatura<TransacaoAgrupavel>;
+
+    expect(bloco.tipo).toBe('fatura');
+    expect(bloco.previstas).toHaveLength(1);
+    expect(bloco.total).toBe(-20063 - 72900);
+  });
+
+  it('sem fatura naquele dia, o bloco nasce da previsão', () => {
+    // Mês futuro em que só há assinatura e nenhuma compra ainda.
+    const [dia] = juntarPrevistasNaFatura([], [previsto()]);
+    const bloco = dia!.linhas[0] as BlocoDeFatura<TransacaoAgrupavel>;
+
+    expect(bloco.vencimento).toBe('2026-10-14');
+    expect(bloco.compras).toEqual([]);
+    expect(bloco.total).toBe(-72900);
+  });
+
+  it('valor variável entra na lista, não na soma', () => {
+    // Somar zero por ele empurraria o total para um número que ninguém prometeu.
+    const [dia] = juntarPrevistasNaFatura(comFatura(), [previsto({ valor: null })]);
+    const bloco = dia!.linhas[0] as BlocoDeFatura<TransacaoAgrupavel>;
+
+    expect(bloco.previstas).toHaveLength(1);
+    expect(bloco.total).toBe(-20063);
+  });
+
+  it('cada cartão recebe a sua, mesmo vencendo no mesmo dia', () => {
+    const dias = agruparPorCaixa([
+      t({ id: 'a', contaId: 'nubank', faturaId: 'n1', dataCaixa: '2026-10-14', valor: -1000 }),
+      t({ id: 'b', contaId: 'mp', faturaId: 'm1', dataCaixa: '2026-10-14', valor: -2000 }),
+    ]);
+    const [dia] = juntarPrevistasNaFatura(dias, [previsto({ contaId: 'nubank' })]);
+
+    const blocos = dia!.linhas.filter(
+      (l): l is BlocoDeFatura<TransacaoAgrupavel> => l.tipo === 'fatura',
+    );
+    expect(blocos.find((b) => b.contaId === 'nubank')!.previstas).toHaveLength(1);
+    expect(blocos.find((b) => b.contaId === 'mp')!.previstas).toEqual([]);
+  });
+
+  it('sem previstas, os dias voltam como estavam', () => {
+    expect(juntarPrevistasNaFatura(comFatura(), [])).toEqual(comFatura());
   });
 });

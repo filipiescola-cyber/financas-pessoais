@@ -39,6 +39,27 @@ export type BlocoDeFatura<T> = {
   /** Soma das compras. Filha de divisão não entra: o pai já está aqui (§5.5). */
   total: Centavos;
   compras: T[];
+  /**
+   * Cobranças que ainda vão entrar nesta fatura (§2.1).
+   *
+   * Assinatura no cartão é cobrança da FATURA, não um lançamento avulso que
+   * calhou de cair no mesmo dia. Enquanto ela ficava numa linha ao lado, a
+   * fatura de outubro dizia "3 lançamentos, R$ 200,63" com R$ 729 de curso
+   * logo abaixo, fora da conta — e não era isso que ia ser cobrado.
+   */
+  previstas: CobrancaPrevista[];
+};
+
+/** Uma recorrência de cartão que ainda não virou lançamento. */
+export type CobrancaPrevista = {
+  chave: string;
+  contaId: string;
+  descricao: string;
+  /** Nulo quando a recorrência é de valor variável: entra na lista, não na soma. */
+  valor: Centavos | null;
+  /** O dia da cobrança. O vencimento é o do bloco. */
+  dataCompetencia: DataISO;
+  vencimento: DataISO;
 };
 
 /**
@@ -144,6 +165,7 @@ export function agruparPorCaixa<T extends TransacaoAgrupavel>(
           total: compras
             .filter((c) => c.transacaoPaiId === null)
             .reduce((soma, c) => soma + c.valor, 0),
+          previstas: [],
           // Dentro da fatura a ordem volta a ser a da competência: é a ordem em
           // que as compras aconteceram, que é como se confere uma fatura.
           compras: [...compras].sort(
@@ -201,4 +223,74 @@ export function faturasQueAindaVaoSair(
     // Fatura quitada não é movimento nenhum: some da conta em vez de entrar
     // como zero e sujar a lista de dias.
     .filter((movimento) => movimento.valor !== 0);
+}
+
+/**
+ * Põe as cobranças previstas DENTRO da fatura em que elas caem (§2.1).
+ *
+ * Uma assinatura no cartão não é um lançamento avulso que calhou de cair no dia
+ * do vencimento: ela é parte da fatura, e o total da fatura precisa dizer isso.
+ * Enquanto ela ficava numa linha ao lado, a fatura mostrava um total que não
+ * era o que ia ser cobrado.
+ *
+ * Quando não existe fatura nenhuma naquele dia — mês futuro em que só há
+ * assinatura e nenhuma compra ainda — o bloco nasce daqui. O `faturaId`
+ * sintético é de propósito: não existe fatura para pagar, existe uma previsão
+ * do que ela vai cobrar.
+ */
+export function juntarPrevistasNaFatura<T extends TransacaoAgrupavel>(
+  dias: readonly DiaDeCaixa<T>[],
+  previstas: readonly CobrancaPrevista[],
+): DiaDeCaixa<T>[] {
+  if (previstas.length === 0) return [...dias];
+
+  const porDia = new Map(dias.map((d) => [d.dia, { dia: d.dia, linhas: [...d.linhas] }]));
+
+  for (const previsto of previstas) {
+    let registro = porDia.get(previsto.vencimento);
+    if (!registro) {
+      registro = { dia: previsto.vencimento, linhas: [] };
+      porDia.set(previsto.vencimento, registro);
+    }
+
+    const bloco = registro.linhas.find(
+      (linha): linha is BlocoDeFatura<T> =>
+        linha.tipo === 'fatura' && linha.contaId === previsto.contaId,
+    );
+
+    if (bloco) {
+      bloco.previstas = [...bloco.previstas, previsto];
+      // Valor variável entra na lista e não na soma: somar zero por ele
+      // empurraria o total para um número que ninguém prometeu.
+      if (previsto.valor !== null) bloco.total -= Math.abs(previsto.valor);
+      continue;
+    }
+
+    registro.linhas = [
+      {
+        tipo: 'fatura',
+        faturaId: `previsto:${previsto.contaId}:${previsto.vencimento}`,
+        contaId: previsto.contaId,
+        vencimento: previsto.vencimento,
+        total: previsto.valor === null ? 0 : -Math.abs(previsto.valor),
+        compras: [],
+        previstas: [previsto],
+      },
+      ...registro.linhas,
+    ];
+  }
+
+  return [...porDia.values()]
+    .map((registro) => ({
+      dia: registro.dia,
+      linhas: [...registro.linhas].sort((a, b) => {
+        if (a.tipo === 'fatura' && b.tipo !== 'fatura') return -1;
+        if (b.tipo === 'fatura' && a.tipo !== 'fatura') return 1;
+        if (a.tipo === 'fatura' && b.tipo === 'fatura') {
+          return Math.abs(b.total) - Math.abs(a.total);
+        }
+        return 0;
+      }),
+    }))
+    .sort((a, b) => b.dia.localeCompare(a.dia));
 }

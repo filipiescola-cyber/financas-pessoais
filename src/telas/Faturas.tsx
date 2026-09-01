@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { diaNoMes, formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import {
   descreverFatura,
@@ -39,11 +39,23 @@ import {
   ALVO_DE_TOQUE,
   Botao,
   Campo,
+  Cartao,
   Chip,
+  Dinheiro,
   ENTRADA,
   Pagina,
+  Secao,
   Vazio,
 } from '../ui/base';
+import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
+import { usarRecorrencias } from '../dados/usarModelos';
+import { usarFeriados } from '../dados/usarFeriados';
+import { arquivarRecorrencia } from '../dados/recorrencias';
+import {
+  repeticoesRestantes,
+  rotuloDoDia,
+  valorDaOcorrencia,
+} from '../dominio/recorrencias';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import { EditarTransacao } from './EditarTransacao';
 
@@ -120,6 +132,8 @@ export function Faturas() {
       )}
 
       <FaturaDoMes cartao={cartao} />
+
+      <AssinaturasDoCartao cartao={cartao} />
     </Pagina>
   );
 }
@@ -870,5 +884,139 @@ function RotativoDaFatura({
         </Botao>
       </div>
     </div>
+  );
+}
+
+/**
+ * Cobranças que se repetem no cartão (§5.2, §2.1).
+ *
+ * Moravam na aba de atalhos, junto do aluguel e do salário, e o resultado era
+ * uma assinatura cadastrada sem nunca se ver onde ela cai. Cobrança de cartão
+ * não é um lançamento avulso no dia da cobrança: ela entra numa FATURA, e o
+ * lugar de cadastrá-la é ao lado da fatura em que vai entrar.
+ *
+ * O cadastro é o mesmo de qualquer recorrência — inclusive o valor gradativo,
+ * que aqui é comum: curso parcelado, plano que reajusta. Só a conta já vem
+ * decidida, porque a tela sabe de qual cartão se trata.
+ */
+function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
+  const recorrencias = usarRecorrencias();
+  const feriados = usarFeriados();
+  const cliente = useQueryClient();
+  const { mostrar } = usarAviso();
+
+  const [criando, setCriando] = useState(false);
+
+  const arquivar = useMutation({
+    mutationFn: arquivarRecorrencia,
+    onSuccess: async () => {
+      await cliente.invalidateQueries({ queryKey: ['recorrencias'] });
+      mostrar('Cobrança arquivada. Os lançamentos já gerados continuam.');
+    },
+  });
+
+  const lista = (recorrencias.data ?? []).filter((r) => r.contaId === cartao.contaId);
+
+  return (
+    <Secao
+      titulo="Cobranças recorrentes"
+      acao={
+        <button
+          onClick={() => setCriando((v) => !v)}
+          className={`text-xs text-emerald-400 hover:text-emerald-300 ${ALVO_DE_TOQUE}`}
+        >
+          {criando ? 'cancelar' : '+ nova cobrança'}
+        </button>
+      }
+    >
+      {criando && (
+        <Cartao>
+          <div className="p-4">
+            <FormularioRecorrencia contaFixa={cartao.contaId} aoTerminar={() => setCriando(false)} />
+          </div>
+        </Cartao>
+      )}
+
+      {lista.length === 0 && !criando ? (
+        <Vazio
+          titulo="Nenhuma cobrança recorrente"
+          descricao="Assinatura, seguro do cartão, mensalidade de curso. Elas aparecem dentro da fatura em que vão cair, antes de serem cobradas — e é o que faz a fatura de daqui a dois meses mostrar o valor certo."
+          acao={<Botao aoClicar={() => setCriando(true)}>Cadastrar a primeira</Botao>}
+        />
+      ) : (
+        lista.length > 0 && (
+          <Cartao>
+            <ul className="divide-y divide-borda">
+              {lista.map((recorrencia) => {
+                const cobranca = diaNoMes(hoje(), recorrencia.dia);
+                const entraEm = faturaDeReferencia(cobranca, cartao).dataVencimento;
+
+                return (
+                  <li
+                    key={recorrencia.id}
+                    className="flex items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-slate-100">{recorrencia.descricao}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {rotuloDoDia(recorrencia.dia, recorrencia.regra)}
+                        {/* O que a aba de atalhos nunca dizia: em qual fatura
+                            a cobrança cai. É a informação que faz a diferença
+                            entre "gasto do dia 10" e "sai no dia 14". */}
+                        {' '}· entra na fatura de {formatarBR(entraEm)}
+                        {recorrencia.incremento !== 0 && (
+                          <>
+                            {' '}
+                            · {recorrencia.incremento > 0 ? 'sobe' : 'desce'}{' '}
+                            {formatar(Math.abs(recorrencia.incremento))}/mês
+                          </>
+                        )}
+                        {recorrencia.terminaEm !== null && (
+                          <>
+                            {' '}
+                            · faltam{' '}
+                            {repeticoesRestantes(
+                              hoje(),
+                              recorrencia.terminaEm,
+                              recorrencia.dia,
+                              recorrencia.regra,
+                              feriados,
+                            )}
+                            x
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-4">
+                      {recorrencia.valorPrevisto !== null ? (
+                        <Dinheiro
+                          centavos={
+                            valorDaOcorrencia(
+                              recorrencia.valorPrevisto,
+                              recorrencia.incremento,
+                              recorrencia.comecaEm,
+                              hoje(),
+                            ) ?? recorrencia.valorPrevisto
+                          }
+                          className="text-sm text-slate-300"
+                        />
+                      ) : (
+                        <span className="text-xs text-amber-400/80">Valor varia</span>
+                      )}
+                      <button
+                        onClick={() => arquivar.mutate(recorrencia.id)}
+                        className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+                      >
+                        Arquivar
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Cartao>
+        )
+      )}
+    </Secao>
   );
 }

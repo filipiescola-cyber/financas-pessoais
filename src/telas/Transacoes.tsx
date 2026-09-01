@@ -54,6 +54,8 @@ function paraMovimentos(itens: readonly ItemPrevisto[]): MovimentoDeCaixa[] {
 }
 import {
   agruparPorCaixa,
+  juntarPrevistasNaFatura,
+  type CobrancaPrevista,
   faturasQueAindaVaoSair,
   type BlocoDeFatura,
 } from '../dominio/agrupamento';
@@ -129,6 +131,7 @@ export function Transacoes() {
         comecaEm: r.comecaEm,
         terminaEm: r.terminaEm,
       incremento: r.incremento,
+      contaId: r.contaId,
         cartao: cartao
           ? { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento }
           : null,
@@ -272,10 +275,16 @@ export function Transacoes() {
     linhas.flatMap((linha) => (linha.tipo === 'fatura' ? [linha.bloco] : [])),
   );
 
+  // Bloco só de previsão não tem fatura no banco para consultar — o id dele é
+  // sintético, e mandá-lo numa consulta por uuid quebraria a query inteira.
+  const idsReais = faturasDoMes
+    .map((f) => f.faturaId)
+    .filter((id) => !id.startsWith('previsto:'));
+
   const statusDeFatura = useQuery({
-    queryKey: ['status-faturas', faturasDoMes.map((f) => f.faturaId).sort().join(',')],
-    queryFn: () => situacaoDasFaturas(faturasDoMes.map((f) => f.faturaId)),
-    enabled: faturasDoMes.length > 0,
+    queryKey: ['status-faturas', [...idsReais].sort().join(',')],
+    queryFn: () => situacaoDasFaturas(idsReais),
+    enabled: idsReais.length > 0,
   });
 
   const movimentos = useQuery({
@@ -288,7 +297,11 @@ export function Transacoes() {
   // previsto" ao lado de um saldo que o ignora seria contraditório. Assim que a
   // ocorrência é gerada ela sai daqui e entra pelos movimentos reais, então não
   // há risco de contar duas vezes.
-  const movimentosPrevistos = paraMovimentos(previstos);
+  // A recorrência de cartão NÃO entra aqui: ela virou parte do total da
+  // fatura, e contá-la nos dois lugares tiraria o valor duas vezes.
+  const movimentosPrevistos = paraMovimentos(
+    previstos.filter((p) => p.vencimentoDaFatura === null),
+  );
 
   /**
    * A fatura em aberto é saída de caixa que ainda vai acontecer — mesma
@@ -524,7 +537,24 @@ function agruparPorDiaDeCaixa(
 ): [DataISO, LinhaDoDia[]][] {
   const mapa = new Map<DataISO, LinhaDoDia[]>();
 
-  for (const { dia, linhas } of agruparPorCaixa(lista)) {
+  // A de cartão entra DENTRO da fatura: ela é cobrança daquela fatura, não um
+  // lançamento avulso que calhou de cair no dia do vencimento.
+  const naFatura: CobrancaPrevista[] = previstos.flatMap((p) =>
+    p.vencimentoDaFatura !== null && p.contaId !== null
+      ? [
+          {
+            chave: `${p.recorrenciaId}|${p.dataPrevista}`,
+            contaId: p.contaId,
+            descricao: p.descricao,
+            valor: p.valor,
+            dataCompetencia: p.dataPrevista,
+            vencimento: p.vencimentoDaFatura,
+          },
+        ]
+      : [],
+  );
+
+  for (const { dia, linhas } of juntarPrevistasNaFatura(agruparPorCaixa(lista), naFatura)) {
     mapa.set(
       dia,
       linhas.map((linha): LinhaDoDia =>
@@ -538,8 +568,7 @@ function agruparPorDiaDeCaixa(
   }
 
   for (const previsto of previstos) {
-    // Pelo dia em que o dinheiro sai, não pelo da cobrança: no cartão as duas
-    // datas são separadas por semanas, e a lista corre por caixa (§2.4).
+    if (previsto.vencimentoDaFatura !== null) continue;
     mapa.set(previsto.dataCaixa, [
       ...(mapa.get(previsto.dataCaixa) ?? []),
       { tipo: 'previsto', previsto },
@@ -857,16 +886,6 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
               {atrasado ? 'Era para ter acontecido' : 'Previsto'}
               {previsto.valor === null && ' · valor varia'}
             </p>
-            {/*
-              No cartão a cobrança e a saída de dinheiro caem em datas
-              diferentes. A linha está no dia do vencimento, então precisa dizer
-              de qual compra ela veio — senão parece um lançamento avulso.
-            */}
-            {previsto.vencimentoDaFatura && (
-              <p className="truncate text-xs text-slate-600">
-                Cobrança de {formatarBR(previsto.dataPrevista)} · entra na fatura
-              </p>
-            )}
           </div>
         </div>
 
@@ -940,7 +959,8 @@ function BlocoDaFatura({
           <span className="min-w-0">
             <span className="block truncate text-slate-100">Fatura · {nomeCartao}</span>
             <span className="block truncate text-xs text-slate-500">
-              {bloco.compras.length} lançamento(s) ·{' '}
+              {bloco.compras.length + bloco.previstas.length} lançamento(s)
+              {bloco.previstas.length > 0 && ` · ${bloco.previstas.length} por vir`} ·{' '}
               {paga ? `paga · venceu ${formatarBR(bloco.vencimento)}` : `vence ${formatarBR(bloco.vencimento)}`}
             </span>
           </span>
@@ -978,6 +998,25 @@ function BlocoDaFatura({
             </li>
             );
           })}
+
+          {/* As que ainda vão ser cobradas. Ficam por último e apagadas: são
+              previsão, e a fatura precisa deixar claro o que já é fato. */}
+          {bloco.previstas.map((previsto) => (
+            <li key={previsto.chave} className="flex items-baseline justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+                <IconeRelogio className="h-3.5 w-3.5 shrink-0 text-sky-400/50" />
+                <span className="truncate">{previsto.descricao}</span>
+              </span>
+              <span className="shrink-0 text-[11px] text-slate-600">
+                {formatarBR(previsto.dataCompetencia).slice(0, 5)} · a cobrar
+              </span>
+              {previsto.valor === null ? (
+                <span className="shrink-0 text-[11px] text-amber-400/70">valor varia</span>
+              ) : (
+                <Dinheiro centavos={-previsto.valor} className="shrink-0 text-xs text-slate-500" />
+              )}
+            </li>
+          ))}
         </ul>
       )}
     </li>

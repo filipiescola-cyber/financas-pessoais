@@ -28,6 +28,8 @@ export type SituacaoPrevista = 'lancado' | 'atrasado' | 'aguardando';
 export type RecorrenciaPrevista = {
   id: string;
   descricao: string;
+  /** Onde ela é cobrada. Num cartão, decide em qual fatura a linha entra. */
+  contaId?: string;
   tipo: 'receita' | 'despesa';
   valorPrevisto: Centavos | null;
   dia: number;
@@ -57,6 +59,7 @@ export type RecorrenciaPrevista = {
 
 export type ItemPrevisto = {
   recorrenciaId: string;
+  contaId: string | null;
   descricao: string;
   tipo: 'receita' | 'despesa';
   valor: Centavos | null;
@@ -121,6 +124,7 @@ export function previstoDoMes(
       return [
         {
           recorrenciaId: recorrencia.id,
+          contaId: recorrencia.contaId ?? null,
           descricao: recorrencia.descricao,
           tipo: recorrencia.tipo,
           valor: valorDaOcorrencia(
