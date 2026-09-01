@@ -23,7 +23,12 @@ import {
   type ModoDePrazo,
 } from '../ui/CampoQuando';
 import { formatarBR, hoje } from '../dominio/datas';
-import { repeticoesRestantes, rotuloDoDia, type RegraDoDia } from '../dominio/recorrencias';
+import {
+  repeticoesRestantes,
+  rotuloDoDia,
+  valorDaOcorrencia,
+  type RegraDoDia,
+} from '../dominio/recorrencias';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { ChipsDeConta } from '../ui/ChipsDeConta';
@@ -181,6 +186,15 @@ function ListaDeRecorrencias({
                       {recorrencia.comecaEm > hoje() && (
                         <> · começa em {formatarBR(recorrencia.comecaEm)}</>
                       )}
+                      {/* Gradativa: o valor ao lado é o da BASE, e sem dizer
+                          isto ele pareceria o valor de todo mês. */}
+                      {recorrencia.incremento !== 0 && (
+                        <>
+                          {' '}
+                          · {recorrencia.incremento > 0 ? 'sobe' : 'desce'}{' '}
+                          {formatar(Math.abs(recorrencia.incremento))}/mês
+                        </>
+                      )}
                       {recorrencia.terminaEm !== null && (
                         <>
                           {' '}
@@ -200,7 +214,14 @@ function ListaDeRecorrencias({
                   <div className="flex shrink-0 items-center gap-4">
                     {recorrencia.valorPrevisto !== null ? (
                       <Dinheiro
-                        centavos={recorrencia.valorPrevisto}
+                        centavos={
+                          valorDaOcorrencia(
+                            recorrencia.valorPrevisto,
+                            recorrencia.incremento,
+                            recorrencia.comecaEm,
+                            hoje(),
+                          ) ?? recorrencia.valorPrevisto
+                        }
                         className="text-sm text-slate-300"
                       />
                     ) : (
@@ -378,6 +399,8 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
   const [mesFinal, setMesFinal] = useState('');
   const [contaId, setContaId] = useState<string | null>(null);
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
+  const [passo, setPasso] = useState<'nao' | 'sobe' | 'desce'>('nao');
+  const [valorDoPasso, setValorDoPasso] = useState<Centavos>(0);
 
   const feriados = usarFeriados();
   const disponiveis = (contas.data ?? []).filter((c) => c.tipo !== 'divida');
@@ -389,14 +412,22 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
 
   const prazoOk = modoPrazo === 'sem' || terminaEm !== null;
 
+  const incremento = passo === 'nao' ? 0 : (passo === 'sobe' ? 1 : -1) * valorDoPasso;
+
   const valido =
-    descricao.trim() !== '' && valor > 0 && diaOk && prazoOk && contaId !== null;
+    descricao.trim() !== '' &&
+    valor > 0 &&
+    diaOk &&
+    prazoOk &&
+    contaId !== null &&
+    (passo === 'nao' || valorDoPasso > 0);
 
   const criar = useMutation({
     mutationFn: () =>
       criarRecorrencia({
         descricao,
         valorPrevisto: valor,
+        incremento,
         categoriaId,
         contaId: contaId!,
         tipo,
@@ -450,6 +481,14 @@ function FormularioRecorrencia({ aoTerminar }: { aoTerminar: () => void }) {
           e não a venda do negócio.
         </p>
       )}
+
+      <CampoDegrau
+        base={valor}
+        passo={passo}
+        valorDoPasso={valorDoPasso}
+        aoMudarPasso={setPasso}
+        aoMudarValor={setValorDoPasso}
+      />
 
       <CampoQuando
         rotulo={tipo === 'despesa' ? 'Dia do vencimento' : 'Dia do recebimento'}
@@ -569,5 +608,91 @@ function ExclusaoDeRecorrencia({
       aoConfirmar={() => excluir.mutate()}
       aoCancelar={aoTerminar}
     />
+  );
+}
+
+/**
+ * Recorrência que muda de valor todo mês (§5.2).
+ *
+ * A obra que sobe a cada etapa, a dívida negociada que desce. Antes essas
+ * contas só cabiam como "valor varia" — e aí não projetavam nada, justamente
+ * elas, que são as que mais mexem com a projeção do §8.
+ *
+ * Um passo fixo não descreve o mundo inteiro, e não é para isso que ele existe:
+ * cobre o caso em que a pessoa SABE o passo. Onde o passo não é conhecido,
+ * "valor varia" continua sendo a resposta honesta.
+ *
+ * A prévia existe porque o passo é fácil de digitar errado e difícil de
+ * conferir de cabeça: ver o terceiro e o sexto mês ao lado do primeiro
+ * responde na hora se o número é o que a pessoa quis dizer.
+ */
+function CampoDegrau({
+  base,
+  passo,
+  valorDoPasso,
+  aoMudarPasso,
+  aoMudarValor,
+}: {
+  base: Centavos;
+  passo: 'nao' | 'sobe' | 'desce';
+  valorDoPasso: Centavos;
+  aoMudarPasso: (v: 'nao' | 'sobe' | 'desce') => void;
+  aoMudarValor: (v: Centavos) => void;
+}) {
+  const incremento = passo === 'nao' ? 0 : (passo === 'sobe' ? 1 : -1) * valorDoPasso;
+  const inicio = '2000-01-01';
+
+  const previa = [0, 1, 2, 5].map((n) => ({
+    mes: n + 1,
+    valor: valorDaOcorrencia(base, incremento, inicio, `2000-0${n + 1}-01`) ?? 0,
+  }));
+
+  return (
+    <Campo
+      rotulo="O valor muda todo mês?"
+      ajuda="Para conta que sobe ou desce de forma conhecida — a parcela de uma obra, uma dívida negociada. O valor entra preenchido e você confere no dia de lançar."
+    >
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <Chip ativo={passo === 'nao'} aoClicar={() => aoMudarPasso('nao')}>
+            Sempre o mesmo
+          </Chip>
+          <Chip ativo={passo === 'sobe'} aoClicar={() => aoMudarPasso('sobe')}>
+            Sobe todo mês
+          </Chip>
+          <Chip ativo={passo === 'desce'} aoClicar={() => aoMudarPasso('desce')}>
+            Desce todo mês
+          </Chip>
+        </div>
+
+        {passo !== 'nao' && (
+          <>
+            <CampoValor
+              valor={valorDoPasso}
+              aoMudar={aoMudarValor}
+              rotulo={passo === 'sobe' ? 'Quanto sobe por mês' : 'Quanto desce por mês'}
+            />
+
+            {base > 0 && valorDoPasso > 0 && (
+              <p className="rounded-md border border-borda-forte px-3 py-2 text-xs leading-relaxed text-slate-400">
+                {previa.map((p, i) => (
+                  <span key={p.mes}>
+                    {i > 0 && ' · '}
+                    {p.mes === 6 && '… '}
+                    <span className="text-slate-500">{p.mes}º</span>{' '}
+                    <span className="numero dinheiro text-slate-300">{formatar(p.valor)}</span>
+                  </span>
+                ))}
+                {previa[3]!.valor === 0 && (
+                  <span className="block pt-1 text-slate-500">
+                    Chega a zero antes do sexto mês. Se ela acaba, vale usar um prazo abaixo.
+                  </span>
+                )}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </Campo>
   );
 }

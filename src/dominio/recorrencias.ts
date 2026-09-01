@@ -5,7 +5,8 @@
 // lança erro ao ser carregado sem as variáveis de ambiente, o que fazia o
 // arquivo de teste inteiro falhar em qualquer máquina sem `.env`.
 
-import { diaNoMes, primeiroDiaDoMes, somarMeses, type DataISO } from './datas';
+import { diaNoMes, mesesEntre, primeiroDiaDoMes, somarMeses, type DataISO } from './datas';
+import type { Centavos } from './dinheiro';
 import { diaUtilDoMes, type Feriados } from './diasUteis';
 
 /**
@@ -20,6 +21,34 @@ import { diaUtilDoMes, type Feriados } from './diasUteis';
  * o mesmo fato, e uma delas ia ficar para trás.
  */
 export type RegraDoDia = 'fixo' | 'dia_util' | 'dia_util_do_fim';
+
+/**
+ * O valor daquela ocorrência, quando a recorrência é gradativa (§5.2).
+ *
+ * Nem toda recorrência repete o mesmo número: a parcela de uma obra sobe todo
+ * mês, uma dívida negociada desce. Com `incremento` zero — o caso comum — isto
+ * devolve a base e nada muda.
+ *
+ * O mês do início é o degrau ZERO: a primeira ocorrência vale a base, não a
+ * base mais um passo. É o que a pessoa digita quando informa "começa em R$
+ * 1.500 e sobe R$ 200 por mês".
+ *
+ * Nunca cruza o zero. Uma despesa que descesse abaixo dele viraria receita pelo
+ * sinal, dizendo que a obra passou a te pagar — e o valor é uma projeção, não
+ * um fato: quem confirma é o usuário no dia do lançamento.
+ */
+export function valorDaOcorrencia(
+  base: Centavos | null,
+  incremento: Centavos,
+  comecaEm: DataISO,
+  data: DataISO,
+): Centavos | null {
+  if (base === null) return null;
+  if (!incremento) return base;
+
+  const degrau = Math.max(0, mesesEntre(comecaEm, data));
+  return Math.max(0, base + incremento * degrau);
+}
 
 /**
  * A data em que a recorrência cai naquele mês.

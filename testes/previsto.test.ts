@@ -275,3 +275,34 @@ describe('previsto no cartão', () => {
     expect(porCaixa.map((i) => i.dataCaixa)).toEqual(doMes.map((i) => i.dataCaixa));
   });
 });
+
+describe('previsto de recorrência gradativa', () => {
+  const obra: RecorrenciaPrevista = {
+    id: 'obra',
+    descricao: 'Evolução de obra',
+    tipo: 'despesa',
+    valorPrevisto: 150000,
+    dia: 1,
+    regra: 'fixo',
+    comecaEm: '2026-08-01',
+    terminaEm: null,
+    incremento: 20000,
+  };
+
+  const valorEm = (mes: string) =>
+    previstoDoMes([obra], new Set(), mes, '2026-08-01', FERIADOS)[0]?.valor;
+
+  it('cada mês projeta o próprio degrau', () => {
+    expect(valorEm('2026-08-01')).toBe(150000);
+    expect(valorEm('2026-09-01')).toBe(170000);
+    expect(valorEm('2026-12-01')).toBe(230000);
+  });
+
+  it('a soma da ponte acompanha a subida', () => {
+    // O ponto da funcionalidade: antes disso a obra só cabia como "valor
+    // varia", e uma recorrência sem valor não entra na projeção — justo a
+    // conta que mais mexe com ela.
+    const ate = previstoAteOMes([obra], new Set(), '2026-08-01', '2026-11-01', '2026-08-01', FERIADOS);
+    expect(ate).toBe(-(150000 + 170000 + 190000));
+  });
+});

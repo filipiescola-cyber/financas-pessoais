@@ -14,7 +14,12 @@ import type { Centavos } from './dinheiro';
 import { somarMeses, ultimoDiaDoMes, type DataISO } from './datas';
 import { faturaDeReferencia, type ConfiguracaoDoCartao } from './fatura';
 import type { Feriados } from './diasUteis';
-import { chaveDaOcorrencia, dataDaOcorrencia, type RegraDoDia } from './recorrencias';
+import {
+  chaveDaOcorrencia,
+  dataDaOcorrencia,
+  valorDaOcorrencia,
+  type RegraDoDia,
+} from './recorrencias';
 
 export { chaveDaOcorrencia } from './recorrencias';
 
@@ -31,6 +36,14 @@ export type RecorrenciaPrevista = {
   comecaEm: DataISO;
   /** Prazo, quando a recorrência tem fim. Depois dele ela some do previsto. */
   terminaEm: DataISO | null;
+  /**
+   * Quanto o valor muda a cada mês (§5.2). Zero é a recorrência comum.
+   *
+   * Existe para a obra que sobe todo mês e para a dívida negociada que desce —
+   * contas que antes só cabiam como "valor varia", e que por isso ficavam fora
+   * da projeção do §8 justamente por serem as que mais mexem com ela.
+   */
+  incremento?: Centavos;
   /**
    * A configuração do cartão, quando a recorrência é cobrada num (§2.1).
    *
@@ -110,7 +123,12 @@ export function previstoDoMes(
           recorrenciaId: recorrencia.id,
           descricao: recorrencia.descricao,
           tipo: recorrencia.tipo,
-          valor: recorrencia.valorPrevisto,
+          valor: valorDaOcorrencia(
+            recorrencia.valorPrevisto,
+            recorrencia.incremento ?? 0,
+            recorrencia.comecaEm,
+            dataPrevista,
+          ),
           dataPrevista,
           dataCaixa: noCartao ?? dataPrevista,
           vencimentoDaFatura: noCartao,

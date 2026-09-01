@@ -17,6 +17,7 @@ import { paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { vencimentosPendentes } from '../dominio/recorrencias';
 import type { RegraDoDia } from '../dominio/recorrencias';
 import { listarFeriados } from './indicadores';
+import { valorDaOcorrencia } from '../dominio/recorrencias';
 import { faturaDeReferencia } from '../dominio/fatura';
 import { idDaFatura } from './faturas';
 import { supabase } from './supabase';
@@ -95,7 +96,13 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
         : null;
 
       const ehReceita = recorrencia.tipo === 'receita';
-      const valorPrevisto = recorrencia.valor_previsto;
+      // Gradativa: o valor daquele mês, não o da base (§5.2).
+      const valorPrevisto = valorDaOcorrencia(
+        recorrencia.valor_previsto,
+        recorrencia.incremento,
+        recorrencia.comeca_em,
+        competencia,
+      );
       // O banco já guarda em numeric; aqui só o sinal é decidido, pelo tipo.
       // Sem valor previsto entra zerado, para o usuário só ajustar o número.
       const valor = valorPrevisto === null ? 0 : (ehReceita ? 1 : -1) * Math.abs(valorPrevisto);
@@ -118,7 +125,9 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
         natureza: recorrencia.natureza,
         origem: 'recorrencia',
         // Valor fixo entra confirmado; valor variável entra para revisão (§5.2).
-        revisado: valorPrevisto !== null,
+        // Gradativa também entra para revisão: o número é uma PROJEÇÃO do
+        // passo informado, e quem confirma é quem recebeu a cobrança.
+        revisado: valorPrevisto !== null && !recorrencia.incremento,
       };
 
       const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);
@@ -179,7 +188,12 @@ export async function gerarUmaOcorrencia(
     : null;
 
   const ehReceita = recorrencia.tipo === 'receita';
-  const valorPrevisto = recorrencia.valor_previsto;
+  const valorPrevisto = valorDaOcorrencia(
+    recorrencia.valor_previsto,
+    recorrencia.incremento,
+    recorrencia.comeca_em,
+    competencia,
+  );
   const base =
     valorReal !== undefined
       ? paraNumerico(valorReal)
@@ -206,7 +220,7 @@ export async function gerarUmaOcorrencia(
     origem: 'recorrencia',
     // Conferido pelo usuário na hora de lançar já nasce revisado, mesmo quando
     // a recorrência é de valor variável — foi ele quem digitou o número.
-    revisado: valorReal !== undefined || valorPrevisto !== null,
+    revisado: valorReal !== undefined || (valorPrevisto !== null && !recorrencia.incremento),
   };
 
   const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);

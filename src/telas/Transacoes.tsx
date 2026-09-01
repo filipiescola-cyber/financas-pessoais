@@ -126,6 +126,7 @@ export function Transacoes() {
         regra: r.regra,
         comecaEm: r.comecaEm,
         terminaEm: r.terminaEm,
+      incremento: r.incremento,
         cartao: cartao
           ? { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento }
           : null,

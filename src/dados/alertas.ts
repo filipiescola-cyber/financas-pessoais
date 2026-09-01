@@ -49,7 +49,7 @@ export async function montarEntradaDosAlertas(
         .eq('status', 'aberta'),
       supabase
         .from('recorrencias')
-        .select('id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo')
+        .select('id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, incremento')
         .eq('ativo', true),
       supabase
         .from('contas')
@@ -175,6 +175,7 @@ export async function montarEntradaDosAlertas(
       regra: r.regra_do_dia as RegraDoDia,
       comecaEm: r.comeca_em,
       terminaEm: r.termina_em,
+      incremento: paraCentavos(r.incremento ?? 0),
     })),
     ocorrencias.geradas,
     mes,

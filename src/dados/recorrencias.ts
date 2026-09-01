@@ -28,6 +28,14 @@ export type Recorrencia = {
   comecaEm: DataISO;
   /** Data da última ocorrência, quando a recorrência tem prazo. */
   terminaEm: DataISO | null;
+  /**
+   * Quanto o valor muda a cada mês (§5.2). Zero é a recorrência comum.
+   *
+   * A obra que sobe todo mês, a dívida negociada que desce. Antes essas contas
+   * só cabiam como "valor varia", e ficavam fora da projeção do §8 justamente
+   * por serem as que mais mexem com ela.
+   */
+  incremento: Centavos;
   ativo: boolean;
 };
 
@@ -43,6 +51,7 @@ export type NovaRecorrencia = {
   regra?: RegraDoDia;
   comecaEm?: DataISO;
   terminaEm?: DataISO | null;
+  incremento?: Centavos;
 };
 
 export async function listarRecorrencias(): Promise<Recorrencia[]> {
@@ -66,6 +75,7 @@ export async function listarRecorrencias(): Promise<Recorrencia[]> {
     regra: linha.regra_do_dia as RegraDoDia,
     comecaEm: linha.comeca_em,
     terminaEm: linha.termina_em,
+    incremento: paraCentavos(linha.incremento),
     ativo: linha.ativo,
   }));
 }
@@ -86,6 +96,7 @@ export async function criarRecorrencia(nova: NovaRecorrencia): Promise<string> {
       regra_do_dia: nova.regra ?? 'fixo',
       comeca_em: nova.comecaEm ?? hoje(),
       termina_em: nova.terminaEm ?? null,
+      incremento: paraNumerico(nova.incremento ?? 0),
     })
     .select('id')
     .single();

@@ -88,6 +88,18 @@ export function somarMeses(data: DataISO, meses: number): DataISO {
   return montar(novoAno, novoMes, Math.min(dia, diasNoMes(novoAno, novoMes)));
 }
 
+/**
+ * Quantos meses de `a` até `b`, contando só o mês — o dia não pesa.
+ *
+ * Negativo quando `b` vem antes. Serve para saber em qual degrau uma
+ * recorrência gradativa está: o mês do início é o degrau zero.
+ */
+export function mesesEntre(a: DataISO, b: DataISO): number {
+  const de = partes(a);
+  const ate = partes(b);
+  return (ate.ano - de.ano) * 12 + (ate.mes - de.mes);
+}
+
 export function primeiroDiaDoMes(data: DataISO): DataISO {
   const { ano, mes } = partes(data);
   return montar(ano, mes, 1);

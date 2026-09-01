@@ -75,7 +75,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     supabase
       .from('recorrencias')
       .select(
-        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id',
+        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id, incremento',
       )
       .eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
@@ -269,6 +269,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
         comecaEm: r.comeca_em,
         terminaEm: r.termina_em,
         cartao: cartaoPorConta.get(r.conta_id) ?? null,
+        incremento: paraCentavos(r.incremento),
       })),
       ocorrencias.geradas,
       primeiroDiaDesteMes,

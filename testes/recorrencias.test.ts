@@ -4,6 +4,7 @@ import {
   repeticoesRestantes,
   rotuloDoDia,
   terminoParaRepeticoes,
+  valorDaOcorrencia,
   vencimentosPendentes,
 } from '../src/dominio/recorrencias';
 
@@ -135,5 +136,44 @@ describe('prazo', () => {
       FERIADOS,
     );
     expect(datas).toHaveLength(3);
+  });
+});
+
+describe('recorrência gradativa', () => {
+  const INICIO = '2026-03-10';
+
+  it('o mês do início é o degrau zero', () => {
+    // "Começa em R$ 1.500 e sobe R$ 200 por mês" — o primeiro mês vale 1.500,
+    // não 1.700. É o que a pessoa digita.
+    expect(valorDaOcorrencia(150000, 20000, INICIO, '2026-03-10')).toBe(150000);
+    expect(valorDaOcorrencia(150000, 20000, INICIO, '2026-04-10')).toBe(170000);
+    expect(valorDaOcorrencia(150000, 20000, INICIO, '2026-09-10')).toBe(270000);
+  });
+
+  it('desce quando o incremento é negativo', () => {
+    expect(valorDaOcorrencia(100000, -25000, INICIO, '2026-05-10')).toBe(50000);
+  });
+
+  it('nunca cruza o zero', () => {
+    // Uma despesa negativa viraria receita pelo sinal, dizendo que a obra
+    // passou a te pagar.
+    expect(valorDaOcorrencia(100000, -25000, INICIO, '2026-12-10')).toBe(0);
+  });
+
+  it('o dia não pesa: o degrau é o mês', () => {
+    expect(valorDaOcorrencia(150000, 20000, '2026-03-28', '2026-04-01')).toBe(170000);
+  });
+
+  it('antes do início não desconta degrau', () => {
+    expect(valorDaOcorrencia(150000, 20000, INICIO, '2026-01-10')).toBe(150000);
+  });
+
+  it('sem incremento é a recorrência comum', () => {
+    expect(valorDaOcorrencia(150000, 0, INICIO, '2027-01-10')).toBe(150000);
+  });
+
+  it('sem base não inventa valor', () => {
+    // "Valor varia" continua sendo a resposta honesta de quem não sabe o passo.
+    expect(valorDaOcorrencia(null, 20000, INICIO, '2026-09-10')).toBeNull();
   });
 });

@@ -1012,6 +1012,7 @@ export type Database = {
           dia: number
           frequencia: string
           id: string
+          incremento: number
           natureza: string | null
           regra_do_dia: string
           termina_em: string | null
@@ -1029,6 +1030,7 @@ export type Database = {
           dia: number
           frequencia: string
           id?: string
+          incremento?: number
           natureza?: string | null
           regra_do_dia?: string
           termina_em?: string | null
@@ -1046,6 +1048,7 @@ export type Database = {
           dia?: number
           frequencia?: string
           id?: string
+          incremento?: number
           natureza?: string | null
           regra_do_dia?: string
           termina_em?: string | null
