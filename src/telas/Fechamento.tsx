@@ -504,10 +504,19 @@ function HistoricoDeFechamentos({
         <ul className="divide-y divide-borda">
           {fechamentos.map((f) => (
             <li key={f.mes}>
+              {/*
+                Sem ALVO_DE_TOQUE aqui: ele existe para engordar link pequeno e
+                faz isso com margem NEGATIVA. Numa linha de largura cheia, essa
+                margem vaza seis pixels para cada lado e vinte para cima e para
+                baixo — o fundo da linha escolhida saía do quadro e cobria a
+                linha de baixo. A linha já tem 48px de altura: ela é o alvo.
+              */}
               <button
                 onClick={() => aoEscolher(f.mes)}
-                className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-superficie-alta ${ALVO_DE_TOQUE} ${
-                  f.mes === mesAtual ? 'bg-superficie-alta' : ''
+                className={`flex w-full items-center justify-between gap-3 border-l-2 px-4 py-3 text-left transition ${
+                  f.mes === mesAtual
+                    ? 'border-emerald-500 bg-superficie-alta'
+                    : 'border-transparent hover:bg-superficie-alta'
                 }`}
               >
                 <span className="min-w-0">
