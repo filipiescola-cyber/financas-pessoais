@@ -50,7 +50,8 @@ export function FormularioRecorrencia({
   const [modoPrazo, setModoPrazo] = useState<ModoDePrazo>('sem');
   const [parcelas, setParcelas] = useState('');
   const [mesFinal, setMesFinal] = useState('');
-  const [contaId, setContaId] = useState<string | null>(contaFixa);
+  const [contaEscolhida, setContaId] = useState<string | null>(contaFixa);
+  const contaId = contaFixa ?? contaEscolhida;
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [passo, setPasso] = useState<'nao' | 'sobe' | 'desce'>('nao');
   const [valorDoPasso, setValorDoPasso] = useState<Centavos>(0);
@@ -173,13 +174,17 @@ export function FormularioRecorrencia({
         aoMudarMesFinal={setMesFinal}
       />
 
-      <Campo rotulo="Conta">
-        <ChipsDeConta
-          contas={disponiveis}
-          escolhida={contaId}
-          aoEscolher={(id) => setContaId(id)}
-        />
-      </Campo>
+      {/* Com a conta já decidida pela tela — o cartão, em Faturas — perguntar
+          de novo é oferecer a resposta errada: as outras contas nem cabem ali. */}
+      {contaFixa === null && (
+        <Campo rotulo="Conta">
+          <ChipsDeConta
+            contas={disponiveis}
+            escolhida={contaId}
+            aoEscolher={(id) => setContaId(id)}
+          />
+        </Campo>
+      )}
 
       <Campo rotulo="Categoria (opcional)">
         <div className="flex flex-wrap gap-2">
