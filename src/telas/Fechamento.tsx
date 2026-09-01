@@ -55,10 +55,6 @@ function nomeDoMes(data: DataISO): string {
   return `${MESES[Number(data.split('-')[1]) - 1]} de ${data.slice(0, 4)}`;
 }
 
-function mesCurto(data: DataISO): string {
-  return `${MESES[Number(data.split('-')[1]) - 1]?.slice(0, 3)}/${data.slice(2, 4)}`;
-}
-
 /**
  * Fechamento mensal (§8.7).
  *
@@ -504,7 +500,7 @@ function HistoricoDeFechamentos({
 
   return (
     <Secao titulo="Histórico">
-      <Cartao>
+      <Cartao className="overflow-hidden">
         <ul className="divide-y divide-borda">
           {fechamentos.map((f) => (
             <li key={f.mes}>
@@ -529,7 +525,7 @@ function HistoricoDeFechamentos({
                       : 'bg-amber-950/30 text-amber-300/80'
                   }`}
                 >
-                  {f.concluidoEm ? `${mesCurto(f.mes)} ✓` : mesCurto(f.mes)}
+                  {f.concluidoEm ? '✓ fechado' : 'em aberto'}
                 </span>
               </button>
             </li>
