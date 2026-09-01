@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calcularReserva,
   conferir,
+  dataPadraoDaConferencia,
   mereceAlerta,
   progressoDaMeta,
   progressoDoOrcamento,
@@ -118,5 +119,27 @@ describe('conferência de saldo (§5.3)', () => {
 
   it('reconhece quando bate', () => {
     expect(conferir(150000, 150000).bate).toBe(true);
+  });
+});
+
+describe('data padrão da conferência', () => {
+  it('no começo do mês, olha o mês que acabou', () => {
+    // Quem abre a tela no dia 1º está fechando agosto: o extrato na mão é o de
+    // agosto, e o saldo de hoje já tem o salário e as contas do dia.
+    expect(dataPadraoDaConferencia('2026-09-01')).toBe('2026-08-31');
+    expect(dataPadraoDaConferencia('2026-09-05')).toBe('2026-08-31');
+  });
+
+  it('no meio do mês, é conferência avulsa: vale hoje', () => {
+    expect(dataPadraoDaConferencia('2026-09-06')).toBe('2026-09-06');
+    expect(dataPadraoDaConferencia('2026-09-20')).toBe('2026-09-20');
+  });
+
+  it('vira o ano sem tropeçar', () => {
+    expect(dataPadraoDaConferencia('2027-01-02')).toBe('2026-12-31');
+  });
+
+  it('mês curto: o último dia é o dele, não o dia 31', () => {
+    expect(dataPadraoDaConferencia('2026-03-01')).toBe('2026-02-28');
   });
 });

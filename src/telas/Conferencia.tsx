@@ -1,9 +1,17 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { formatarBR } from '../dominio/datas';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  formatarBR,
+  hoje,
+  somarMeses,
+  ultimoDiaDoMes,
+  type DataISO,
+} from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
-import { conferir } from '../dominio/orcamento';
+import { conferir, dataPadraoDaConferencia } from '../dominio/orcamento';
 import { registrarConferencia } from '../dados/orcamentos';
+import { saldoAte } from '../dados/transacoes';
+import { Campo, ENTRADA } from '../ui/base';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { CampoValor } from '../ui/CampoValor';
@@ -24,8 +32,21 @@ export function Conferencia() {
   const contas = usarContasComSaldo();
   const [contaId, setContaId] = useState<string | null>(null);
 
+  // A data existia só implícita, e era sempre hoje. Quem fechava agosto no dia
+  // 1º comparava o extrato de agosto com o saldo de setembro — que já tem o
+  // salário e as contas do dia — e via uma diferença que não existe.
+  const [data, setData] = useState<DataISO>(dataPadraoDaConferencia(hoje()));
+
   const elegiveis = (contas.data ?? []).filter((c) => c.tipo !== 'cartao_credito');
   const conta = elegiveis.find((c) => c.id === contaId) ?? null;
+
+  const fimDoMesPassado = ultimoDiaDoMes(somarMeses(hoje(), -1));
+
+  const saldoNaData = useQuery({
+    queryKey: ['saldo-ate', data, conta?.id],
+    queryFn: () => saldoAte(data, conta!.id),
+    enabled: conta !== null,
+  });
 
   if (contas.isPending) {
     return (
@@ -56,15 +77,46 @@ export function Conferencia() {
             </div>
           </Secao>
 
-          {conta && (
+          <Secao titulo="Saldo de quando">
+            <Campo
+              rotulo="Data do extrato"
+              ajuda="Fechando um mês, use o último dia dele: é o número que está no extrato. O saldo de hoje já tem o que aconteceu depois."
+            >
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Chip ativo={data === fimDoMesPassado} aoClicar={() => setData(fimDoMesPassado)}>
+                    Fim de {nomeDoMes(fimDoMesPassado)}
+                  </Chip>
+                  <Chip ativo={data === hoje()} aoClicar={() => setData(hoje())}>
+                    Hoje
+                  </Chip>
+                </div>
+                <input
+                  type="date"
+                  value={data}
+                  onChange={(e) => e.target.value && setData(e.target.value)}
+                  className={ENTRADA}
+                />
+              </div>
+            </Campo>
+          </Secao>
+
+          {conta && saldoNaData.data !== undefined && (
             <FormularioDeConferencia
-              key={conta.id}
+              // A data entra na chave: trocar de mês precisa reabrir o campo
+              // com o saldo daquele mês, e não com o número que já estava lá.
+              key={`${conta.id}|${data}`}
               contaId={conta.id}
               nome={conta.nome}
-              saldoDoApp={conta.saldoAtual}
+              data={data}
+              saldoDoApp={saldoNaData.data}
               conferidoEm={conta.dataConferencia}
               saldoConferido={conta.saldoConferido}
             />
+          )}
+
+          {conta && saldoNaData.isPending && (
+            <p className="text-sm text-slate-500">Somando o que havia até {formatarBR(data)}…</p>
           )}
         </>
       )}
@@ -72,15 +124,26 @@ export function Conferencia() {
   );
 }
 
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+function nomeDoMes(data: DataISO): string {
+  return MESES[Number(data.slice(5, 7)) - 1] ?? '';
+}
+
 function FormularioDeConferencia({
   contaId,
   nome,
+  data,
   saldoDoApp,
   conferidoEm,
   saldoConferido,
 }: {
   contaId: string;
   nome: string;
+  data: DataISO;
   saldoDoApp: Centavos;
   conferidoEm: string | null;
   saldoConferido: Centavos | null;
@@ -99,6 +162,10 @@ function FormularioDeConferencia({
         saldoReal,
         diferenca: resultado.diferenca,
         criarAjuste,
+        // O ajuste é do mês CONFERIDO. Datado de hoje, a diferença de agosto
+        // apareceria em setembro — e o mês que se acabou de fechar voltaria a
+        // não bater na próxima vez que fosse olhado.
+        data,
       }),
     onSuccess: async (_, criarAjuste) => {
       await invalidar();
@@ -115,7 +182,7 @@ function FormularioDeConferencia({
     <Secao titulo={nome}>
       <Cartao className="space-y-4 p-4">
         <div className="flex items-baseline justify-between">
-          <span className="text-sm text-slate-400">Saldo no app</span>
+          <span className="text-sm text-slate-400">Saldo no app em {formatarBR(data)}</span>
           <Dinheiro centavos={saldoDoApp} className="text-lg text-slate-100" />
         </div>
 
@@ -125,7 +192,7 @@ function FormularioDeConferencia({
             setSaldoReal(v);
             setConferido(true);
           }}
-          rotulo="Saldo real, o que está no extrato"
+          rotulo={`Saldo real em ${formatarBR(data)}, o que está no extrato`}
         />
 
         {conferidoEm && saldoConferido !== null && (
@@ -160,7 +227,8 @@ function FormularioDeConferencia({
                 <p className="mt-2 text-xs leading-relaxed text-amber-200/80">
                   Quase sempre é lançamento esquecido, taxa que não foi registrada ou gasto em
                   dinheiro. O ajuste entra como lançamento visível na categoria "Ajuste de saldo",
-                  nunca como correção silenciosa.
+                  nunca como correção silenciosa — e com a data de {formatarBR(data)}, para a
+                  diferença ficar no mês em que ela aconteceu.
                 </p>
               </>
             )}

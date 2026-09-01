@@ -12,7 +12,7 @@
 //   as variáveis são a primeira coisa que se corta.
 
 import type { Centavos } from './dinheiro';
-import { diasNoMes, type DataISO } from './datas';
+import { diasNoMes, somarMeses, ultimoDiaDoMes, type DataISO } from './datas';
 
 export type SituacaoDoOrcamento = 'dentro' | 'atencao' | 'estourado';
 
@@ -145,6 +145,24 @@ export type Conferencia = {
  * Sinal da diferença = o valor do lançamento de ajuste. Positivo significa que
  * o banco tem mais do que o app achava, então entra dinheiro.
  */
+/**
+ * Em que data a conferência começa olhando (§5.3, §8.7).
+ *
+ * O lembrete é no dia 1º, e quem abre a tela no dia 1º está fechando o mês que
+ * ACABOU — o extrato que ele tem na mão é o de agosto, não o saldo de hoje.
+ * Comparar contra hoje faz a diferença aparecer onde ela não está: o saldo de
+ * 1º de setembro já tem o salário e as contas do dia, que não estavam no mês
+ * que se quer fechar.
+ *
+ * Depois dos primeiros dias a pergunta muda: aí é conferência avulsa, e o dia
+ * de hoje é o certo. A tela deixa trocar dos dois jeitos — isto é só por onde
+ * ela abre.
+ */
+export function dataPadraoDaConferencia(hoje: DataISO): DataISO {
+  const dia = Number(hoje.slice(8, 10));
+  return dia <= 5 ? ultimoDiaDoMes(somarMeses(hoje, -1)) : hoje;
+}
+
 export function conferir(saldoDoApp: Centavos, saldoReal: Centavos): Conferencia {
   const diferenca = saldoReal - saldoDoApp;
   return { saldoDoApp, saldoReal, diferenca, bate: diferenca === 0 };
