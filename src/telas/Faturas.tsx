@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { diaNoMes, formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
+import {
+  diaNoMes,
+  formatarBR,
+  hoje,
+  somarMeses,
+  ultimoDiaDoMes,
+  type DataISO,
+} from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import {
   descreverFatura,
@@ -49,6 +56,9 @@ import {
 } from '../ui/base';
 import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
 import { ExclusaoDeRecorrencia } from '../ui/ExclusaoDeRecorrencia';
+import { IconeRelogio } from '../ui/icones';
+import { previstoDaFatura } from '../dominio/previsto';
+import { ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { arquivarRecorrencia } from '../dados/recorrencias';
@@ -210,11 +220,7 @@ function FaturaDoMes({ cartao }: { cartao: CartaoComConta }) {
           meses à frente.
         </p>
       ) : (
-        <CartaoDeFatura
-          fatura={fatura}
-          cartaoId={cartao.contaId}
-          nomeDoCartao={cartao.conta.nome}
-        />
+        <CartaoDeFatura fatura={fatura} cartao={cartao} />
       )}
     </div>
   );
@@ -231,19 +237,65 @@ function nomeDoMes(data: DataISO): string {
 }
 
 
-function CartaoDeFatura({
-  fatura,
-  cartaoId,
-  nomeDoCartao,
-}: {
-  fatura: Fatura;
-  cartaoId: string;
-  nomeDoCartao: string;
-}) {
+function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComConta }) {
+  const cartaoId = cartao.contaId;
+  const nomeDoCartao = cartao.conta.nome;
+
   const transacoes = useQuery({
     queryKey: ['transacoes-fatura', fatura.id],
     queryFn: () => listarTransacoesDaFatura(fatura.id),
   });
+
+  /**
+   * As cobranças que ainda vão entrar nesta fatura (§2.1).
+   *
+   * A fatura aparecia aqui sem elas: a assinatura entrava no bloco em
+   * Lançamentos e sumia justamente na tela que existe para conferir a fatura.
+   * Duas telas contando a mesma fatura de dois jeitos.
+   */
+  const recorrencias = usarRecorrencias();
+  const feriados = usarFeriados();
+
+  const geradas = useQuery({
+    queryKey: ['ocorrencias-geradas', 'fatura', fatura.mesReferencia],
+    queryFn: () =>
+      ocorrenciasDoPeriodo(
+        somarMeses(fatura.mesReferencia, -1),
+        ultimoDiaDoMes(somarMeses(fatura.mesReferencia, 1)),
+      ),
+  });
+
+  const previstas =
+    recorrencias.data && geradas.data
+      ? previstoDaFatura(
+          recorrencias.data
+            .filter((r) => r.contaId === cartaoId)
+            .map((r) => ({
+              id: r.id,
+              contaId: r.contaId,
+              descricao: r.descricao,
+              tipo: r.tipo,
+              valorPrevisto: r.valorPrevisto,
+              dia: r.dia,
+              regra: r.regra,
+              comecaEm: r.comecaEm,
+              terminaEm: r.terminaEm,
+              incremento: r.incremento,
+              cartao: { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento },
+            })),
+          geradas.data.geradas,
+          fatura.mesReferencia,
+          fatura.dataVencimento,
+          hoje(),
+          feriados,
+          geradas.data.puladas,
+        )
+      : [];
+
+  // Só as de valor conhecido somam: uma recorrência de valor variável entra na
+  // lista e fica fora da conta, senão o total prometeria um número que ninguém
+  // disse (§13.5).
+  const aCobrar = previstas.reduce((soma, item) => soma + (item.valor ?? 0), 0);
 
   // Somado das compras, nunca lido de `valor_total`: enquanto a fatura está
   // aberta a coluna vale zero (§13.2). Como a tela mostra as compras de
@@ -296,6 +348,15 @@ function CartaoDeFatura({
               Já pagos {formatar(saldo.pago)} de {formatar(saldo.total)}.
             </p>
           )}
+          {/* Separado do valor de cima de propósito: o que ainda não foi
+              cobrado não dá para pagar hoje. Somar os dois num número só faria
+              o botão de pagar prometer quitar o que o banco ainda nem cobrou. */}
+          {aCobrar > 0 && (
+            <p className="mt-0.5 text-xs text-sky-400/70">
+              Mais {formatar(aCobrar)} ainda vão entrar · fecha em{' '}
+              {formatarBR(fatura.dataFechamento)}
+            </p>
+          )}
         </div>
         <span
           className={`dinheiro shrink-0 text-2xl font-semibold ${
@@ -318,7 +379,7 @@ function CartaoDeFatura({
 
           {transacoes.isPending && <p className="text-sm text-slate-500">Carregando…</p>}
 
-          {transacoes.isSuccess && transacoes.data.length === 0 && (
+          {transacoes.isSuccess && transacoes.data.length === 0 && previstas.length === 0 && (
             <p className="text-sm text-slate-500">Nenhuma compra nesta fatura.</p>
           )}
 
@@ -359,6 +420,30 @@ function CartaoDeFatura({
               </li>
               );
             })}
+
+            {/* Ficam por último e apagadas: são previsão, e a fatura precisa
+                deixar claro o que já é fato. */}
+            {previstas.map((item) => (
+              <li
+                key={`${item.recorrenciaId}-${item.dataPrevista}`}
+                className="flex items-center justify-between gap-3 px-1 py-1 text-sm"
+              >
+                <span className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                  <IconeRelogio className="h-4 w-4 shrink-0 text-sky-400/50" />
+                  <span className="truncate">{item.descricao}</span>
+                  <span className="shrink-0 text-[11px] text-slate-600">
+                    {formatarBR(item.dataPrevista).slice(0, 5)} · a cobrar
+                  </span>
+                </span>
+                {item.valor === null ? (
+                  <span className="shrink-0 text-[11px] text-amber-400/70">valor varia</span>
+                ) : (
+                  <span className="dinheiro shrink-0 text-slate-500">
+                    {formatar(item.valor)}
+                  </span>
+                )}
+              </li>
+            ))}
           </ul>
 
           {saldo.quitada ? (

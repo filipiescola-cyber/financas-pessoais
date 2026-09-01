@@ -274,3 +274,32 @@ export function previstoNoCaixaDoMes(
     .filter((item) => item.dataCaixa >= mes && item.dataCaixa <= fim)
     .sort((a, b) => a.dataCaixa.localeCompare(b.dataCaixa));
 }
+
+/**
+ * As cobranças que ainda vão entrar NUMA fatura específica (§2.1).
+ *
+ * A aba de faturas mostrava a fatura sem elas: a assinatura aparecia dentro do
+ * bloco em Lançamentos e sumia aqui, na tela que existe justamente para
+ * conferir a fatura. Duas telas contando a mesma fatura de dois jeitos.
+ *
+ * A janela de competência é de três meses porque a fatura de um mês recebe
+ * compras do mês anterior — tudo que cai depois do fechamento anterior e até o
+ * fechamento dela. Quem decide é `faturaDeReferencia`, a mesma função que a
+ * geração usa: aqui só se pergunta quais ocorrências caem nesta.
+ */
+export function previstoDaFatura(
+  recorrencias: readonly RecorrenciaPrevista[],
+  jaLancadas: ReadonlySet<string>,
+  mesDaFatura: DataISO,
+  vencimento: DataISO,
+  hoje: DataISO,
+  feriados: Feriados,
+  puladas: ReadonlySet<string> = new Set(),
+): ItemPrevisto[] {
+  return [somarMeses(mesDaFatura, -1), mesDaFatura, somarMeses(mesDaFatura, 1)]
+    .flatMap((competencia) =>
+      previstoDoMes(recorrencias, jaLancadas, competencia, hoje, feriados, puladas),
+    )
+    .filter((item) => item.situacao !== 'lancado' && item.vencimentoDaFatura === vencimento)
+    .sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
+}

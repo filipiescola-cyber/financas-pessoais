@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chaveDaOcorrencia,
   previstoAteOMes,
+  previstoDaFatura,
   previstoDoMes,
   previstoNoCaixaDoMes,
   resumirPrevisto,
@@ -304,5 +305,52 @@ describe('previsto de recorrência gradativa', () => {
     // conta que mais mexe com ela.
     const ate = previstoAteOMes([obra], new Set(), '2026-08-01', '2026-11-01', '2026-08-01', FERIADOS);
     expect(ate).toBe(-(150000 + 170000 + 190000));
+  });
+});
+
+describe('previsto de uma fatura', () => {
+  const CARTAO = { diaFechamento: 2, diaVencimento: 9 };
+
+  const curso: RecorrenciaPrevista = {
+    id: 'curso',
+    descricao: 'Curso de Inglês',
+    tipo: 'despesa',
+    valorPrevisto: 72900,
+    dia: 10,
+    regra: 'fixo',
+    comecaEm: '2020-01-01',
+    terminaEm: null,
+    cartao: CARTAO,
+  };
+
+  it('a cobrança do mês anterior cai na fatura deste', () => {
+    // A fatura de um mês recebe compras do mês anterior: tudo que cai depois
+    // do fechamento anterior e até o fechamento dela.
+    const itens = previstoDaFatura(
+      [curso], new Set(), '2026-10-01', '2026-10-09', '2026-09-01', FERIADOS,
+    );
+    expect(itens).toHaveLength(1);
+    expect(itens[0]!.dataPrevista).toBe('2026-09-10');
+  });
+
+  it('não traz a cobrança que cai na fatura seguinte', () => {
+    const itens = previstoDaFatura(
+      [curso], new Set(), '2026-09-01', '2026-09-09', '2026-09-01', FERIADOS,
+    );
+    expect(itens.map((i) => i.dataPrevista)).not.toContain('2026-09-10');
+  });
+
+  it('o que já virou lançamento sai da lista', () => {
+    // Senão a fatura contaria a mesma cobrança duas vezes.
+    const lancadas = new Set([chaveDaOcorrencia('curso', '2026-09-10')]);
+    expect(
+      previstoDaFatura([curso], lancadas, '2026-10-01', '2026-10-09', '2026-09-01', FERIADOS),
+    ).toEqual([]);
+  });
+
+  it('recorrência fora do cartão nunca entra numa fatura', () => {
+    expect(
+      previstoDaFatura([aluguel], new Set(), '2026-10-01', '2026-10-09', '2026-09-01', FERIADOS),
+    ).toEqual([]);
   });
 });
