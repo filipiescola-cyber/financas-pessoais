@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { formatar, type Centavos } from '../dominio/dinheiro';
-import { hoje, primeiroDiaDoMes, ultimoDiaDoMes } from '../dominio/datas';
+import { hoje, primeiroDiaDoMes, somarMeses, ultimoDiaDoMes } from '../dominio/datas';
 import { entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { agruparEmArvore } from '../dominio/arvoreDeContas';
 import { ADIAVEIS, lerStatusOnboarding, passosDaTrilha, trilhaDe } from '../dados/config';
@@ -15,6 +15,8 @@ import { gerarAlertas, ordenarPorGravidade } from '../dominio/alertas';
 import { formatarBR } from '../dominio/datas';
 import { useMutation } from '@tanstack/react-query';
 import { previstoDoMes, resumirPrevisto, type ItemPrevisto } from '../dominio/previsto';
+import { lembreteDeFechamento } from '../dominio/fechamento';
+import { listarFechamentos } from '../dados/fechamentos';
 import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { usarRecorrencias } from '../dados/usarModelos';
@@ -53,10 +55,16 @@ export function Inicio() {
     ? ordenarPorGravidade(gerarAlertas(entradaDosAlertas.data))
     : [];
 
-  // O fechamento é do dia 1º (§8.7). O lembrete some depois do dia 7 para não
-  // virar cobrança permanente.
-  const diaDeHoje = Number(hoje().split('-')[2]);
-  const lembrarFechamento = diaDeHoje <= 7;
+  // O fechamento é do dia 1º (§8.7). Antes a resposta era só o calendário, e o
+  // app continuava pedindo para fechar agosto depois de agosto ter sido
+  // fechado — o jeito mais rápido de ensinar alguém a ignorar lembrete.
+  const fechamentos = useQuery({ queryKey: ['fechamentos'], queryFn: listarFechamentos });
+  const mesPassado = primeiroDiaDoMes(somarMeses(hoje(), -1));
+
+  const lembrarFechamento = lembreteDeFechamento(
+    Number(hoje().split('-')[2]),
+    (fechamentos.data ?? []).find((f) => f.mes === mesPassado) ?? null,
+  );
 
   const lista = contas.data ?? [];
   const disponiveis = lista.filter(entraNoConsolidado);
@@ -105,15 +113,20 @@ export function Inicio() {
         </div>
       )}
 
-      {lembrarFechamento && (
+      {lembrarFechamento !== null && (
         <Link
           to="/fechamento"
           className="block rounded-xl border border-sky-900/50 bg-sky-950/30 p-4 transition hover:border-sky-800"
         >
-          <p className="text-sm font-medium text-sky-200">Fechar o mês passado</p>
+          <p className="text-sm font-medium text-sky-200">
+            {lembrarFechamento === 'continuar'
+              ? 'Continuar o fechamento do mês passado'
+              : 'Fechar o mês passado'}
+          </p>
           <p className="mt-1 text-xs leading-relaxed text-sky-200/70">
-            Dez minutos: conferir saldos, revisar o que ficou sem categoria, ver como foi o mês e
-            preparar o novo. É o ritual que mantém o app confiável.
+            {lembrarFechamento === 'continuar'
+              ? 'Você começou e parou no meio. O que já foi marcado continua lá — é só seguir de onde parou.'
+              : 'Dez minutos: conferir saldos, revisar o que ficou sem categoria, ver como foi o mês e preparar o novo. É o ritual que mantém o app confiável.'}
           </p>
         </Link>
       )}

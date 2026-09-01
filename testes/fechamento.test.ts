@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PASSOS,
   faltaramNoMes,
+  lembreteDeFechamento,
   passoEstaFeito,
   progressoDoFechamento,
   type PendenciasDoMes,
@@ -97,5 +98,27 @@ describe('o que faltou no mês', () => {
     // Compra de julho cuja fatura venceu em agosto: aí o dinheiro era para ter
     // saído no mês que se está fechando.
     expect(faltaramNoMes([item('atrasado', '2026-08-14')], '2026-08-31')).toHaveLength(1);
+  });
+});
+
+describe('lembrete de fechamento', () => {
+  it('mês já fechado não é cobrado de novo', () => {
+    // Lembrete que aparece com a tarefa feita ensina a ignorar lembretes.
+    expect(lembreteDeFechamento(1, { concluidoEm: '2026-09-01T10:00:00Z' })).toBeNull();
+  });
+
+  it('sem registro nenhum, cobra o fechamento', () => {
+    expect(lembreteDeFechamento(1, null)).toBe('fechar');
+  });
+
+  it('quem parou no meio recebe outra frase', () => {
+    // "Fechar o mês" para quem já fez metade esconde que dá para continuar.
+    expect(lembreteDeFechamento(3, { concluidoEm: null })).toBe('continuar');
+  });
+
+  it('depois do dia 7 o lembrete some, feito ou não', () => {
+    // O ritual é do dia 1º; cobrar o mês inteiro vira cobrança permanente.
+    expect(lembreteDeFechamento(8, null)).toBeNull();
+    expect(lembreteDeFechamento(20, { concluidoEm: null })).toBeNull();
   });
 });

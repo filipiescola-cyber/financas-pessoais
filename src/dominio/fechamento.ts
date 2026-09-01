@@ -104,3 +104,28 @@ export function faltaramNoMes<T extends { situacao: string; dataCaixa: string }>
     (item) => item.situacao === 'atrasado' && item.dataCaixa <= fimDoMes,
   );
 }
+
+export type LembreteDeFechamento = 'fechar' | 'continuar' | null;
+
+/**
+ * Se a tela inicial deve cobrar o fechamento, e de que jeito (§8.7, §8.6).
+ *
+ * Antes a resposta era só o calendário — "é dia 7 ou menos?" —, e o app
+ * continuava pedindo para fechar agosto depois de agosto ter sido fechado.
+ * Lembrete que aparece mesmo quando a tarefa está feita é o modo mais rápido
+ * de ensinar alguém a ignorar lembretes, e junto com ele some o que importava.
+ *
+ * Quem parou no meio recebe outra frase: mandar "fechar o mês" para quem já
+ * fez metade esconde que dá para continuar de onde parou.
+ *
+ * A janela de sete dias continua: o ritual é do dia 1º, e cobrar o mês inteiro
+ * transformaria o lembrete em cobrança permanente.
+ */
+export function lembreteDeFechamento(
+  diaDoMes: number,
+  registro: { concluidoEm: string | null } | null,
+): LembreteDeFechamento {
+  if (diaDoMes > 7) return null;
+  if (registro?.concluidoEm) return null;
+  return registro ? 'continuar' : 'fechar';
+}
