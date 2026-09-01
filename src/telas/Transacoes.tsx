@@ -39,7 +39,7 @@ import {
   type BlocoDeFatura,
 } from '../dominio/agrupamento';
 import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
-import { statusDasFaturas } from '../dados/faturas';
+import { saidaDeFaturasEntre, statusDasFaturas } from '../dados/faturas';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
@@ -147,6 +147,14 @@ export function Transacoes() {
   const mesCorrente = primeiroDiaDoMes(hoje());
   const precisaDePonte = mes > mesCorrente;
 
+  // A ponte precisa descontar as faturas do caminho: o consolidado não inclui
+  // conta de cartão, então elas não aparecem no saldo de abertura sozinhas.
+  const faturasDaPonte = useQuery({
+    queryKey: ['faturas-ponte', mesCorrente, mes, contaId],
+    queryFn: () => saidaDeFaturasEntre(mesCorrente, mes, contaId),
+    enabled: precisaDePonte,
+  });
+
   const geradasDaPonte = useQuery({
     queryKey: ['ocorrencias-geradas', 'ponte', mesCorrente, mes, contaId],
     queryFn: () => ocorrenciasDoPeriodo(mesCorrente, somarDias(mes, -1)),
@@ -157,7 +165,7 @@ export function Transacoes() {
   // aparecer com um número que muda sozinho na frente do usuário.
   const previstoDaPonte = !precisaDePonte
     ? 0
-    : recorrencias.data && geradasDaPonte.data
+    : recorrencias.data && geradasDaPonte.data && faturasDaPonte.data !== undefined
       ? previstoAteOMes(
           recorrenciasPrevistas,
           geradasDaPonte.data.geradas,
@@ -166,7 +174,7 @@ export function Transacoes() {
           hoje(),
           feriados,
           geradasDaPonte.data.puladas,
-        )
+        ) - (faturasDaPonte.data ?? 0)
       : null;
 
   // Quais faturas do mês ainda não foram pagas. Sem isto o saldo previsto do

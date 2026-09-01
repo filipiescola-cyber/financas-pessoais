@@ -245,6 +245,71 @@ export async function statusDasFaturas(
   return new Map((data ?? []).map((f) => [f.id, f.status as StatusFatura]));
 }
 
+/**
+ * As faturas que ainda vão sair do caixa num período (§2.1, §13.2).
+ *
+ * Existe por causa de um buraco na emenda entre os meses da lista de
+ * lançamentos. O saldo de abertura de um mês distante vem do consolidado, e o
+ * consolidado NÃO inclui conta de cartão (§2.6) — então a fatura que vence em
+ * setembro não aparece em lugar nenhum quando outubro calcula quanto tinha
+ * antes de começar.
+ *
+ * Dentro do mês exibido a fatura era descontada; na ponte para o mês seguinte,
+ * não. O resultado é que setembro fechava num número e outubro abria noutro,
+ * mais alto exatamente pelas faturas do caminho.
+ *
+ * Fatura paga fica de fora: nela o dinheiro já saiu pela transferência de
+ * quitação, que está entre os movimentos reais. Pagamento PARCIAL abate o que
+ * foi pago e mantém o resto.
+ */
+export async function saidaDeFaturasEntre(
+  de: DataISO,
+  ate: DataISO,
+  contaPagadoraId: string | null,
+): Promise<Centavos> {
+  const { data: faturas, error } = await supabase
+    .from('faturas')
+    .select('id, cartao_id')
+    .neq('status', 'paga')
+    .gte('data_vencimento', de)
+    .lt('data_vencimento', ate);
+  if (error) throw error;
+  if (!faturas || faturas.length === 0) return 0;
+
+  // Filtrando por conta, só pesam as faturas que ELA paga.
+  let alvos = faturas;
+  if (contaPagadoraId !== null) {
+    const { data: cartoes } = await supabase
+      .from('cartoes')
+      .select('conta_id')
+      .eq('conta_pagamento_id', contaPagadoraId);
+
+    const pagos = new Set((cartoes ?? []).map((c) => c.conta_id));
+    alvos = faturas.filter((f) => pagos.has(f.cartao_id));
+  }
+
+  if (alvos.length === 0) return 0;
+  const ids = alvos.map((f) => f.id);
+
+  const [compras, pagamentos] = await Promise.all([
+    supabase
+      .from('transacoes')
+      .select('valor')
+      // Filha de divisão não soma: o pai já está na fatura (§5.5).
+      .is('transacao_pai_id', null)
+      .in('fatura_id', ids),
+    supabase.from('transacoes').select('valor').in('fatura_paga_id', ids),
+  ]);
+
+  if (compras.error) throw compras.error;
+  if (pagamentos.error) throw pagamentos.error;
+
+  const somar = (linhas: { valor: number }[]) =>
+    linhas.reduce((total, l) => total + Math.abs(paraCentavos(l.valor)), 0);
+
+  return Math.max(0, somar(compras.data ?? []) - somar(pagamentos.data ?? []));
+}
+
 export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> {
   const { data: faturas, error } = await supabase
     .from('faturas')
