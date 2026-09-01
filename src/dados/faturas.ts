@@ -231,18 +231,43 @@ export type DividaDoCartao = {
  * do dia tem que contar com ela. A paga não — nessa o dinheiro já saiu pela
  * transferência da quitação, e somar de novo tiraria o valor duas vezes.
  */
-export async function statusDasFaturas(
+export type SituacaoDaFatura = { status: StatusFatura; pago: Centavos };
+
+/**
+ * Status e quanto já foi pago, por fatura.
+ *
+ * O quanto vem dos PAGAMENTOS, não de um campo (§13.2). Antes a tela só sabia
+ * o status, e com isso pesava a fatura inteira no saldo mesmo quando metade
+ * dela já tinha sido paga — descontando essa metade duas vezes, porque a
+ * transferência da quitação também está entre os movimentos reais.
+ */
+export async function situacaoDasFaturas(
   ids: readonly string[],
-): Promise<Map<string, StatusFatura>> {
+): Promise<Map<string, SituacaoDaFatura>> {
   if (ids.length === 0) return new Map();
 
-  const { data, error } = await supabase
-    .from('faturas')
-    .select('id, status')
-    .in('id', [...ids]);
-  if (error) throw error;
+  const [faturas, pagamentos] = await Promise.all([
+    supabase.from('faturas').select('id, status').in('id', [...ids]),
+    supabase.from('transacoes').select('valor, fatura_paga_id').in('fatura_paga_id', [...ids]),
+  ]);
+  if (faturas.error) throw faturas.error;
+  if (pagamentos.error) throw pagamentos.error;
 
-  return new Map((data ?? []).map((f) => [f.id, f.status as StatusFatura]));
+  const pagoPorFatura = new Map<string, Centavos>();
+  for (const linha of pagamentos.data ?? []) {
+    if (linha.fatura_paga_id === null) continue;
+    pagoPorFatura.set(
+      linha.fatura_paga_id,
+      (pagoPorFatura.get(linha.fatura_paga_id) ?? 0) + Math.abs(paraCentavos(linha.valor)),
+    );
+  }
+
+  return new Map(
+    (faturas.data ?? []).map((f) => [
+      f.id,
+      { status: f.status as StatusFatura, pago: pagoPorFatura.get(f.id) ?? 0 },
+    ]),
+  );
 }
 
 /**
@@ -258,23 +283,23 @@ export async function statusDasFaturas(
  * não. O resultado é que setembro fechava num número e outubro abria noutro,
  * mais alto exatamente pelas faturas do caminho.
  *
- * Fatura paga fica de fora: nela o dinheiro já saiu pela transferência de
- * quitação, que está entre os movimentos reais. Pagamento PARCIAL abate o que
- * foi pago e mantém o resto.
+ * Devolve as faturas, não a soma: quem transforma isso em movimento de caixa é
+ * `faturasQueAindaVaoSair`, a MESMA função que o mês exibido usa. Enquanto
+ * eram duas contas separadas elas divergiam — e a divergência aparecia como
+ * saldo que não fecha na virada do mês.
  */
-export async function saidaDeFaturasEntre(
+export async function faturasAVencerEntre(
   de: DataISO,
   ate: DataISO,
   contaPagadoraId: string | null,
-): Promise<Centavos> {
+): Promise<{ faturaId: string; vencimento: DataISO; total: Centavos }[]> {
   const { data: faturas, error } = await supabase
     .from('faturas')
-    .select('id, cartao_id')
-    .neq('status', 'paga')
+    .select('id, cartao_id, data_vencimento')
     .gte('data_vencimento', de)
     .lt('data_vencimento', ate);
   if (error) throw error;
-  if (!faturas || faturas.length === 0) return 0;
+  if (!faturas || faturas.length === 0) return [];
 
   // Filtrando por conta, só pesam as faturas que ELA paga.
   let alvos = faturas;
@@ -288,26 +313,31 @@ export async function saidaDeFaturasEntre(
     alvos = faturas.filter((f) => pagos.has(f.cartao_id));
   }
 
-  if (alvos.length === 0) return 0;
+  if (alvos.length === 0) return [];
   const ids = alvos.map((f) => f.id);
 
-  const [compras, pagamentos] = await Promise.all([
-    supabase
-      .from('transacoes')
-      .select('valor')
-      // Filha de divisão não soma: o pai já está na fatura (§5.5).
-      .is('transacao_pai_id', null)
-      .in('fatura_id', ids),
-    supabase.from('transacoes').select('valor').in('fatura_paga_id', ids),
-  ]);
+  const { data: compras, error: erroCompras } = await supabase
+    .from('transacoes')
+    .select('valor, fatura_id')
+    // Filha de divisão não soma: o pai já está na fatura (§5.5).
+    .is('transacao_pai_id', null)
+    .in('fatura_id', ids);
+  if (erroCompras) throw erroCompras;
 
-  if (compras.error) throw compras.error;
-  if (pagamentos.error) throw pagamentos.error;
+  const totalPorFatura = new Map<string, Centavos>();
+  for (const linha of compras ?? []) {
+    if (linha.fatura_id === null) continue;
+    totalPorFatura.set(
+      linha.fatura_id,
+      (totalPorFatura.get(linha.fatura_id) ?? 0) + paraCentavos(linha.valor),
+    );
+  }
 
-  const somar = (linhas: { valor: number }[]) =>
-    linhas.reduce((total, l) => total + Math.abs(paraCentavos(l.valor)), 0);
-
-  return Math.max(0, somar(compras.data ?? []) - somar(pagamentos.data ?? []));
+  return alvos.map((f) => ({
+    faturaId: f.id,
+    vencimento: f.data_vencimento,
+    total: totalPorFatura.get(f.id) ?? 0,
+  }));
 }
 
 export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> {

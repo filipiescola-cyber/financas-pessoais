@@ -174,15 +174,31 @@ export function agruparPorCaixa<T extends TransacaoAgrupavel>(
  * lado não se mexe, que é a contradição que a visão por caixa existe para
  * desfazer.
  *
- * A fatura PAGA fica de fora. Nela o dinheiro já saiu pela transferência da
- * quitação, que está entre os movimentos reais — contar as duas tiraria o
- * valor duas vezes do saldo.
+ * Pesa o que FALTA sair, não o total da fatura. O que já foi pago saiu pela
+ * transferência da quitação, que está entre os movimentos reais — contar as
+ * duas tiraria o valor duas vezes do saldo. A fatura quitada some por
+ * consequência, sem precisar de uma lista de pagas ao lado: o resto dela é
+ * zero.
+ *
+ * A mesma função serve a ponte entre meses. Foi por terem duas contas
+ * diferentes para a mesma fatura que o saldo desencontrou: a ponte descontava
+ * o pagamento parcial e o mês exibido não.
  */
-export function faturasQueAindaVaoSair<T extends TransacaoAgrupavel>(
-  blocos: readonly BlocoDeFatura<T>[],
-  faturasPagas: ReadonlySet<string>,
+export function faturasQueAindaVaoSair(
+  faturas: readonly { faturaId: string; vencimento: DataISO; total: Centavos }[],
+  pagoPorFatura: ReadonlyMap<string, Centavos>,
 ): { valor: Centavos; dataCaixa: DataISO; transacaoPaiId: null }[] {
-  return blocos
-    .filter((bloco) => !faturasPagas.has(bloco.faturaId))
-    .map((bloco) => ({ valor: bloco.total, dataCaixa: bloco.vencimento, transacaoPaiId: null }));
+  return faturas
+    .map((fatura) => ({
+      // O que FALTA sair, não o total da fatura. O que já foi pago saiu pela
+      // transferência de quitação, que está entre os movimentos reais — pesar
+      // o bruto aqui tirava o valor duas vezes do saldo. Com pagamento
+      // parcial isso deixou de ser teoria: metade da fatura contava dobrado.
+      valor: -Math.max(0, Math.abs(fatura.total) - (pagoPorFatura.get(fatura.faturaId) ?? 0)),
+      dataCaixa: fatura.vencimento,
+      transacaoPaiId: null as null,
+    }))
+    // Fatura quitada não é movimento nenhum: some da conta em vez de entrar
+    // como zero e sujar a lista de dias.
+    .filter((movimento) => movimento.valor !== 0);
 }

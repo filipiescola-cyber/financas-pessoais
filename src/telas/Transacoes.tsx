@@ -13,7 +13,7 @@ import { usarContas } from '../dados/usarContas';
 import { usarBuscaDeCategoria, usarTransacoes } from '../dados/usarTransacoes';
 import type { Categoria } from '../dados/tipos';
 import { entraNoConsolidado } from '../dominio/saldo';
-import { saldosAoFimDoDia } from '../dominio/saldoDiario';
+import type { MovimentoDeCaixa } from '../dominio/saldoDiario';
 import {
   duplicarTransacao,
   excluirParcelamento,
@@ -33,17 +33,30 @@ import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
 import {
-  previstoAteOMes,
   previstoNoCaixaDoMes,
+  previstoNoCaixaEntre,
   type ItemPrevisto,
 } from '../dominio/previsto';
+import { extratoDoMes } from '../dominio/extrato';
+
+/** Previsto vira movimento de caixa. Sem valor não vira nada: somar zero por
+ *  ele empurraria o saldo para um número que ninguém prometeu. */
+function paraMovimentos(itens: readonly ItemPrevisto[]): MovimentoDeCaixa[] {
+  return itens
+    .filter((item) => item.valor !== null)
+    .map((item) => ({
+      valor: item.tipo === 'receita' ? item.valor! : -item.valor!,
+      dataCaixa: item.dataCaixa,
+      transacaoPaiId: null,
+    }));
+}
 import {
   agruparPorCaixa,
   faturasQueAindaVaoSair,
   type BlocoDeFatura,
 } from '../dominio/agrupamento';
 import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
-import { saidaDeFaturasEntre, statusDasFaturas } from '../dados/faturas';
+import { faturasAVencerEntre, situacaoDasFaturas } from '../dados/faturas';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { IconeConfere, IconeFaturas, IconeRelogio } from '../ui/icones';
@@ -168,8 +181,14 @@ export function Transacoes() {
   // conta de cartão, então elas não aparecem no saldo de abertura sozinhas.
   const faturasDaPonte = useQuery({
     queryKey: ['faturas-ponte', mesCorrente, mes, contaId],
-    queryFn: () => saidaDeFaturasEntre(mesCorrente, mes, contaId),
+    queryFn: () => faturasAVencerEntre(mesCorrente, mes, contaId),
     enabled: precisaDePonte,
+  });
+
+  const pagamentosDaPonte = useQuery({
+    queryKey: ['pagamentos-ponte', (faturasDaPonte.data ?? []).map((f) => f.faturaId).join(',')],
+    queryFn: () => situacaoDasFaturas((faturasDaPonte.data ?? []).map((f) => f.faturaId)),
+    enabled: (faturasDaPonte.data ?? []).length > 0,
   });
 
   const geradasDaPonte = useQuery({
@@ -180,19 +199,40 @@ export function Transacoes() {
 
   // `null` enquanto carrega: melhor a linha aparecer um instante depois do que
   // aparecer com um número que muda sozinho na frente do usuário.
-  const previstoDaPonte = !precisaDePonte
-    ? 0
-    : recorrencias.data && geradasDaPonte.data && faturasDaPonte.data !== undefined
-      ? previstoAteOMes(
-          recorrenciasPrevistas,
-          geradasDaPonte.data.geradas,
-          mesCorrente,
-          mes,
-          hoje(),
-          feriados,
-          geradasDaPonte.data.puladas,
-        ) - (faturasDaPonte.data ?? 0)
-      : null;
+  //
+  // A ponte deixou de ser um total e virou a MESMA lista de movimentos que o
+  // mês exibido monta. Enquanto eram duas contas separadas, elas divergiam — e
+  // a divergência aparecia como o saldo do último dia de um mês não batendo
+  // com a abertura do seguinte.
+  const pontePronta =
+    !precisaDePonte ||
+    (recorrencias.data !== undefined &&
+      geradasDaPonte.data !== undefined &&
+      faturasDaPonte.data !== undefined &&
+      ((faturasDaPonte.data ?? []).length === 0 || pagamentosDaPonte.data !== undefined));
+
+  const movimentosDaPonte: MovimentoDeCaixa[] =
+    !precisaDePonte || !pontePronta
+      ? []
+      : [
+          ...paraMovimentos(
+            previstoNoCaixaEntre(
+              recorrenciasPrevistas,
+              geradasDaPonte.data!.geradas,
+              mesCorrente,
+              mes,
+              hoje(),
+              feriados,
+              geradasDaPonte.data!.puladas,
+            ),
+          ),
+          ...faturasQueAindaVaoSair(
+            faturasDaPonte.data ?? [],
+            new Map(
+              [...(pagamentosDaPonte.data ?? new Map()).entries()].map(([id, s]) => [id, s.pago]),
+            ),
+          ),
+        ];
 
   // Quais faturas do mês ainda não foram pagas. Sem isto o saldo previsto do
   // dia do vencimento ignora a fatura inteira — a lista mostra -R$ 1.000 e o
@@ -204,7 +244,7 @@ export function Transacoes() {
 
   const statusDeFatura = useQuery({
     queryKey: ['status-faturas', faturasDoMes.map((f) => f.faturaId).sort().join(',')],
-    queryFn: () => statusDasFaturas(faturasDoMes.map((f) => f.faturaId)),
+    queryFn: () => situacaoDasFaturas(faturasDoMes.map((f) => f.faturaId)),
     enabled: faturasDoMes.length > 0,
   });
 
@@ -218,21 +258,13 @@ export function Transacoes() {
   // previsto" ao lado de um saldo que o ignora seria contraditório. Assim que a
   // ocorrência é gerada ela sai daqui e entra pelos movimentos reais, então não
   // há risco de contar duas vezes.
-  const movimentosPrevistos = previstos
-    .filter((p) => p.valor !== null)
-    .map((p) => ({
-      valor: p.tipo === 'receita' ? p.valor! : -p.valor!,
-      dataCaixa: p.dataCaixa,
-      transacaoPaiId: null,
-    }));
+  const movimentosPrevistos = paraMovimentos(previstos);
 
   /**
    * A fatura em aberto é saída de caixa que ainda vai acontecer — mesma
-   * natureza da recorrência prevista, e entra no saldo do mesmo jeito.
-   *
-   * A paga fica de fora: nela o dinheiro já saiu pela transferência da
-   * quitação, que está nos movimentos reais. Contar as duas tiraria o valor
-   * duas vezes.
+   * natureza da recorrência prevista, e entra no saldo do mesmo jeito. O que
+   * pesa é o que FALTA pagar: o já pago saiu pela transferência da quitação,
+   * que está nos movimentos reais.
    */
   const movimentosDeFatura = faturasQueAindaVaoSair(
     // Filtrando por uma conta, a fatura só pesa nela se for quem paga.
@@ -241,21 +273,22 @@ export function Transacoes() {
         contaId === null ||
         cartoes.data?.find((c) => c.contaId === bloco.contaId)?.contaPagamentoId === contaId,
     ),
-    new Set(
-      [...(statusDeFatura.data ?? new Map()).entries()]
-        .filter(([, status]) => status === 'paga')
-        .map(([id]) => id),
+    new Map(
+      [...(statusDeFatura.data ?? new Map()).entries()].map(([id, s]) => [id, s.pago]),
     ),
   );
 
-  const saldosDoDia =
-    abertura.data !== undefined && movimentos.data && previstoDaPonte !== null
-      ? saldosAoFimDoDia(
-          abertura.data + previstoDaPonte,
-          [...movimentos.data, ...movimentosPrevistos, ...movimentosDeFatura],
-          porDia.map(([dia]) => dia),
-        )
+  const extrato =
+    abertura.data !== undefined && movimentos.data && pontePronta
+      ? extratoDoMes({
+          ancora: abertura.data,
+          movimentosAteOMes: movimentosDaPonte,
+          movimentosDoMes: [...movimentos.data, ...movimentosPrevistos, ...movimentosDeFatura],
+          dias: porDia.map(([dia]) => dia),
+        })
       : null;
+
+  const saldosDoDia = extrato?.saldos ?? null;
 
   return (
     <Pagina
@@ -391,7 +424,7 @@ export function Transacoes() {
                   <BlocoDaFatura
                     key={linha.bloco.faturaId}
                     bloco={linha.bloco}
-                    paga={statusDeFatura.data?.get(linha.bloco.faturaId) === 'paga'}
+                    paga={statusDeFatura.data?.get(linha.bloco.faturaId)?.status === 'paga'}
                     nomeCartao={nomeConta.get(linha.bloco.contaId) ?? 'Cartão'}
                     buscarCategoria={buscarCategoria}
                     aoEditar={setEditando}

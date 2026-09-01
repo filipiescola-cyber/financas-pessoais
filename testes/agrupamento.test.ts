@@ -114,7 +114,7 @@ describe('fatura no saldo previsto', () => {
   it('fatura em aberto vira saída no dia do vencimento', () => {
     // O defeito que isto fecha: a lista mostrava a fatura de R$ 12,75 no dia 9
     // e o saldo do dia continuava o mesmo, como se ela não fosse sair.
-    const saidas = faturasQueAindaVaoSair(blocos(), new Set(['quitada']));
+    const saidas = faturasQueAindaVaoSair(blocos(), new Map([['quitada', 50000]]));
     expect(saidas).toEqual([
       { valor: -1275, dataCaixa: '2026-10-09', transacaoPaiId: null },
     ]);
@@ -122,16 +122,33 @@ describe('fatura no saldo previsto', () => {
 
   it('fatura paga fica de fora: o dinheiro já saiu pela quitação', () => {
     // Contar as duas tiraria o valor duas vezes do saldo.
-    const saidas = faturasQueAindaVaoSair(blocos(), new Set(['aberta', 'quitada']));
+    const saidas = faturasQueAindaVaoSair(
+      blocos(),
+      new Map([['aberta', 1275], ['quitada', 50000]]),
+    );
     expect(saidas).toEqual([]);
   });
 
+  it('pagamento parcial deixa sair só o resto', () => {
+    // O bug que isto fecha: a fatura pesava o BRUTO no mês exibido e o líquido
+    // na ponte para o mês seguinte. Quem pagou metade via a metade descontada
+    // duas vezes, e os dois meses não fechavam no mesmo número.
+    const saidas = faturasQueAindaVaoSair(blocos(), new Map([['quitada', 20000]]));
+    const daQuitada = saidas.find((s) => s.dataCaixa === '2026-10-20');
+    expect(daQuitada!.valor).toBe(-30000);
+  });
+
+  it('pagamento maior que a fatura não vira crédito', () => {
+    const saidas = faturasQueAindaVaoSair(blocos(), new Map([['quitada', 80000]]));
+    expect(saidas.map((s) => s.dataCaixa)).toEqual(['2026-10-09']);
+  });
+
   it('sem nenhuma paga, todas entram', () => {
-    expect(faturasQueAindaVaoSair(blocos(), new Set())).toHaveLength(2);
+    expect(faturasQueAindaVaoSair(blocos(), new Map())).toHaveLength(2);
   });
 
   it('o sinal é o da própria fatura: saída é negativa', () => {
-    const [saida] = faturasQueAindaVaoSair(blocos(), new Set(['quitada']));
+    const [saida] = faturasQueAindaVaoSair(blocos(), new Map([['quitada', 50000]]));
     expect(saida!.valor).toBeLessThan(0);
   });
 });

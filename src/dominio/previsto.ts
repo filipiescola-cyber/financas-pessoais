@@ -186,20 +186,42 @@ export function previstoAteOMes(
   feriados: Feriados,
   puladas: ReadonlySet<string> = new Set(),
 ): Centavos {
-  let total = 0;
+  return previstoNoCaixaEntre(recorrencias, jaLancadas, deMes, ateMes, hoje, feriados, puladas)
+    .filter((item) => item.valor !== null)
+    .reduce((total, item) => total + (item.tipo === 'receita' ? item.valor! : -item.valor!), 0);
+}
+
+/**
+ * Os itens da ponte, um a um.
+ *
+ * A soma acima existe para quem só quer o número; a tela precisa dos itens,
+ * porque o saldo dela é montado movimento a movimento (ver `extratoDoMes`).
+ * As duas saem daqui de propósito: quando a ponte e o mês exibido tinham cada
+ * um a sua regra, o saldo desencontrava na virada.
+ */
+export function previstoNoCaixaEntre(
+  recorrencias: readonly RecorrenciaPrevista[],
+  jaLancadas: ReadonlySet<string>,
+  deMes: DataISO,
+  ateMes: DataISO,
+  hoje: DataISO,
+  feriados: Feriados,
+  puladas: ReadonlySet<string> = new Set(),
+): ItemPrevisto[] {
+  const itens: ItemPrevisto[] = [];
 
   for (let mes = deMes; mes < ateMes; mes = somarMeses(mes, 1)) {
     for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje, feriados, puladas)) {
-      if (item.situacao === 'lancado' || item.valor === null) continue;
+      if (item.situacao === 'lancado') continue;
       // Compra de cartão cuja fatura só vence depois da ponte ainda não saiu
       // daqui: ela pertence ao mês em que o dinheiro sai, e é lá que a lista a
       // conta. Sem esta linha ela entrava duas vezes no saldo.
       if (item.dataCaixa >= ateMes) continue;
-      total += item.tipo === 'receita' ? item.valor : -item.valor;
+      itens.push(item);
     }
   }
 
-  return total;
+  return itens;
 }
 
 /**
