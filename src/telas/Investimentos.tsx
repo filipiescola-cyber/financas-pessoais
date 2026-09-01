@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatarBR, hoje, type DataISO } from '../dominio/datas';
+import { formatarBR, hoje, somarDias, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import type { Indexador } from '../dominio/rendimento';
 import {
@@ -15,6 +15,10 @@ import {
   excluirInvestimento,
   previaDaExclusao,
   criarInvestimento,
+  criarInvestimentoPorCotacao,
+  registrarRecebimento,
+  atualizarCotacao,
+  venderUnidades,
   type Investimento,
   desarquivarInvestimento,
   listarInvestimentos,
@@ -31,6 +35,13 @@ import {
   taxasVigentes,
 } from '../dados/indicadores';
 import { CampoValor } from '../ui/CampoValor';
+import { ChipsDeConta } from '../ui/ChipsDeConta';
+import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
+import {
+  contasDaVenda,
+  valorEmReais,
+  type PosicaoPorCotacao,
+} from '../dominio/cotacao';
 import { usarContas } from '../dados/usarContas';
 import { podePagarFatura } from '../dominio/saldo';
 import {
@@ -334,6 +345,9 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const [aportando, setAportando] = useState(false);
   const [historico, setHistorico] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  const [painelDeCotacao, setPainelDeCotacao] = useState<'recebi' | 'cotacao' | 'vender' | null>(
+    null,
+  );
 
   const arquivar = useMutation({
     mutationFn: () => arquivarInvestimento(item.investimento.id),
@@ -397,6 +411,42 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
         </div>
       </div>
 
+      {item.posicao && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+          <span className="text-slate-400">
+            {formatarQuantidade(item.posicao.quantidade)}{' '}
+            {item.posicao.quantidade === 1 ? 'unidade' : 'unidades'}
+          </span>
+          {inv.precoUnitario !== null && (
+            <span>
+              {SIMBOLO[inv.moeda]} {inv.precoUnitario.toFixed(2).replace('.', ',')} cada
+            </span>
+          )}
+          {inv.moeda !== 'BRL' && inv.cotacaoMoeda !== null && (
+            <span>câmbio {inv.cotacaoMoeda.toFixed(2).replace('.', ',')}</span>
+          )}
+          <span title="O que custou, incluindo o que foi recebido sem sair dinheiro">
+            custo {formatar(item.posicao.custoTotal)}
+          </span>
+          {/* A data da cotação é a informação que impede o número de mentir: um
+              preço de trinta dias atrás não é errado, errado é não avisar. */}
+          {inv.dataCotacao !== null && (
+            <span
+              className={cotacaoVelha(inv.dataCotacao) ? 'text-amber-400/80' : undefined}
+              title="O app não busca cotação: este é o último preço que você informou"
+            >
+              cotação de {formatarBR(inv.dataCotacao)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {item.posicao && inv.precoUnitario === null && (
+        <p className="mt-2 text-xs text-amber-400/80">
+          Sem preço informado, o app mostra o custo — prefere isso a inventar um valor de hoje.
+        </p>
+      )}
+
       {resultado && resultado.taxaAnualUsada !== null && (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
           <span>bruto {formatar(resultado.saldoBruto)}</span>
@@ -426,12 +476,45 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
       )}
 
       <div className="mt-3 flex flex-wrap gap-4">
-        <button
-          onClick={() => setAberto((v) => !v)}
-          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-        >
-          {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
-        </button>
+        {/* Por cotação as ações são outras: não se "aplica" nem se "resgata"
+            valor — recebe-se ou vende-se quantidade. */}
+        {inv.porCotacao ? (
+          <>
+            <button
+              onClick={() => setPainelDeCotacao(painelDeCotacao === 'recebi' ? null : 'recebi')}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              {painelDeCotacao === 'recebi' ? 'Cancelar' : 'Recebi mais'}
+            </button>
+            <button
+              onClick={() => setPainelDeCotacao(painelDeCotacao === 'cotacao' ? null : 'cotacao')}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              {painelDeCotacao === 'cotacao' ? 'Cancelar' : 'Atualizar cotação'}
+            </button>
+            <button
+              onClick={() => setPainelDeCotacao(painelDeCotacao === 'vender' ? null : 'vender')}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              {painelDeCotacao === 'vender' ? 'Cancelar' : 'Vender'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setAberto((v) => !v)}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              {inv.calculoAutomatico ? 'Conferir com o banco' : 'Atualizar saldo'}
+            </button>
+            <button
+              onClick={() => setAportando((v) => !v)}
+              className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+            >
+              {aportando ? 'Cancelar' : 'Aplicar mais'}
+            </button>
+          </>
+        )}
         <button
           onClick={() => setEditando((v) => !v)}
           className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
@@ -439,23 +522,19 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           {editando ? 'Cancelar' : 'Editar'}
         </button>
         <button
-          onClick={() => setAportando((v) => !v)}
-          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-        >
-          {aportando ? 'Cancelar' : 'Aplicar mais'}
-        </button>
-        <button
           onClick={() => setHistorico((v) => !v)}
           className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
           {historico ? 'Fechar histórico' : 'Histórico'}
         </button>
-        <button
-          onClick={() => setResgatando((v) => !v)}
-          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-        >
-          {resgatando ? 'Cancelar' : 'Resgatar'}
-        </button>
+        {!inv.porCotacao && (
+          <button
+            onClick={() => setResgatando((v) => !v)}
+            className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+          >
+            {resgatando ? 'Cancelar' : 'Resgatar'}
+          </button>
+        )}
         <button
           onClick={() => arquivar.mutate()}
           disabled={arquivar.isPending}
@@ -472,6 +551,15 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           {excluindo ? 'Cancelar' : 'Excluir'}
         </button>
       </div>
+
+      {painelDeCotacao !== null && item.posicao && (
+        <PainelDeCotacao
+          item={item}
+          posicao={item.posicao}
+          aba={painelDeCotacao}
+          aoTerminar={() => setPainelDeCotacao(null)}
+        />
+      )}
 
       {editando && (
         <EdicaoDoInvestimento investimento={inv} aoTerminar={() => setEditando(false)} />
@@ -630,25 +718,39 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
   const [valor, setValor] = useState<Centavos>(0);
   const [data, setData] = useState<DataISO>(hoje());
 
+  const [porCotacao, setPorCotacao] = useState(false);
+  const [moeda, setMoeda] = useState<'BRL' | 'USD'>('BRL');
+
   const semCalculo = TIPOS_SEM_CALCULO.includes(tipo);
   const ehPrefixado = indexador === 'PREFIXADO';
+  // Por cotação a posição nasce VAZIA: o que entra é lote, cada um na sua data
+  // e no seu preço, e um "valor aplicado" no cadastro inventaria um lote.
+  const acompanhaPorCotacao = semCalculo && porCotacao;
 
   const criar = useMutation({
     mutationFn: () =>
-      criarInvestimento({
-        nome,
-        instituicao,
-        vencimento: vencimento || null,
-        liquidezDiaria,
-        contaId: contaDaAplicacao,
-        tipo,
-        indexador: semCalculo ? null : indexador,
-        percentualIndexador: ehPrefixado ? null : Number(percentual.replace(',', '.')),
-        taxaPrefixada: ehPrefixado ? Number(prefixada.replace(',', '.')) : null,
-        dataAplicacao: data,
-        valorAplicado: valor,
-        contaOrigemId,
-      }),
+      acompanhaPorCotacao
+        ? criarInvestimentoPorCotacao({
+            nome,
+            instituicao,
+            tipo,
+            moeda,
+            contaId: contaDaAplicacao,
+          }).then(() => undefined)
+        : criarInvestimento({
+            nome,
+            instituicao,
+            vencimento: vencimento || null,
+            liquidezDiaria,
+            contaId: contaDaAplicacao,
+            tipo,
+            indexador: semCalculo ? null : indexador,
+            percentualIndexador: ehPrefixado ? null : Number(percentual.replace(',', '.')),
+            taxaPrefixada: ehPrefixado ? Number(prefixada.replace(',', '.')) : null,
+            dataAplicacao: data,
+            valorAplicado: valor,
+            contaOrigemId,
+          }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['investimentos'] });
       aoTerminar();
@@ -700,6 +802,42 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         </div>
       </Campo>
 
+      {semCalculo && (
+        <Campo
+          rotulo="Como acompanhar"
+          ajuda={
+            porCotacao
+              ? 'A posição nasce vazia: você registra cada lote recebido ou comprado, com o preço do dia. O valor sai de quantidade × preço.'
+              : 'Você digita o saldo e atualiza quando quiser. Simples, mas o app não sabe quantas unidades são nem quanto do valor é ganho.'
+          }
+        >
+          <div className="flex flex-wrap gap-2">
+            <Chip ativo={!porCotacao} aoClicar={() => setPorCotacao(false)}>
+              Por valor
+            </Chip>
+            <Chip ativo={porCotacao} aoClicar={() => setPorCotacao(true)}>
+              Por quantidade e preço
+            </Chip>
+          </div>
+        </Campo>
+      )}
+
+      {acompanhaPorCotacao && (
+        <Campo
+          rotulo="Moeda do ativo"
+          ajuda="O app continua todo em reais: a moeda vale só para a cotação deste ativo, e o câmbio do dia entra junto do preço."
+        >
+          <div className="flex flex-wrap gap-2">
+            <Chip ativo={moeda === 'BRL'} aoClicar={() => setMoeda('BRL')}>
+              Real
+            </Chip>
+            <Chip ativo={moeda === 'USD'} aoClicar={() => setMoeda('USD')}>
+              Dólar
+            </Chip>
+          </div>
+        </Campo>
+      )}
+
       {!semCalculo && (
         <>
           <Campo rotulo="Rende conforme">
@@ -736,16 +874,26 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         </>
       )}
 
-      <CampoValor valor={valor} aoMudar={setValor} rotulo="Valor aplicado" />
+      {acompanhaPorCotacao ? (
+        <p className="rounded-md border border-borda-forte px-3 py-2 text-xs leading-relaxed text-slate-400">
+          A posição começa vazia. Depois de salvar, use <strong>Recebi mais</strong> para cada lote
+          que chegar da empresa — cada um com a sua data e o seu preço. Receber não tira dinheiro
+          de conta nenhuma, e só vira renda quando você vender.
+        </p>
+      ) : (
+        <>
+          <CampoValor valor={valor} aoMudar={setValor} rotulo="Valor aplicado" />
 
-      <Campo rotulo="Data da aplicação">
-        <input
-          type="date"
-          value={data}
-          onChange={(e) => e.target.value && setData(e.target.value)}
-          className={ENTRADA}
-        />
-      </Campo>
+          <Campo rotulo="Data da aplicação">
+            <input
+              type="date"
+              value={data}
+              onChange={(e) => e.target.value && setData(e.target.value)}
+              className={ENTRADA}
+            />
+          </Campo>
+        </>
+      )}
 
       <Campo
         rotulo="Vencimento (opcional)"
@@ -761,6 +909,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
 
       <CampoDeLiquidez liquidezDiaria={liquidezDiaria} aoMudar={setLiquidezDiaria} />
 
+      {!acompanhaPorCotacao && (
       <Campo
         rotulo="De qual conta saiu (opcional)"
         ajuda="Informando, o app tira o valor dessa conta como transferência — aplicar não é gastar, o dinheiro continua seu. Sem informar, a aplicação só é registrada e nenhuma conta se mexe: é o caso de quem está cadastrando algo que já existia."
@@ -783,13 +932,16 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
           ))}
         </div>
       </Campo>
+      )}
 
       {criar.isError && <p className="text-sm text-red-400">{(criar.error as Error).message}</p>}
 
       <div className="flex gap-2">
         <Botao
           aoClicar={() => criar.mutate()}
-          desabilitado={nome.trim() === '' || valor <= 0 || criar.isPending}
+          desabilitado={
+            nome.trim() === '' || (!acompanhaPorCotacao && valor <= 0) || criar.isPending
+          }
         >
           Salvar
         </Botao>
@@ -1427,5 +1579,286 @@ function HistoricoDaAplicacao({
         );
       })}
     </ul>
+  );
+}
+
+const SIMBOLO: Record<'BRL' | 'USD', string> = { BRL: 'R$', USD: 'US$' };
+
+/** Quantidade fracionária aparece com casas; inteira, sem. */
+function formatarQuantidade(quantidade: number): string {
+  return Number.isInteger(quantidade)
+    ? String(quantidade)
+    : quantidade.toFixed(6).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
+}
+
+/** Um mês sem atualizar já merece aviso: o preço envelhece rápido. */
+function cotacaoVelha(data: DataISO): boolean {
+  return data < somarDias(hoje(), -35);
+}
+
+function CampoNumero({
+  rotulo,
+  valor,
+  aoMudar,
+  ajuda,
+  prefixo,
+}: {
+  rotulo: string;
+  valor: string;
+  aoMudar: (v: string) => void;
+  ajuda?: string;
+  prefixo?: string;
+}) {
+  return (
+    <Campo rotulo={rotulo} ajuda={ajuda}>
+      <div className="flex items-center gap-2">
+        {prefixo && <span className="shrink-0 text-sm text-slate-500">{prefixo}</span>}
+        <input
+          inputMode="decimal"
+          value={valor}
+          onChange={(e) => aoMudar(e.target.value.replace(/[^0-9.,]/g, ''))}
+          className={ENTRADA}
+        />
+      </div>
+    </Campo>
+  );
+}
+
+const numero = (texto: string) => Number(texto.replace(/\./g, '').replace(',', '.')) || 0;
+
+/**
+ * Receber, reavaliar e vender — as três coisas que se faz com uma posição
+ * cotada (§7.1, §7.4).
+ *
+ * As três estão juntas porque pedem os mesmos números, e separá-las em telas
+ * faria repetir três vezes a explicação de por que RECEBER não é aplicar.
+ */
+function PainelDeCotacao({
+  item,
+  posicao,
+  aba,
+  aoTerminar,
+}: {
+  item: InvestimentoCalculado;
+  posicao: PosicaoPorCotacao;
+  aba: 'recebi' | 'cotacao' | 'vender';
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const invalidarTransacoes = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+  const contas = usarContas();
+
+  const inv = item.investimento;
+  const emReal = inv.moeda === 'BRL';
+
+  const [quantidade, setQuantidade] = useState('');
+  const [preco, setPreco] = useState(
+    inv.precoUnitario === null ? '' : String(inv.precoUnitario).replace('.', ','),
+  );
+  const [cambio, setCambio] = useState(
+    emReal ? '1' : inv.cotacaoMoeda === null ? '' : String(inv.cotacaoMoeda).replace('.', ','),
+  );
+  const [data, setData] = useState<DataISO>(hoje());
+  const [contaDestino, setContaDestino] = useState<string | null>(null);
+
+  const q = numero(quantidade);
+  const p = numero(preco);
+  const c = emReal ? 1 : numero(cambio);
+
+  const invalidar = async () => {
+    await cliente.invalidateQueries({ queryKey: ['investimentos'] });
+    await invalidarTransacoes();
+  };
+
+  const receber = useMutation({
+    mutationFn: () =>
+      registrarRecebimento({ investimentoId: inv.id, quantidade: q, preco: p, cambio: c, data }),
+    onSuccess: async () => {
+      await invalidar();
+      aoTerminar();
+      mostrar('Recebimento registrado. Nenhuma conta foi tocada: ainda não é dinheiro.');
+    },
+  });
+
+  const cotar = useMutation({
+    mutationFn: () => atualizarCotacao({ investimentoId: inv.id, preco: p, cambio: c, data }),
+    onSuccess: async () => {
+      await invalidar();
+      aoTerminar();
+      mostrar('Cotação atualizada.');
+    },
+  });
+
+  const vender = useMutation({
+    mutationFn: () =>
+      venderUnidades({
+        investimentoId: inv.id,
+        nome: inv.nome,
+        quantidade: q,
+        preco: p,
+        cambio: c,
+        data,
+        contaDestinoId: contaDestino!,
+        contaDaAplicacao: inv.contaId,
+      }),
+    onSuccess: async () => {
+      await invalidar();
+      aoTerminar();
+      mostrar('Venda registrada.');
+    },
+  });
+
+  const bruto = valorEmReais(q, p, c);
+  const contasDaOperacao = aba === 'vender' && q > 0 ? contasDaVenda(posicao, q, p, c) : null;
+
+  const correntes = (contas.data ?? []).filter(
+    (conta) => conta.tipo !== 'investimento' && conta.tipo !== 'cartao_credito' && conta.ativo,
+  );
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      {aba === 'recebi' && (
+        <p className="text-xs leading-relaxed text-slate-400">
+          Ação recebida da empresa não é aplicação: nenhum dinheiro sai de conta nenhuma, e o app
+          não vai tirar de lugar nenhum. Também não é renda ainda — você não pode gastar o que não
+          vendeu. Vira renda na venda.
+        </p>
+      )}
+
+      {aba === 'cotacao' && (
+        <p className="text-xs leading-relaxed text-slate-400">
+          O app não busca cotação: uma ação americana precisaria de duas fontes, o preço e o
+          câmbio, e nenhuma API pode virar caminho crítico daqui. Você informa quando quiser — a
+          tela mostra a data para ninguém confundir o número com o de hoje.
+        </p>
+      )}
+
+      {aba !== 'cotacao' && (
+        <CampoNumero
+          rotulo={aba === 'recebi' ? 'Quantas você recebeu' : 'Quantas está vendendo'}
+          valor={quantidade}
+          aoMudar={setQuantidade}
+          ajuda={
+            aba === 'vender'
+              ? `Você tem ${formatarQuantidade(posicao.quantidade)}.`
+              : undefined
+          }
+        />
+      )}
+
+      <CampoNumero
+        rotulo={aba === 'cotacao' ? 'Preço por unidade hoje' : 'Preço por unidade no dia'}
+        valor={preco}
+        aoMudar={setPreco}
+        prefixo={SIMBOLO[inv.moeda]}
+        ajuda={
+          aba === 'recebi'
+            ? 'É o custo de aquisição. Sem ele o app não sabe dizer quanto do valor é ganho — nem te dar o número que o contador pede.'
+            : undefined
+        }
+      />
+
+      {!emReal && (
+        <CampoNumero
+          rotulo="Câmbio do dia"
+          valor={cambio}
+          aoMudar={setCambio}
+          prefixo="R$"
+          ajuda="Quantos reais vale um dólar. O razão do app é todo em reais; o dólar existe só aqui."
+        />
+      )}
+
+      {aba === 'vender' && (
+        <Campo rotulo="Onde o dinheiro cai">
+          <ChipsDeConta
+            contas={correntes}
+            escolhida={contaDestino}
+            aoEscolher={(id) => setContaDestino(id)}
+          />
+        </Campo>
+      )}
+
+      <Campo rotulo="Quando">
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      {aba === 'recebi' && q > 0 && p > 0 && (
+        <p className="rounded-md border border-borda-forte px-3 py-2 text-sm text-slate-300">
+          Entra {formatarQuantidade(q)} {q === 1 ? 'unidade' : 'unidades'}, valendo{' '}
+          <strong>{formatar(bruto)}</strong>. Nenhuma conta se mexe.
+        </p>
+      )}
+
+      {contasDaOperacao && (
+        <div className="space-y-1 rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-sm">
+          <p className="text-slate-200">
+            Entram <strong>{formatar(contasDaOperacao.bruto)}</strong> na conta
+          </p>
+          {/* Três naturezas, e somá-las apagaria a informação que decide o que
+              fazer com o dinheiro. */}
+          <ul className="space-y-0.5 text-xs text-slate-400">
+            {contasDaOperacao.devolucaoDeCaixa > 0 && (
+              <li>
+                {formatar(contasDaOperacao.devolucaoDeCaixa)} são o que você pagou voltando —
+                transferência, não renda
+              </li>
+            )}
+            {contasDaOperacao.remuneracao !== 0 && (
+              <li>
+                {formatar(contasDaOperacao.remuneracao)} são as ações recebidas virando dinheiro —
+                renda agora, porque antes não dava para gastar
+              </li>
+            )}
+            {contasDaOperacao.ganho !== 0 && (
+              <li>
+                {formatar(Math.abs(contasDaOperacao.ganho))} de{' '}
+                {contasDaOperacao.ganho > 0 ? 'ganho' : 'prejuízo'} sobre o custo
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {(receber.isError || cotar.isError || vender.isError) && (
+        <p className="text-sm text-red-400">
+          {((receber.error ?? cotar.error ?? vender.error) as Error).message}
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        {aba === 'recebi' && (
+          <Botao
+            aoClicar={() => receber.mutate()}
+            desabilitado={q <= 0 || p <= 0 || c <= 0 || receber.isPending}
+          >
+            {receber.isPending ? 'Registrando…' : 'Registrar recebimento'}
+          </Botao>
+        )}
+        {aba === 'cotacao' && (
+          <Botao aoClicar={() => cotar.mutate()} desabilitado={p <= 0 || c <= 0 || cotar.isPending}>
+            {cotar.isPending ? 'Salvando…' : 'Salvar cotação'}
+          </Botao>
+        )}
+        {aba === 'vender' && (
+          <Botao
+            aoClicar={() => vender.mutate()}
+            desabilitado={
+              q <= 0 || p <= 0 || c <= 0 || contaDestino === null || vender.isPending
+            }
+          >
+            {vender.isPending ? 'Vendendo…' : 'Registrar venda'}
+          </Botao>
+        )}
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
+    </div>
   );
 }

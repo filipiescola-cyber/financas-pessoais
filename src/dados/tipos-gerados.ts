@@ -577,15 +577,20 @@ export type Database = {
           ativo: boolean
           calculo_automatico: boolean
           conta_id: string | null
+          cotacao_moeda: number | null
           data_aplicacao: string
           data_conferencia: string | null
+          data_cotacao: string | null
           id: string
           indexador: string | null
           instituicao: string | null
           isento_ir: boolean
           liquidez_diaria: boolean
+          moeda: string
           nome: string
           percentual_indexador: number | null
+          por_cotacao: boolean
+          preco_unitario: number | null
           saldo_conferido: number | null
           saldo_manual: number | null
           taxa_prefixada: number | null
@@ -598,15 +603,20 @@ export type Database = {
           ativo?: boolean
           calculo_automatico?: boolean
           conta_id?: string | null
+          cotacao_moeda?: number | null
           data_aplicacao: string
           data_conferencia?: string | null
+          data_cotacao?: string | null
           id?: string
           indexador?: string | null
           instituicao?: string | null
           isento_ir?: boolean
           liquidez_diaria?: boolean
+          moeda?: string
           nome: string
           percentual_indexador?: number | null
+          por_cotacao?: boolean
+          preco_unitario?: number | null
           saldo_conferido?: number | null
           saldo_manual?: number | null
           taxa_prefixada?: number | null
@@ -619,15 +629,20 @@ export type Database = {
           ativo?: boolean
           calculo_automatico?: boolean
           conta_id?: string | null
+          cotacao_moeda?: number | null
           data_aplicacao?: string
           data_conferencia?: string | null
+          data_cotacao?: string | null
           id?: string
           indexador?: string | null
           instituicao?: string | null
           isento_ir?: boolean
           liquidez_diaria?: boolean
+          moeda?: string
           nome?: string
           percentual_indexador?: number | null
+          por_cotacao?: boolean
+          preco_unitario?: number | null
           saldo_conferido?: number | null
           saldo_manual?: number | null
           taxa_prefixada?: number | null
@@ -825,10 +840,13 @@ export type Database = {
       }
       movimentacoes_investimento: {
         Row: {
+          cotacao_moeda: number | null
           data: string
           id: string
           investimento_id: string
           percentual_indexador: number | null
+          preco_unitario: number | null
+          quantidade: number | null
           tipo: string
           transacao_id: string | null
           usuario_id: string
@@ -836,10 +854,13 @@ export type Database = {
           vencimento: string | null
         }
         Insert: {
+          cotacao_moeda?: number | null
           data: string
           id?: string
           investimento_id: string
           percentual_indexador?: number | null
+          preco_unitario?: number | null
+          quantidade?: number | null
           tipo: string
           transacao_id?: string | null
           usuario_id?: string
@@ -847,10 +868,13 @@ export type Database = {
           vencimento?: string | null
         }
         Update: {
+          cotacao_moeda?: number | null
           data?: string
           id?: string
           investimento_id?: string
           percentual_indexador?: number | null
+          preco_unitario?: number | null
+          quantidade?: number | null
           tipo?: string
           transacao_id?: string | null
           usuario_id?: string

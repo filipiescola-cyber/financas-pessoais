@@ -6,6 +6,14 @@
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
 import { calcularPosicao, parcelasVivas, principalVivo, type Movimento } from '../dominio/posicao';
+import {
+  contasDaVenda,
+  posicaoPorCotacao,
+  valorEmReais,
+  type MovimentoDeUnidade,
+  type PosicaoPorCotacao,
+} from '../dominio/cotacao';
+import type { TablesInsert } from './tipos-gerados';
 import type { Indexador, Resultado } from '../dominio/rendimento';
 import { listarFeriados, tabelaDeIR, taxasVigentes } from './indicadores';
 import { criarTransferencia } from './transacoes';
@@ -20,6 +28,12 @@ export type Investimento = {
   nome: string;
   instituicao: string | null;
   tipo: TipoDeInvestimento;
+  /** O valor vem de quantidade x preco x cambio, nao de um saldo digitado. */
+  porCotacao: boolean;
+  moeda: 'BRL' | 'USD';
+  precoUnitario: number | null;
+  cotacaoMoeda: number | null;
+  dataCotacao: DataISO | null;
   indexador: Indexador | null;
   percentualIndexador: number | null;
   taxaPrefixada: number | null;
@@ -83,6 +97,11 @@ export async function listarInvestimentos(incluirArquivados = false): Promise<In
     liquidezDiaria: linha.liquidez_diaria,
     isentoIR: linha.isento_ir,
     calculoAutomatico: linha.calculo_automatico,
+    porCotacao: linha.por_cotacao,
+    moeda: linha.moeda as 'BRL' | 'USD',
+    precoUnitario: linha.preco_unitario,
+    cotacaoMoeda: linha.cotacao_moeda,
+    dataCotacao: linha.data_cotacao,
     saldoManual: linha.saldo_manual === null ? null : paraCentavos(linha.saldo_manual),
     saldoConferido: linha.saldo_conferido === null ? null : paraCentavos(linha.saldo_conferido),
     dataConferencia: linha.data_conferencia,
@@ -466,6 +485,8 @@ export type InvestimentoCalculado = {
   saldoExibido: Centavos;
   /** Diferença entre o calculado e o último conferido, quando houver (§7.3). */
   divergencia: Centavos | null;
+  /** Quantidade, custo e ganho, quando o investimento é por cotação (§7.1). */
+  posicao?: PosicaoPorCotacao;
 };
 
 /**
@@ -476,12 +497,13 @@ export type InvestimentoCalculado = {
  * desperdício num plano gratuito.
  */
 export async function calcularTodos(ate: DataISO = hoje()): Promise<InvestimentoCalculado[]> {
-  const [investimentos, feriados, taxas, tabela, movimentos] = await Promise.all([
+  const [investimentos, feriados, taxas, tabela, movimentos, unidades] = await Promise.all([
     listarInvestimentos(),
     listarFeriados(),
     taxasVigentes(),
     tabelaDeIR(),
     listarMovimentos(),
+    listarMovimentosDeUnidade(),
   ]);
 
   return investimentos.map((investimento) => {
@@ -504,6 +526,25 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
     const aplicado = principalVivo(
       parcelasVivas(papel, doInvestimento, taxaDoIndexador, feriados, tabela),
     );
+
+    // Por cotação o valor não é um saldo digitado: sai de quantidade × preço ×
+    // câmbio, e o custo sai dos próprios movimentos (§13.2).
+    if (investimento.porCotacao) {
+      const posicao = posicaoPorCotacao(
+        unidades.get(investimento.id) ?? [],
+        investimento.precoUnitario,
+        investimento.cotacaoMoeda,
+      );
+
+      return {
+        investimento,
+        aplicado: posicao.custoTotal,
+        resultado: null,
+        saldoExibido: posicao.valorAtual,
+        divergencia: null,
+        posicao,
+      };
+    }
 
     if (!investimento.calculoAutomatico) {
       return {
@@ -535,6 +576,34 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
           : resultado.saldoBruto - investimento.saldoConferido,
     };
   });
+}
+
+/** Os movimentos COM unidade, de todas as posições, já agrupados. */
+async function listarMovimentosDeUnidade(): Promise<Map<string, MovimentoDeUnidade[]>> {
+  const { data, error } = await supabase
+    .from('movimentacoes_investimento')
+    .select('investimento_id, tipo, data, quantidade, preco_unitario, cotacao_moeda')
+    .not('quantidade', 'is', null)
+    .order('data');
+  if (error) throw error;
+
+  const mapa = new Map<string, MovimentoDeUnidade[]>();
+
+  for (const linha of data ?? []) {
+    mapa.set(linha.investimento_id, [
+      ...(mapa.get(linha.investimento_id) ?? []),
+      {
+        data: linha.data,
+        quantidade: Number(linha.quantidade ?? 0),
+        preco: Number(linha.preco_unitario ?? 0),
+        cambio: Number(linha.cotacao_moeda ?? 1),
+        tipo: linha.tipo === 'resgate' ? 'saida' : 'entrada',
+        origem: linha.tipo === 'recebimento' ? 'recebimento' : 'compra',
+      },
+    ]);
+  }
+
+  return mapa;
 }
 
 /** Os movimentos de todas as aplicações, numa consulta só, já agrupados. */
@@ -627,4 +696,256 @@ export async function listarMovimentosDe(
     percentual: linha.percentual_indexador === null ? null : Number(linha.percentual_indexador),
     vencimento: linha.vencimento,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Investimento por cotação (§7.1, §7.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cria uma posição que ainda não tem nada dentro.
+ *
+ * Diferente do resto: aqui não há aporte inicial. Uma ação recebida da empresa
+ * chega em lotes, cada um na sua data e no seu preço, e forçar um "valor
+ * aplicado" no cadastro inventaria um lote que não existiu.
+ */
+export async function criarInvestimentoPorCotacao(novo: {
+  nome: string;
+  instituicao?: string | null;
+  tipo: TipoDeInvestimento;
+  moeda: 'BRL' | 'USD';
+  contaId?: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase
+    .from('investimentos')
+    .insert({
+      nome: novo.nome.trim(),
+      instituicao: novo.instituicao?.trim() || null,
+      tipo: novo.tipo,
+      data_aplicacao: hoje(),
+      valor_aplicado: 0,
+      conta_id: novo.contaId ?? (await contaDeInvestimentos()),
+      liquidez_diaria: true,
+      isento_ir: false,
+      calculo_automatico: false,
+      saldo_manual: null,
+      por_cotacao: true,
+      moeda: novo.moeda,
+      cotacao_moeda: novo.moeda === 'BRL' ? 1 : null,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+/**
+ * Unidades que chegaram sem sair dinheiro de lugar nenhum (§2.7).
+ *
+ * Ação da empresa, bonificação, desdobramento. NÃO é aporte: registrado como
+ * tal, o app tiraria de uma conta corrente um dinheiro que ela nunca teve, e o
+ * saldo cairia alguns milhares de reais que não existiram.
+ *
+ * Também não é receita agora. Não dá para gastar o que ainda não foi vendido, e
+ * contar como renda inflaria "quanto posso gastar" (§8.3) — o erro que o §2.7
+ * existe para impedir. Vira renda na venda, que é a mesma regra do §7.4.
+ *
+ * O preço do dia é guardado porque é o custo de aquisição: sem ele não dá para
+ * dizer quanto do valor é ganho, nem entregar ao contador o número que ele pede.
+ */
+export async function registrarRecebimento(dados: {
+  investimentoId: string;
+  quantidade: number;
+  preco: number;
+  cambio: number;
+  data: DataISO;
+}): Promise<void> {
+  const { error } = await supabase.from('movimentacoes_investimento').insert({
+    investimento_id: dados.investimentoId,
+    tipo: 'recebimento',
+    valor: paraNumerico(valorEmReais(dados.quantidade, dados.preco, dados.cambio)),
+    data: dados.data,
+    quantidade: dados.quantidade,
+    preco_unitario: dados.preco,
+    cotacao_moeda: dados.cambio,
+    // Sem transação: dinheiro nenhum se moveu entre contas.
+    transacao_id: null,
+  });
+  if (error) throw new Error(error.message);
+
+  await atualizarCotacao({
+    investimentoId: dados.investimentoId,
+    preco: dados.preco,
+    cambio: dados.cambio,
+    data: dados.data,
+  });
+}
+
+/**
+ * A última cotação conhecida (§7.3, §9.6).
+ *
+ * Informada, nunca buscada: o app não depende de API para dizer um número, e
+ * uma ação americana precisaria de duas fontes — o preço e o câmbio. O que fica
+ * guardado é o fato informado, com a DATA, para a tela poder dizer o quanto ele
+ * está velho. Um preço de trinta dias atrás não é errado; errado é não avisar.
+ */
+export async function atualizarCotacao(dados: {
+  investimentoId: string;
+  preco: number;
+  cambio: number;
+  data: DataISO;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('investimentos')
+    .update({
+      preco_unitario: dados.preco,
+      cotacao_moeda: dados.cambio,
+      data_cotacao: dados.data,
+    })
+    .eq('id', dados.investimentoId);
+  if (error) throw new Error(error.message);
+}
+
+/** Os movimentos da posição, na forma que o domínio entende. */
+export async function movimentosDeUnidade(
+  investimentoId: string,
+): Promise<MovimentoDeUnidade[]> {
+  const { data, error } = await supabase
+    .from('movimentacoes_investimento')
+    .select('tipo, data, quantidade, preco_unitario, cotacao_moeda')
+    .eq('investimento_id', investimentoId)
+    .not('quantidade', 'is', null)
+    .order('data');
+  if (error) throw error;
+
+  return (data ?? []).map((linha) => ({
+    data: linha.data,
+    quantidade: Number(linha.quantidade ?? 0),
+    preco: Number(linha.preco_unitario ?? 0),
+    cambio: Number(linha.cotacao_moeda ?? 1),
+    tipo: linha.tipo === 'resgate' ? ('saida' as const) : ('entrada' as const),
+    origem: linha.tipo === 'recebimento' ? ('recebimento' as const) : ('compra' as const),
+  }));
+}
+
+/**
+ * Vender: a única hora em que a ação vira dinheiro (§7.4, §2.7).
+ *
+ * Três linhas porque são três naturezas, e somá-las apagaria a informação que
+ * decide o que fazer com o dinheiro:
+ *
+ *   O que foi COMPRADO um dia volta como transferência — o dinheiro só voltou
+ *   de onde saiu, e chamar isso de receita inflaria a renda do mês.
+ *
+ *   O que foi RECEBIDO nunca passou pelo caixa: é renda agora, e é agora porque
+ *   antes não dava para gastar.
+ *
+ *   O ganho é rendimento realizado, que é o que o §7.4 manda virar receita.
+ */
+export async function venderUnidades(dados: {
+  investimentoId: string;
+  nome: string;
+  quantidade: number;
+  preco: number;
+  cambio: number;
+  data: DataISO;
+  contaDestinoId: string;
+  contaDaAplicacao: string | null;
+}): Promise<void> {
+  const investimento = (await listarInvestimentos(true)).find(
+    (i) => i.id === dados.investimentoId,
+  );
+  if (!investimento) throw new Error('Investimento não encontrado.');
+
+  const posicao = posicaoPorCotacao(
+    await movimentosDeUnidade(dados.investimentoId),
+    investimento.precoUnitario,
+    investimento.cotacaoMoeda,
+  );
+
+  if (dados.quantidade > posicao.quantidade) {
+    throw new Error(`Você tem ${posicao.quantidade} e está vendendo ${dados.quantidade}.`);
+  }
+
+  const contas = contasDaVenda(posicao, dados.quantidade, dados.preco, dados.cambio);
+
+  const comum = {
+    data_competencia: dados.data,
+    data_caixa: dados.data,
+    origem: 'manual' as const,
+    revisado: true,
+  };
+
+  const linhas: TablesInsert<'transacoes'>[] = [];
+
+  if (contas.devolucaoDeCaixa > 0) {
+    linhas.push({
+      ...comum,
+      conta_id: dados.contaDestinoId,
+      valor: paraNumerico(contas.devolucaoDeCaixa),
+      tipo: 'transferencia',
+      descricao: `Venda de ${dados.nome}`,
+    });
+  }
+
+  if (contas.remuneracao !== 0) {
+    linhas.push({
+      ...comum,
+      conta_id: dados.contaDestinoId,
+      valor: paraNumerico(contas.remuneracao),
+      tipo: 'receita',
+      descricao: `${dados.nome} — ações recebidas, agora vendidas`,
+    });
+  }
+
+  if (contas.ganho !== 0) {
+    linhas.push({
+      ...comum,
+      conta_id: dados.contaDestinoId,
+      valor: paraNumerico(contas.ganho),
+      tipo: contas.ganho > 0 ? 'receita' : 'despesa',
+      descricao: `${dados.nome} — ${contas.ganho > 0 ? 'ganho' : 'prejuízo'} na venda`,
+    });
+  }
+
+  // A perna que tira da conta de investimentos sai só do que ENTROU nela um
+  // dia. Ação recebida nunca passou por caixa nenhum: tirar o bruto daqui
+  // deixaria a conta de investimentos negativa pelo valor das ações, e ainda
+  // impediria o saldo consolidado de subir na venda — quando é justamente aí
+  // que aquele dinheiro passa a existir para você.
+  if (dados.contaDaAplicacao && contas.devolucaoDeCaixa > 0) {
+    linhas.push({
+      ...comum,
+      conta_id: dados.contaDaAplicacao,
+      valor: paraNumerico(-contas.devolucaoDeCaixa),
+      tipo: 'transferencia',
+      descricao: `Venda de ${dados.nome}`,
+    });
+  }
+
+  if (linhas.length > 0) {
+    const { error } = await supabase.from('transacoes').insert(linhas);
+    if (error) throw new Error(error.message);
+  }
+
+  const { error: erroMovimento } = await supabase
+    .from('movimentacoes_investimento')
+    .insert({
+      investimento_id: dados.investimentoId,
+      tipo: 'resgate',
+      valor: paraNumerico(contas.bruto),
+      data: dados.data,
+      quantidade: dados.quantidade,
+      preco_unitario: dados.preco,
+      cotacao_moeda: dados.cambio,
+    });
+  if (erroMovimento) throw new Error(erroMovimento.message);
+
+  await atualizarCotacao({
+    investimentoId: dados.investimentoId,
+    preco: dados.preco,
+    cambio: dados.cambio,
+    data: dados.data,
+  });
 }
