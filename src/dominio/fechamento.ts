@@ -85,3 +85,22 @@ export function progressoDoFechamento(
     proximo,
   };
 }
+
+/**
+ * O que era para ter saído do caixa no mês e não saiu (§8.6, §2.4).
+ *
+ * O corte é pelo CAIXA, não pela competência, e a diferença aparece toda no
+ * cartão: a assinatura cobrada em 10/08 não é conta esquecida em agosto — ela
+ * entra na fatura que vence em setembro, e dinheiro nenhum devia ter saído no
+ * mês que se está fechando. Listá-la aqui manda procurar um problema que não
+ * existe, e ainda por cima justamente no passo cujo valor é apontar o que
+ * existe.
+ */
+export function faltaramNoMes<T extends { situacao: string; dataCaixa: string }>(
+  previstos: readonly T[],
+  fimDoMes: string,
+): T[] {
+  return previstos.filter(
+    (item) => item.situacao === 'atrasado' && item.dataCaixa <= fimDoMes,
+  );
+}

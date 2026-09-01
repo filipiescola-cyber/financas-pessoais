@@ -18,6 +18,7 @@ import {
 } from '../dominio/relatorios';
 import {
   passoEstaFeito,
+  faltaramNoMes,
   progressoDoFechamento,
   type IdDoPasso,
   type PendenciasDoMes,
@@ -28,6 +29,7 @@ import { listarFechamentos, salvarFechamento } from '../dados/fechamentos';
 import { ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
 import { baixarArquivo, exportarTudo, nomeDoArquivo } from '../dados/exportar';
 import { usarContasComSaldo } from '../dados/usarContas';
+import { usarCartoes } from '../dados/usarCartoes';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { naturezaEfetiva } from '../dominio/natureza';
@@ -93,6 +95,7 @@ export function Fechamento() {
   const marcados = new Set(registro?.passos ?? []);
 
   const contas = usarContasComSaldo();
+  const cartoes = usarCartoes();
   const categorias = usarCategorias(true);
   const recorrencias = usarRecorrencias();
   const feriados = usarFeriados();
@@ -141,29 +144,43 @@ export function Fechamento() {
    *
    * O "hoje" da conta é o ÚLTIMO DIA do mês fechado: dentro dele, tudo que não
    * foi gerado já deveria ter sido.
+   *
+   * Cobrança de CARTÃO fica de fora, e a distinção não é detalhe: a assinatura
+   * de 10/08 não é conta esquecida em agosto — ela entra na fatura que vence em
+   * setembro, e dinheiro nenhum devia ter saído no mês que se está fechando. O
+   * corte é pelo caixa (§2.4), que é sobre o que o fechamento fala.
    */
-  const faltaram =
-    recorrencias.data && geradas.data
+  const faltaram = faltaramNoMes(
+    recorrencias.data && geradas.data && cartoes.data
       ? previstoDoMes(
-          recorrencias.data.map((r) => ({
-            id: r.id,
-            contaId: r.contaId,
-            descricao: r.descricao,
-            tipo: r.tipo,
-            valorPrevisto: r.valorPrevisto,
-            dia: r.dia,
-            regra: r.regra,
-            comecaEm: r.comecaEm,
-            terminaEm: r.terminaEm,
-            incremento: r.incremento,
-          })),
+          recorrencias.data.map((r) => {
+            const cartao = cartoes.data?.find((c) => c.contaId === r.contaId);
+
+            return {
+              id: r.id,
+              contaId: r.contaId,
+              descricao: r.descricao,
+              tipo: r.tipo,
+              valorPrevisto: r.valorPrevisto,
+              dia: r.dia,
+              regra: r.regra,
+              comecaEm: r.comecaEm,
+              terminaEm: r.terminaEm,
+              incremento: r.incremento,
+              cartao: cartao
+                ? { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento }
+                : null,
+            };
+          }),
           geradas.data.geradas,
           mes,
           fimDoMes,
           feriados,
           geradas.data.puladas,
-        ).filter((item) => item.situacao === 'atrasado')
-      : [];
+        )
+      : [],
+    fimDoMes,
+  );
 
   const pendencias: PendenciasDoMes = {
     contasPorConferir: semConferencia.length,
@@ -237,6 +254,14 @@ export function Fechamento() {
         </div>
       }
     >
+      {/* Falha ao gravar precisa aparecer: um check que não pega e não explica
+          é indistinguível de um botão que não funciona. */}
+      {salvar.isError && (
+        <Nota tom="atencao">
+          Não deu para gravar o passo: {(salvar.error as Error).message}
+        </Nota>
+      )}
+
       <Nota tom={progresso.concluido ? 'positivo' : undefined}>
         {progresso.concluido ? (
           <>
@@ -364,6 +389,7 @@ export function Fechamento() {
         titulo={`Como foi ${nomeDoMes(mes)}`}
         porque="É a única parte do ritual que não é tarefa. Olhar o mês fechado é o que transforma lançamento em informação."
         feito={feito('resumo')}
+        gravando={salvar.isPending}
         aoMarcar={() => marcar('resumo')}
       >
         <div className="grid gap-3 sm:grid-cols-2">
@@ -402,6 +428,7 @@ export function Fechamento() {
         titulo={`Preparar ${nomeDoMes(mesNovo)}`}
         porque="Teto definido depois que o mês começou já nasce atrasado: metade do gasto aconteceu antes de existir referência."
         feito={feito('orcamento')}
+        gravando={salvar.isPending}
         aoMarcar={() => marcar('orcamento')}
       >
         <p className="text-sm text-slate-400">
@@ -427,6 +454,7 @@ export function Fechamento() {
         titulo="Backup"
         porque="Backup nunca restaurado não é backup, é esperança. Um arquivo por mês, guardado fora do computador, é o que separa perder o histórico de perder um mês."
         feito={feito('backup')}
+        gravando={salvar.isPending}
         aoMarcar={() => marcar('backup')}
       >
         <p className="text-sm text-slate-400">
@@ -518,6 +546,7 @@ function Passo({
   porque,
   feito,
   automatico = false,
+  gravando = false,
   aoMarcar,
   children,
 }: {
@@ -528,6 +557,7 @@ function Passo({
   feito: boolean;
   /** Resolvido pelos dados, não por um clique: o check fica travado e explicado. */
   automatico?: boolean;
+  gravando?: boolean;
   aoMarcar: () => void;
   children: React.ReactNode;
 }) {
@@ -549,13 +579,17 @@ function Passo({
                 ? 'Este passo se resolve sozinho quando não sobra pendência — não precisa de check.'
                 : 'Marcar como feito'
             }
-            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs transition ${
-              feito
-                ? 'border-emerald-600 bg-emerald-600 text-white'
-                : 'border-borda-forte text-slate-500'
-            }`}
+            className={`-m-2 mt-[-2px] flex h-10 w-10 shrink-0 items-center justify-center p-2 ${ALVO_DE_TOQUE}`}
           >
-            {feito ? '✓' : numero}
+            <span
+              className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs transition ${
+                feito
+                  ? 'border-emerald-600 bg-emerald-600 text-white'
+                  : 'border-borda-forte text-slate-500'
+              }`}
+            >
+              {feito ? '✓' : numero}
+            </span>
           </button>
           <div className="min-w-0 flex-1 space-y-3">
             <button
@@ -578,6 +612,23 @@ function Passo({
                     ritual que não se explica vira tarefa, e tarefa se abandona. */}
                 <p className="text-xs leading-relaxed text-slate-600">{porque}</p>
                 {children}
+
+                {/* O círculo numerado não parece um check, e ninguém o
+                    encontrava depois de ler o passo. O botão fica onde a
+                    leitura termina, que é onde a decisão é tomada. */}
+                {!automatico && (
+                  <button
+                    onClick={aoMarcar}
+                    disabled={gravando}
+                    className={`text-xs transition ${ALVO_DE_TOQUE} ${
+                      feito
+                        ? 'text-slate-500 hover:text-slate-300'
+                        : 'text-emerald-400 hover:text-emerald-300'
+                    }`}
+                  >
+                    {gravando ? 'Salvando…' : feito ? '↩︎ Desmarcar' : '✓ Marcar como feito'}
+                  </button>
+                )}
               </>
             )}
           </div>

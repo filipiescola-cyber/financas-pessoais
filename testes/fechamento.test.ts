@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PASSOS,
+  faltaramNoMes,
   passoEstaFeito,
   progressoDoFechamento,
   type PendenciasDoMes,
@@ -61,5 +62,40 @@ describe('progresso', () => {
   it('nada a fazer não tem próximo', () => {
     const tudo = new Set(PASSOS);
     expect(progressoDoFechamento(tudo, sujo).proximo).toBeNull();
+  });
+});
+
+describe('o que faltou no mês', () => {
+  const item = (situacao: string, dataCaixa: string, descricao = 'x') => ({
+    situacao,
+    dataCaixa,
+    descricao,
+  });
+
+  it('cobrança de cartão que vence depois não é conta esquecida', () => {
+    // A assinatura de 10/08 entra na fatura que vence em setembro: dinheiro
+    // nenhum devia ter saído em agosto. Listá-la manda procurar um problema
+    // que não existe.
+    const faltaram = faltaramNoMes(
+      [item('atrasado', '2026-09-14', 'Curso de Inglês')],
+      '2026-08-31',
+    );
+    expect(faltaram).toEqual([]);
+  });
+
+  it('conta fora do cartão continua sendo cobrada', () => {
+    const faltaram = faltaramNoMes([item('atrasado', '2026-08-10', 'Aluguel')], '2026-08-31');
+    expect(faltaram).toHaveLength(1);
+  });
+
+  it('o que já foi lançado nunca entra', () => {
+    expect(faltaramNoMes([item('lancado', '2026-08-10')], '2026-08-31')).toEqual([]);
+    expect(faltaramNoMes([item('aguardando', '2026-08-10')], '2026-08-31')).toEqual([]);
+  });
+
+  it('cobrança de cartão que vence DENTRO do mês conta', () => {
+    // Compra de julho cuja fatura venceu em agosto: aí o dinheiro era para ter
+    // saído no mês que se está fechando.
+    expect(faltaramNoMes([item('atrasado', '2026-08-14')], '2026-08-31')).toHaveLength(1);
   });
 });
