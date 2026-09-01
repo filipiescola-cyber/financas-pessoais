@@ -1141,6 +1141,7 @@ export type Database = {
           pluggy_transaction_id: string | null
           recorrencia_id: string | null
           revisado: boolean
+          rotativo_de_fatura_id: string | null
           tipo: string
           transacao_pai_id: string | null
           transferencia_par_id: string | null
@@ -1172,6 +1173,7 @@ export type Database = {
           pluggy_transaction_id?: string | null
           recorrencia_id?: string | null
           revisado?: boolean
+          rotativo_de_fatura_id?: string | null
           tipo: string
           transacao_pai_id?: string | null
           transferencia_par_id?: string | null
@@ -1203,6 +1205,7 @@ export type Database = {
           pluggy_transaction_id?: string | null
           recorrencia_id?: string | null
           revisado?: boolean
+          rotativo_de_fatura_id?: string | null
           tipo?: string
           transacao_pai_id?: string | null
           transferencia_par_id?: string | null
@@ -1264,6 +1267,13 @@ export type Database = {
             columns: ["recorrencia_id"]
             isOneToOne: false
             referencedRelation: "recorrencias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transacoes_rotativo_de_fatura_id_fkey"
+            columns: ["rotativo_de_fatura_id"]
+            isOneToOne: false
+            referencedRelation: "faturas"
             referencedColumns: ["id"]
           },
           {

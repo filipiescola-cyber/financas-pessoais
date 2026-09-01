@@ -18,7 +18,7 @@ import {
 } from '../dominio/fatura';
 import { criarDivida } from './dividas';
 import { supabase } from './supabase';
-import type { Database } from './tipos-gerados';
+import type { Database, TablesInsert } from './tipos-gerados';
 
 type LinhaFatura = Database['public']['Tables']['faturas']['Row'];
 
@@ -557,6 +557,142 @@ export async function parcelarFatura(dados: {
 }
 
 /**
+ * Rolar o resto da fatura no rotativo (§2.1, §4.7).
+ *
+ * Deixar de pagar a fatura inteira não produz uma fatura menor: produz um
+ * empréstimo. Enquanto o resto ficava aqui como "fatura em aberto" sem juros, o
+ * app dizia que a dívida era o valor que sobrou — quando no mês seguinte ela
+ * chega maior. Errava para MENOS, que é o pior lado para errar.
+ *
+ * São três linhas porque são três fatos, e nenhum deles pode faltar:
+ *
+ *   A fatura de origem fica quitada. Não por pagamento — nenhum dinheiro saiu
+ *   de conta nenhuma —, mas porque a dívida trocou de lugar.
+ *
+ *   O principal reaparece na fatura seguinte como TRANSFERÊNCIA. Ele já foi
+ *   despesa quando a compra aconteceu; lançá-lo de novo dobraria o mês, que é o
+ *   mesmo defeito que o §14 proíbe para pagamento de fatura.
+ *
+ *   Os juros entram como DESPESA. Só eles são custo novo.
+ *
+ * A taxa vem do usuário porque quem a dita é o banco, e ela está impressa na
+ * fatura. O valor exato dos encargos chega no extrato do mês seguinte — quando
+ * chegar, é só editar a linha de juros como qualquer outro lançamento.
+ */
+export async function rolarNoRotativo(dados: {
+  faturaId: string;
+  cartaoId: string;
+  restante: Centavos;
+  juros: Centavos;
+  data: DataISO;
+  categoriaId?: string | null;
+}): Promise<void> {
+  const principal = Math.abs(dados.restante);
+  if (principal <= 0) throw new Error('Não há saldo para rolar nesta fatura.');
+
+  const { data: atual, error: erroAtual } = await supabase
+    .from('faturas')
+    .select('cartao_id, data_vencimento')
+    .eq('id', dados.faturaId)
+    .single();
+  if (erroAtual) throw new Error(erroAtual.message);
+
+  const { data: seguintes, error: erroSeguinte } = await supabase
+    .from('faturas')
+    .select('id, data_vencimento')
+    .eq('cartao_id', atual.cartao_id)
+    .gt('data_vencimento', atual.data_vencimento)
+    .order('data_vencimento')
+    .limit(1);
+  if (erroSeguinte) throw new Error(erroSeguinte.message);
+
+  const seguinte = seguintes?.[0];
+  if (!seguinte) {
+    throw new Error('A próxima fatura ainda não existe. Abra a aba de cartões para gerá-la.');
+  }
+
+  const comum = {
+    conta_id: dados.cartaoId,
+    data_competencia: dados.data,
+    // No cartão o dinheiro só sai no vencimento (§2.4).
+    data_caixa: seguinte.data_vencimento,
+    origem: 'manual',
+    revisado: true,
+    fatura_id: seguinte.id,
+    rotativo_de_fatura_id: dados.faturaId,
+  };
+
+  const linhas: TablesInsert<'transacoes'>[] = [
+    // A rolagem: entrada que zera a fatura de origem, sem par em caixa nenhum
+    // porque dinheiro nenhum se moveu — a dívida só trocou de forma.
+    {
+      conta_id: dados.cartaoId,
+      valor: paraNumerico(principal),
+      tipo: 'transferencia',
+      data_competencia: dados.data,
+      data_caixa: dados.data,
+      descricao: 'Rotativo — saldo rolado',
+      origem: 'manual',
+      revisado: true,
+      fatura_paga_id: dados.faturaId,
+      rotativo_de_fatura_id: dados.faturaId,
+    },
+    // O principal na fatura seguinte. Transferência: já foi despesa uma vez.
+    {
+      ...comum,
+      valor: paraNumerico(-principal),
+      tipo: 'transferencia',
+      descricao: 'Rotativo — saldo da fatura anterior',
+    },
+  ];
+
+  if (dados.juros > 0) {
+    linhas.push({
+      ...comum,
+      valor: paraNumerico(-Math.abs(dados.juros)),
+      tipo: 'despesa',
+      descricao: 'Juros do rotativo',
+      categoria_id: dados.categoriaId ?? null,
+    });
+  }
+
+  const { error } = await supabase.from('transacoes').insert(linhas);
+  if (error) throw new Error(error.message);
+
+  await acertarStatusDaFatura(dados.faturaId);
+}
+
+/**
+ * Desfaz um rotativo inteiro (§2.1).
+ *
+ * As três linhas caem juntas de propósito: apagar só a dos juros deixaria o
+ * principal rolado sem custo, e apagar só a rolagem deixaria a mesma dívida
+ * cobrada em duas faturas. Meio evento desfeito é saldo devedor que vira
+ * ficção.
+ */
+export async function desfazerRotativo(faturaId: string): Promise<void> {
+  const { error } = await supabase
+    .from('transacoes')
+    .delete()
+    .eq('rotativo_de_fatura_id', faturaId);
+  if (error) throw new Error(error.message);
+
+  await acertarStatusDaFatura(faturaId);
+}
+
+/** Quanto desta fatura foi rolado para a seguinte, se foi. */
+export async function rotativoDaFatura(faturaId: string): Promise<Centavos> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('valor')
+    .eq('rotativo_de_fatura_id', faturaId)
+    .eq('fatura_paga_id', faturaId);
+  if (error) throw error;
+
+  return (data ?? []).reduce((total, l) => total + Math.abs(paraCentavos(l.valor)), 0);
+}
+
+/**
  * Desfaz UM pagamento — o mais recente (§2.1).
  *
  * Com pagamento parcial há vários, e apagar todos por causa de um clique seria
@@ -569,7 +705,7 @@ export async function parcelarFatura(dados: {
 export async function desfazerPagamentoDeFatura(faturaId: string): Promise<void> {
   const { data: pagamentos, error } = await supabase
     .from('transacoes')
-    .select('id, transferencia_par_id')
+    .select('id, transferencia_par_id, rotativo_de_fatura_id')
     .eq('fatura_paga_id', faturaId)
     .order('data_caixa', { ascending: false })
     .order('id', { ascending: false })
@@ -578,6 +714,13 @@ export async function desfazerPagamentoDeFatura(faturaId: string): Promise<void>
 
   const entrada = pagamentos?.[0];
   if (!entrada) throw new Error('Esta fatura não tem pagamento registrado.');
+
+  // A rolagem do rotativo também quita a fatura, mas apagá-la sozinha deixaria
+  // o saldo cobrado em duas faturas: ele já reapareceu na seguinte. Quem desfaz
+  // esse evento é `desfazerRotativo`, que derruba as três linhas juntas.
+  if (entrada.rotativo_de_fatura_id !== null) {
+    throw new Error('Esta fatura foi rolada no rotativo. Use "Desfazer o rotativo".');
+  }
 
   // Solta o vínculo antes de apagar: a fatura ainda pode referenciar a saída.
   const { error: erroSolta } = await supabase

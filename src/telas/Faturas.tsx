@@ -18,6 +18,7 @@ import {
   taxaImplicita,
   taxaMensalDeAnual,
 } from '../dominio/divida';
+import { custoDoRotativo, rolandoPorMeses } from '../dominio/rotativo';
 import { usarContas } from '../dados/usarContas';
 import { usarBuscaDeCategoria } from '../dados/usarTransacoes';
 import {
@@ -26,6 +27,9 @@ import {
   listarFaturas,
   pagarFatura,
   parcelarFatura,
+  rolarNoRotativo,
+  desfazerRotativo,
+  rotativoDaFatura,
   totalPagoDaFatura,
   type Fatura,
 } from '../dados/faturas';
@@ -343,21 +347,30 @@ function CartaoDeFatura({
           </ul>
 
           {saldo.quitada ? (
-            <div className="space-y-2 rounded-md border border-borda-forte px-3 py-2">
-              <p className="text-xs leading-relaxed text-slate-400">
-                Fatura paga. O pagamento quitou uma dívida; ele não é despesa, porque a despesa já
-                foi contada em cada compra.
-              </p>
-              <button
-                onClick={() => desfazer.mutate()}
-                disabled={desfazer.isPending}
-                className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-              >
-                {desfazer.isPending ? 'Desfazendo…' : 'Desfazer pagamento'}
-              </button>
-              {desfazer.isError && (
-                <p className="text-xs text-red-400">{(desfazer.error as Error).message}</p>
-              )}
+            <div className="space-y-2">
+              {/*
+                Fatura rolada também fica "quitada", e o desfazer genérico
+                apagaria só a rolagem — deixando o mesmo saldo cobrado em duas
+                faturas. Por isso o rotativo aparece aqui com o desfazer dele.
+              */}
+              <RotativoDaFatura faturaId={fatura.id} cartaoId={cartaoId} restante={0} />
+
+              <div className="space-y-2 rounded-md border border-borda-forte px-3 py-2">
+                <p className="text-xs leading-relaxed text-slate-400">
+                  Fatura paga. O pagamento quitou uma dívida; ele não é despesa, porque a despesa
+                  já foi contada em cada compra.
+                </p>
+                <button
+                  onClick={() => desfazer.mutate()}
+                  disabled={desfazer.isPending}
+                  className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+                >
+                  {desfazer.isPending ? 'Desfazendo…' : 'Desfazer pagamento'}
+                </button>
+                {desfazer.isError && (
+                  <p className="text-xs text-red-400">{(desfazer.error as Error).message}</p>
+                )}
+              </div>
             </div>
           ) : (
             <>
@@ -389,6 +402,12 @@ function CartaoDeFatura({
                 faturaId={fatura.id}
                 cartaoId={cartaoId}
                 nomeDoCartao={nomeDoCartao}
+                restante={saldo.falta}
+              />
+
+              <RotativoDaFatura
+                faturaId={fatura.id}
+                cartaoId={cartaoId}
                 restante={saldo.falta}
               />
             </>
@@ -692,6 +711,159 @@ function ParcelamentoDaFatura({
           desabilitado={!podeCalcular || parcelar.isPending}
         >
           {parcelar.isPending ? 'Parcelando…' : 'Parcelar'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={() => setAberto(false)}>
+          Cancelar
+        </Botao>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Rolar o resto no rotativo (§2.1, §4.7).
+ *
+ * Existe porque a alternativa era pior: sem esta tela, o resto não pago ficava
+ * como "fatura em aberto" sem juros, e o app dizia que a dívida era o valor que
+ * sobrou — quando no mês seguinte ela chega maior. Errava para MENOS, que é o
+ * pior lado para errar, porque fazia o rotativo parecer uma forma barata de
+ * adiar.
+ *
+ * A taxa vem do usuário: quem a dita é o banco, e ela está impressa na fatura.
+ * O que a tela acrescenta é a mesma taxa ao ano e o efeito de rolar doze meses
+ * — dois números que ninguém faz de cabeça, porque a intuição soma onde a
+ * matemática multiplica.
+ */
+function RotativoDaFatura({
+  faturaId,
+  cartaoId,
+  restante,
+}: {
+  faturaId: string;
+  cartaoId: string;
+  restante: Centavos;
+}) {
+  const invalidar = usarInvalidarTransacoes();
+  const { mostrar } = usarAviso();
+
+  const [aberto, setAberto] = useState(false);
+  const [taxa, setTaxa] = useState('');
+
+  const jaRolado = useQuery({
+    queryKey: ['rotativo', faturaId],
+    queryFn: () => rotativoDaFatura(faturaId),
+  });
+
+  const taxaMensal = (Number(taxa.replace(',', '.')) || 0) / 100;
+  const custo = custoDoRotativo(restante, taxaMensal);
+  const emDoze = rolandoPorMeses(restante, taxaMensal, 12);
+
+  const rolar = useMutation({
+    mutationFn: () =>
+      rolarNoRotativo({
+        faturaId,
+        cartaoId,
+        restante,
+        juros: custo.juros,
+        data: hoje(),
+      }),
+    onSuccess: async () => {
+      await invalidar();
+      setAberto(false);
+      setTaxa('');
+      mostrar('Rolado. O saldo e os juros entram na próxima fatura.');
+    },
+  });
+
+  const desfazer = useMutation({
+    mutationFn: () => desfazerRotativo(faturaId),
+    onSuccess: async () => {
+      await invalidar();
+      mostrar('Rotativo desfeito. O saldo voltou para esta fatura.');
+    },
+  });
+
+  if ((jaRolado.data ?? 0) > 0) {
+    return (
+      <div className="rounded-md border border-borda-forte px-3 py-2">
+        <p className="text-xs leading-relaxed text-slate-400">
+          <strong>{formatar(jaRolado.data ?? 0)}</strong> desta fatura foram rolados no rotativo.
+          O saldo e os juros estão na fatura seguinte — se o valor dos encargos vier diferente no
+          extrato, é só editar a linha de juros por lá.
+        </p>
+        <button
+          onClick={() => desfazer.mutate()}
+          disabled={desfazer.isPending}
+          className={`mt-1 text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {desfazer.isPending ? 'Desfazendo…' : 'Desfazer o rotativo'}
+        </button>
+      </div>
+    );
+  }
+
+  if (restante <= 0) return null;
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        className={`w-full text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+      >
+        Deixar o restante no rotativo
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <p className="text-xs leading-relaxed text-slate-400">
+        Não pagar o resto não deixa a fatura menor: o banco empresta os{' '}
+        <strong>{formatar(restante)}</strong> e recobra na fatura seguinte, com juros. Esta tela
+        registra isso — o saldo sai daqui e reaparece lá, junto com o custo.
+      </p>
+
+      <Campo
+        rotulo="Juros do rotativo, ao mês"
+        ajuda="A taxa está impressa na sua fatura, perto de onde o banco informa o pagamento mínimo."
+      >
+        <input
+          inputMode="decimal"
+          value={taxa}
+          onChange={(e) => setTaxa(e.target.value)}
+          placeholder="14,5"
+          className={ENTRADA}
+        />
+      </Campo>
+
+      {taxaMensal > 0 && (
+        <div className="space-y-1 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm">
+          <p className="text-slate-200">
+            A próxima fatura cobra <strong>{formatar(custo.total)}</strong> por isto ·{' '}
+            <span className="text-slate-400">{formatar(custo.juros)} de juros</span>
+          </p>
+          <p className="text-xs text-slate-400">
+            {(taxaMensal * 100).toFixed(1).replace('.', ',')}% ao mês são{' '}
+            <strong className="text-slate-300">
+              {(custo.taxaAnual * 100).toFixed(0)}% ao ano
+            </strong>
+            . Rolando doze meses sem pagar nada, os {formatar(restante)} viram{' '}
+            <strong className="text-slate-300">{formatar(emDoze)}</strong>.
+          </p>
+        </div>
+      )}
+
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        Os juros entram como despesa, sem categoria — aparecem na revisão junto com os outros
+        lançamentos por classificar. O saldo que rola não vira despesa de novo: ele já foi contado
+        quando a compra aconteceu.
+      </p>
+
+      {rolar.isError && <p className="text-sm text-red-400">{(rolar.error as Error).message}</p>}
+
+      <div className="flex gap-2">
+        <Botao aoClicar={() => rolar.mutate()} desabilitado={taxa === '' || rolar.isPending}>
+          {rolar.isPending ? 'Rolando…' : 'Rolar no rotativo'}
         </Botao>
         <Botao tipo="secundario" aoClicar={() => setAberto(false)}>
           Cancelar
