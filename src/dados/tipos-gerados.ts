@@ -476,6 +476,36 @@ export type Database = {
           },
         ]
       }
+      fechamentos: {
+        Row: {
+          concluido_em: string | null
+          created_at: string
+          id: string
+          mes_referencia: string
+          passos: string[]
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          concluido_em?: string | null
+          created_at?: string
+          id?: string
+          mes_referencia: string
+          passos?: string[]
+          updated_at?: string
+          usuario_id?: string
+        }
+        Update: {
+          concluido_em?: string | null
+          created_at?: string
+          id?: string
+          mes_referencia?: string
+          passos?: string[]
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       feriados: {
         Row: {
           data: string
