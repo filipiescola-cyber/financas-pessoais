@@ -38,6 +38,8 @@ import {
   type ItemPrevisto,
 } from '../dominio/previsto';
 import { extratoDoMes } from '../dominio/extrato';
+import { parcelasPrevistas, type ParcelaPrevista } from '../dominio/divida';
+import { listarDividas } from '../dados/dividas';
 
 /** Previsto vira movimento de caixa. Sem valor não vira nada: somar zero por
  *  ele empurraria o saldo para um número que ninguém prometeu. */
@@ -133,6 +135,10 @@ export function Transacoes() {
       };
     });
 
+  // A lista não sabia nada de dívida: num mês futuro o saldo previsto ignorava
+  // as parcelas inteiras, e o mês parecia bem mais folgado do que é.
+  const dividas = useQuery({ queryKey: ['dividas'], queryFn: () => listarDividas() });
+
   const geradas = useQuery({
     queryKey: ['ocorrencias-geradas', mes],
     // Dois meses para trás: a compra de setembro no cartão cai na fatura de
@@ -154,7 +160,23 @@ export function Transacoes() {
         )
       : [];
 
-  const porDia = agruparPorDiaDeCaixa(lista, previstos);
+  /**
+   * As parcelas de dívida que ainda vão vencer (§4.7).
+   *
+   * Só as não pagas: a paga já virou lançamento de verdade e conta pelo caminho
+   * normal — contá-la aqui de novo tiraria o valor duas vezes.
+   */
+  const parcelasDaDivida = (dividas.data ?? [])
+    .filter((item) => contaId === null || item.divida.contaId === contaId)
+    .flatMap((item) => parcelasPrevistas(item.divida, item.tabela, mes, ultimoDiaDoMes(mes)));
+
+  const movimentosDeParcela = parcelasDaDivida.map((p) => ({
+    valor: -p.valor,
+    dataCaixa: p.vencimento,
+    transacaoPaiId: null,
+  }));
+
+  const porDia = agruparPorDiaDeCaixa(lista, previstos, parcelasDaDivida);
 
   // Saldo diário. Vem por CAIXA, não por competência: é o único que bate com o
   // extrato do banco (§13.2). Sem filtro de conta, usa as mesmas contas que
@@ -210,12 +232,19 @@ export function Transacoes() {
     (recorrencias.data !== undefined &&
       geradasDaPonte.data !== undefined &&
       faturasDaPonte.data !== undefined &&
+      dividas.data !== undefined &&
       ((faturasDaPonte.data ?? []).length === 0 || pagamentosDaPonte.data !== undefined));
 
   const movimentosDaPonte: MovimentoDeCaixa[] =
     !precisaDePonte || !pontePronta
       ? []
       : [
+          ...(dividas.data ?? [])
+            .filter((item) => contaId === null || item.divida.contaId === contaId)
+            .flatMap((item) =>
+              parcelasPrevistas(item.divida, item.tabela, mesCorrente, somarDias(mes, -1)),
+            )
+            .map((p) => ({ valor: -p.valor, dataCaixa: p.vencimento, transacaoPaiId: null })),
           ...paraMovimentos(
             previstoNoCaixaEntre(
               recorrenciasPrevistas,
@@ -284,7 +313,12 @@ export function Transacoes() {
       ? extratoDoMes({
           ancora: abertura.data,
           movimentosAteOMes: movimentosDaPonte,
-          movimentosDoMes: [...movimentos.data, ...movimentosPrevistos, ...movimentosDeFatura],
+          movimentosDoMes: [
+            ...movimentos.data,
+            ...movimentosPrevistos,
+            ...movimentosDeFatura,
+            ...movimentosDeParcela,
+          ],
           dias: porDia.map(([dia]) => dia),
         })
       : null;
@@ -446,6 +480,11 @@ export function Transacoes() {
                     nomeDaConta={(id) => nomeConta.get(id) ?? '—'}
                     aoEditar={() => setEditando(linha.saida)}
                   />
+                ) : linha.tipo === 'parcela' ? (
+                  <ParcelaNaLista
+                    key={`${linha.parcela.dividaId}-${linha.parcela.numero}`}
+                    parcela={linha.parcela}
+                  />
                 ) : (
                   <ItemPrevistoNaLista
                     key={`${linha.previsto.recorrenciaId}-${linha.previsto.dataPrevista}`}
@@ -468,7 +507,8 @@ type LinhaDoDia =
   | { tipo: 'lancamento'; transacao: Transacao }
   | { tipo: 'transferencia'; saida: Transacao; entrada: Transacao }
   | { tipo: 'fatura'; bloco: BlocoDeFatura<Transacao> }
-  | { tipo: 'previsto'; previsto: ItemPrevisto };
+  | { tipo: 'previsto'; previsto: ItemPrevisto }
+  | { tipo: 'parcela'; parcela: ParcelaPrevista };
 
 /**
  * O agrupamento da lista (§2.4).
@@ -480,6 +520,7 @@ type LinhaDoDia =
 function agruparPorDiaDeCaixa(
   lista: Transacao[],
   previstos: ItemPrevisto[],
+  parcelas: readonly ParcelaPrevista[] = [],
 ): [DataISO, LinhaDoDia[]][] {
   const mapa = new Map<DataISO, LinhaDoDia[]>();
 
@@ -502,6 +543,13 @@ function agruparPorDiaDeCaixa(
     mapa.set(previsto.dataCaixa, [
       ...(mapa.get(previsto.dataCaixa) ?? []),
       { tipo: 'previsto', previsto },
+    ]);
+  }
+
+  for (const parcela of parcelas) {
+    mapa.set(parcela.vencimento, [
+      ...(mapa.get(parcela.vencimento) ?? []),
+      { tipo: 'parcela', parcela },
     ]);
   }
 
@@ -1058,6 +1106,37 @@ function ItemDeTransferencia({
             </button>
           </div>
         </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Uma parcela de dívida que ainda vai vencer (§4.7).
+ *
+ * Não é editável aqui, e é de propósito: o valor dela não é escolha de ninguém,
+ * sai da tabela de amortização. Mexer no número faria o saldo devedor deixar de
+ * bater com o contrato — quem muda o contrato é a aba de Dívidas.
+ */
+function ParcelaNaLista({ parcela }: { parcela: ParcelaPrevista }) {
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 gap-2.5">
+          <span
+            title="Parcela de dívida: o valor vem da tabela de amortização"
+            className="mt-0.5 text-sky-400/60"
+          >
+            <IconeRelogio className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-slate-400">{parcela.nome}</p>
+            <p className="truncate text-xs text-slate-600">
+              Parcela {parcela.numero}/{parcela.parcelas} · lança sozinha no vencimento
+            </p>
+          </div>
+        </div>
+        <Dinheiro centavos={-parcela.valor} className="shrink-0 text-sm text-slate-400" />
       </div>
     </li>
   );

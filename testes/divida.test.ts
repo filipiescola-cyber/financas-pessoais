@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   parcelaPrice,
+  parcelasPrevistas,
+  parcelasVencidas,
   resumoDaDivida,
   tabelaComAmortizacoes,
   tabelaDeAmortizacao,
   taxaAnualDeMensal,
   taxaImplicita,
   taxaMensalDeAnual,
+  vencimentoDaParcela,
 } from '../src/dominio/divida';
 
 describe('conversão de taxa', () => {
@@ -245,5 +248,89 @@ describe('amortização extraordinária', () => {
     ]);
     expect(com.length).toBe(N - 40);
     expect(com[com.length - 1]!.saldoDevedor).toBe(0);
+  });
+});
+
+describe('vencimento da parcela', () => {
+  it('o dia da primeira parcela vale para todas', () => {
+    // O defeito que isto fecha: a dívida guardava a data e o app só usava o
+    // mês dela. Quem cadastrava "dia 1º" não via nada acontecer no dia 1º.
+    expect(vencimentoDaParcela('2026-09-01', 1)).toBe('2026-09-01');
+    expect(vencimentoDaParcela('2026-09-01', 4)).toBe('2026-12-01');
+    expect(vencimentoDaParcela('2026-09-15', 13)).toBe('2027-09-15');
+  });
+
+  it('dia 31 cai no último dia dos meses curtos', () => {
+    expect(vencimentoDaParcela('2026-01-31', 2)).toBe('2026-02-28');
+  });
+});
+
+describe('parcelas vencidas', () => {
+  it('lista o que venceu e ainda não foi registrado', () => {
+    expect(parcelasVencidas('2026-09-01', 37, 0, '2026-11-10')).toEqual([1, 2, 3]);
+  });
+
+  it('não antecipa parcela que ainda não venceu', () => {
+    expect(parcelasVencidas('2026-09-01', 37, 0, '2026-08-31')).toEqual([]);
+    expect(parcelasVencidas('2026-09-01', 37, 0, '2026-09-01')).toEqual([1]);
+  });
+
+  it('conta a partir do que já foi pago', () => {
+    expect(parcelasVencidas('2026-09-01', 37, 2, '2026-11-10')).toEqual([3]);
+  });
+
+  it('não passa do fim do contrato', () => {
+    expect(parcelasVencidas('2026-09-01', 3, 0, '2030-01-01')).toEqual([1, 2, 3]);
+  });
+
+  it('a janela retroativa evita despejar anos de lançamento de uma vez', () => {
+    // Quem cadastra dívida antiga e esquece de informar quantas já pagou não
+    // deve receber quarenta lançamentos num clique.
+    const pendentes = parcelasVencidas('2020-01-01', 120, 0, '2026-09-01');
+    expect(pendentes).toHaveLength(12);
+    expect(pendentes.at(-1)).toBe(81);
+  });
+
+  it('dívida quitada não gera nada', () => {
+    expect(parcelasVencidas('2026-09-01', 3, 3, '2030-01-01')).toEqual([]);
+  });
+});
+
+describe('parcelas previstas', () => {
+  const divida = {
+    id: 'd1',
+    nome: 'Empréstimo Nubank',
+    primeiraParcela: '2026-09-01',
+    parcelas: 37,
+    parcelasPagas: 0,
+  };
+  const tabela = tabelaDeAmortizacao(1100000, 0.0184, 37, 'price');
+
+  it('devolve a parcela que vence no mês', () => {
+    const [p] = parcelasPrevistas(divida, tabela, '2026-11-01', '2026-11-30');
+    expect(p!.numero).toBe(3);
+    expect(p!.vencimento).toBe('2026-11-01');
+    expect(p!.valor).toBe(tabela[2]!.amortizacao + tabela[2]!.juros);
+  });
+
+  it('o valor é a parcela inteira: é o que sai da conta', () => {
+    const [p] = parcelasPrevistas(divida, tabela, '2026-09-01', '2026-09-30');
+    expect(p!.valor).toBe(tabela[0]!.valor);
+  });
+
+  it('parcela já paga não entra: ela virou lançamento de verdade', () => {
+    // Contá-la aqui de novo tiraria o valor duas vezes do saldo.
+    const pagas = { ...divida, parcelasPagas: 3 };
+    expect(parcelasPrevistas(pagas, tabela, '2026-11-01', '2026-11-30')).toEqual([]);
+    expect(parcelasPrevistas(pagas, tabela, '2026-12-01', '2026-12-31')[0]!.numero).toBe(4);
+  });
+
+  it('depois do fim do contrato não sobra nada', () => {
+    expect(parcelasPrevistas(divida, tabela, '2030-01-01', '2030-12-31')).toEqual([]);
+  });
+
+  it('uma janela de vários meses traz todas', () => {
+    const p = parcelasPrevistas(divida, tabela, '2026-09-01', '2026-12-31');
+    expect(p.map((x) => x.numero)).toEqual([1, 2, 3, 4]);
   });
 });

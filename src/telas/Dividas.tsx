@@ -5,6 +5,7 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import {
   parcelaPrice,
   tabelaDeAmortizacao,
+  vencimentoDaParcela,
   taxaAnualDeMensal,
   taxaImplicita,
   taxaMensalDeAnual,
@@ -202,6 +203,16 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
           </p>
           <p className="mt-0.5 text-xs text-slate-600">
             {resumo.parcelasPagas} de {divida.parcelas} pagas · acaba em {mesCurto(quitacao)}
+            {/* O dia estava salvo desde sempre e não aparecia em lugar nenhum:
+                quem cadastrava "primeira parcela dia 1º" não tinha como saber
+                que o app tinha guardado o dia 1º. */}
+            {resumo.proxima !== null && (
+              <>
+                {' '}
+                · próxima em{' '}
+                {formatarBR(vencimentoDaParcela(divida.primeiraParcela, resumo.proxima.numero))}
+              </>
+            )}
           </p>
         </div>
         <div className="shrink-0 text-right">

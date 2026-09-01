@@ -19,6 +19,7 @@
 // parcelas já foram pagas. Guardá-lo criaria a mesma armadilha de sempre — o
 // mesmo fato em dois lugares, e um deles ficando para trás.
 
+import { somarMeses, type DataISO } from './datas';
 import type { Centavos } from './dinheiro';
 
 export type SistemaDeAmortizacao = 'price' | 'sac';
@@ -270,4 +271,98 @@ export function tabelaComAmortizacoes(
   }
 
   return linhas;
+}
+
+/**
+ * Quando a parcela N vence.
+ *
+ * O DIA importa e vinha sendo jogado fora: a dívida guardava a data da primeira
+ * parcela e o app só usava o mês dela, para dizer em que mês a dívida acaba.
+ * Quem cadastrava "primeira parcela dia 1º" não via nada acontecer no dia 1º.
+ */
+export function vencimentoDaParcela(primeiraParcela: DataISO, numero: number): DataISO {
+  return somarMeses(primeiraParcela, Math.max(0, numero - 1));
+}
+
+/**
+ * As parcelas que já venceram e ainda não foram registradas (§13.3).
+ *
+ * A janela retroativa existe pelo mesmo motivo da recorrência: quem cadastra
+ * uma dívida antiga e esquece de informar quantas já pagou não deve receber
+ * quarenta lançamentos de uma vez. O que passa da janela continua no contrato —
+ * o saldo devedor sai da tabela, não dos lançamentos —, só não vira lançamento
+ * retroativo sozinho.
+ */
+export function parcelasVencidas(
+  primeiraParcela: DataISO,
+  parcelas: number,
+  parcelasPagas: number,
+  hoje: DataISO,
+  janela = 12,
+): number[] {
+  const pendentes: number[] = [];
+
+  for (let numero = parcelasPagas + 1; numero <= parcelas; numero += 1) {
+    const vencimento = vencimentoDaParcela(primeiraParcela, numero);
+    if (vencimento > hoje) break;
+    pendentes.push(numero);
+  }
+
+  return pendentes.slice(-janela);
+}
+
+export type ParcelaPrevista = {
+  dividaId: string;
+  nome: string;
+  numero: number;
+  parcelas: number;
+  vencimento: DataISO;
+  /** Amortização mais juros: é o que sai da conta naquele dia. */
+  valor: Centavos;
+};
+
+/**
+ * As parcelas que ainda vão vencer num período (§4.7, §13.2).
+ *
+ * A lista de lançamentos não sabia nada de dívida. Num mês futuro o saldo
+ * previsto ignorava as parcelas inteiras — três empréstimos somavam quase
+ * novecentos reais por mês que simplesmente não apareciam, e o mês seguinte
+ * parecia bem mais folgado do que é.
+ *
+ * Só as NÃO pagas entram. As pagas já viraram lançamento de verdade e contam
+ * pelo caminho normal; contá-las aqui de novo tiraria o valor duas vezes.
+ */
+export function parcelasPrevistas(
+  divida: {
+    id: string;
+    nome: string;
+    primeiraParcela: DataISO;
+    parcelas: number;
+    parcelasPagas: number;
+  },
+  tabela: readonly ParcelaDaDivida[],
+  de: DataISO,
+  ate: DataISO,
+): ParcelaPrevista[] {
+  const previstas: ParcelaPrevista[] = [];
+
+  for (let numero = divida.parcelasPagas + 1; numero <= tabela.length; numero += 1) {
+    const vencimento = vencimentoDaParcela(divida.primeiraParcela, numero);
+    if (vencimento > ate) break;
+    if (vencimento < de) continue;
+
+    const parcela = tabela[numero - 1];
+    if (!parcela) continue;
+
+    previstas.push({
+      dividaId: divida.id,
+      nome: divida.nome,
+      numero,
+      parcelas: divida.parcelas,
+      vencimento,
+      valor: parcela.amortizacao + parcela.juros,
+    });
+  }
+
+  return previstas;
 }

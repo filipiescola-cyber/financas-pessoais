@@ -10,6 +10,7 @@ import { hoje } from '../dominio/datas';
 import { gravarConfig, lerConfig } from './config';
 import { backfillFaturas, fecharFaturasVencidas, garantirFaturas } from './faturas';
 import { gerarRecorrenciasPendentes } from './geracaoRecorrencias';
+import { gerarParcelasPendentes } from './dividas';
 import { garantirFeriados } from './indicadores';
 import { supabase } from './supabase';
 
@@ -17,6 +18,7 @@ export type ResultadoDasRotinas = {
   faturasFechadas: number;
   transacoesVinculadas: number;
   recorrenciasGeradas: number;
+  parcelasGeradas: number;
   feriadosBuscados: number;
   executadaEm: string;
 };
@@ -60,12 +62,19 @@ export async function rodarRotinasDeAbertura(forcar = false): Promise<ResultadoD
   // 5. Gera os lançamentos de recorrência que já venceram e ainda não existem.
   const recorrenciasGeradas = await gerarRecorrenciasPendentes(hojeISO);
 
+  // 6. Parcela de dívida também vence sozinha (§4.7). Antes disto o contador
+  //    só andava se a pessoa lembrasse de clicar em "Paguei mais uma", e a
+  //    data da primeira parcela não servia para nada além de dizer o mês do
+  //    fim — quem cadastrava "dia 1º" não via nada acontecer no dia 1º.
+  const parcelasGeradas = await gerarParcelasPendentes(hojeISO);
+
   await gravarConfig(CHAVE, { data: hojeISO, em: new Date().toISOString() });
 
   return {
     faturasFechadas,
     transacoesVinculadas: atualizadas,
     recorrenciasGeradas,
+    parcelasGeradas,
     feriadosBuscados,
     executadaEm: hojeISO,
   };

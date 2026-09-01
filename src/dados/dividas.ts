@@ -11,6 +11,8 @@
 import { hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import {
+  parcelasVencidas,
+  vencimentoDaParcela,
   resumoDaDivida,
   tabelaComAmortizacoes,
   tabelaDeAmortizacao,
@@ -209,7 +211,7 @@ export async function atualizarParcelasPagas(id: string, pagas: number): Promise
  * Sem conta cadastrada, nenhuma linha é gravada: só o contador anda. É o caso
  * de quem acompanha a dívida sem lançar o pagamento no app.
  */
-export async function pagarParcela(dividaId: string, data: DataISO = hoje()): Promise<void> {
+export async function pagarParcela(dividaId: string, data?: DataISO): Promise<void> {
   const { data: linha, error } = await supabase
     .from('dividas')
     .select('*')
@@ -228,42 +230,133 @@ export async function pagarParcela(dividaId: string, data: DataISO = hoje()): Pr
   const proxima = tabela[divida.parcelasPagas];
   if (!proxima) throw new Error('Esta dívida já está quitada.');
 
-  if (divida.contaId) {
-    const comum = {
-      conta_id: divida.contaId,
-      data_competencia: data,
-      data_caixa: data,
-      origem: 'manual' as const,
-      revisado: true,
-      // A ponta que permite desfazer sem deixar lançamento órfão.
-      divida_id: dividaId,
-      divida_parcela: proxima.numero,
-    };
+  // A data da parcela é a do VENCIMENTO dela, não a de hoje: é quando o fato
+  // aconteceu (§2.4). Pagando adiantado, vale hoje — o dinheiro saiu hoje.
+  const vencimento = vencimentoDaParcela(divida.primeiraParcela, proxima.numero);
+  const quando = data ?? (vencimento <= hoje() ? vencimento : hoje());
 
-    const linhas: InsercaoTransacao[] = [
-      {
-        ...comum,
-        valor: paraNumerico(-proxima.amortizacao),
-        tipo: 'transferencia',
-        descricao: `${divida.nome} — parcela ${proxima.numero}/${divida.parcelas}`,
-      },
-    ];
+  await lancarParcela(divida, proxima, quando, true);
+  await atualizarParcelasPagas(dividaId, divida.parcelasPagas + 1);
+}
 
-    if (proxima.juros > 0) {
-      linhas.push({
-        ...comum,
-        valor: paraNumerico(-proxima.juros),
-        tipo: 'despesa',
-        categoria_id: divida.categoriaJurosId,
-        descricao: `${divida.nome} — juros da ${proxima.numero}ª`,
-      });
-    }
+/**
+ * As duas linhas de uma parcela (§4.7, §14).
+ *
+ * A amortização é TRANSFERÊNCIA: ela repaga um gasto já contado quando a compra
+ * aconteceu, e lançá-la como despesa dobraria o mês — o mesmo defeito que o §14
+ * proíbe para pagamento de fatura. Só os juros são custo novo.
+ *
+ * Sem conta vinculada não há linha nenhuma, e está certo: a dívida continua
+ * existindo e o saldo devedor sai da tabela, não dos lançamentos (§13.2).
+ */
+async function lancarParcela(
+  divida: Divida,
+  parcela: ParcelaDaDivida,
+  data: DataISO,
+  revisado: boolean,
+): Promise<void> {
+  if (!divida.contaId) return;
 
-    const { error: erroLinhas } = await supabase.from('transacoes').insert(linhas);
-    if (erroLinhas) throw new Error(erroLinhas.message);
+  const comum = {
+    conta_id: divida.contaId,
+    data_competencia: data,
+    data_caixa: data,
+    origem: 'manual' as const,
+    revisado,
+    // A ponta que permite desfazer sem deixar lançamento órfão.
+    divida_id: divida.id,
+    divida_parcela: parcela.numero,
+  };
+
+  const linhas: InsercaoTransacao[] = [
+    {
+      ...comum,
+      valor: paraNumerico(-parcela.amortizacao),
+      tipo: 'transferencia',
+      descricao: `${divida.nome} — parcela ${parcela.numero}/${divida.parcelas}`,
+    },
+  ];
+
+  if (parcela.juros > 0) {
+    linhas.push({
+      ...comum,
+      valor: paraNumerico(-parcela.juros),
+      tipo: 'despesa',
+      categoria_id: divida.categoriaJurosId,
+      descricao: `${divida.nome} — juros da ${parcela.numero}ª`,
+    });
   }
 
-  await atualizarParcelasPagas(dividaId, divida.parcelasPagas + 1);
+  const { error } = await supabase.from('transacoes').insert(linhas);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Gera as parcelas que já venceram e ainda não existem (§13.3, §4.7).
+ *
+ * Faltava a metade automática da dívida. A data da primeira parcela era
+ * guardada e só servia para dizer em que MÊS a dívida acaba: quem cadastrava
+ * "primeira parcela dia 1º" não via nada acontecer no dia 1º, e o contador de
+ * pagas só andava se a pessoa lembrasse de clicar. Três empréstimos ficaram
+ * meses em "0 de 37 pagas" — o saldo devedor certo por acaso, porque ninguém
+ * pagou nem registrou.
+ *
+ * Idempotente e retroativa como toda rotina de abertura: quem fica dez dias
+ * sem abrir volta com tudo acertado e nada duplicado. Quem já tem lançamento
+ * daquela parcela é pulado, e a checagem é pelo LANÇAMENTO, não pelo contador —
+ * o contador pode ter sido mexido à mão.
+ *
+ * Entra como não revisado de propósito: o app está afirmando que a parcela
+ * venceu, não que você a pagou. Se não saiu, é desfazer.
+ */
+export async function gerarParcelasPendentes(referencia: DataISO = hoje()): Promise<number> {
+  const { data, error } = await supabase.from('dividas').select('*').eq('ativo', true);
+  if (error) throw error;
+
+  let geradas = 0;
+
+  for (const linha of data ?? []) {
+    const divida = daLinha(linha);
+    const pendentes = parcelasVencidas(
+      divida.primeiraParcela,
+      divida.parcelas,
+      divida.parcelasPagas,
+      referencia,
+    );
+    if (pendentes.length === 0) continue;
+
+    const { data: existentes } = await supabase
+      .from('transacoes')
+      .select('divida_parcela')
+      .eq('divida_id', divida.id)
+      .not('divida_parcela', 'is', null);
+
+    const jaLancadas = new Set((existentes ?? []).map((t) => t.divida_parcela));
+
+    const tabela = tabelaDeAmortizacao(
+      divida.valorFinanciado,
+      divida.taxaMensal,
+      divida.parcelas,
+      divida.sistema,
+    );
+
+    let ultima = divida.parcelasPagas;
+
+    for (const numero of pendentes) {
+      const parcela = tabela[numero - 1];
+      if (!parcela) continue;
+
+      if (!jaLancadas.has(numero)) {
+        await lancarParcela(divida, parcela, vencimentoDaParcela(divida.primeiraParcela, numero), false);
+        geradas += 1;
+      }
+      ultima = numero;
+    }
+
+    if (ultima > divida.parcelasPagas) await atualizarParcelasPagas(divida.id, ultima);
+  }
+
+  return geradas;
 }
 
 /**
