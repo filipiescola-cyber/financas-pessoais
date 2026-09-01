@@ -48,6 +48,7 @@ import {
   Vazio,
 } from '../ui/base';
 import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
+import { ExclusaoDeRecorrencia } from '../ui/ExclusaoDeRecorrencia';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { arquivarRecorrencia } from '../dados/recorrencias';
@@ -906,6 +907,7 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
   const { mostrar } = usarAviso();
 
   const [criando, setCriando] = useState(false);
+  const [excluindo, setExcluindo] = useState<string | null>(null);
 
   const arquivar = useMutation({
     mutationFn: arquivarRecorrencia,
@@ -952,10 +954,8 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
                 const entraEm = faturaDeReferencia(cobranca, cartao).dataVencimento;
 
                 return (
-                  <li
-                    key={recorrencia.id}
-                    className="flex items-center justify-between gap-3 px-4 py-3"
-                  >
+                  <li key={recorrencia.id} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm text-slate-100">{recorrencia.descricao}</p>
                       <p className="truncate text-xs text-slate-500">
@@ -1009,7 +1009,27 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
                       >
                         Arquivar
                       </button>
+                      {/* Arquivar para de gerar e mantém o cadastro na
+                          história. Não serve para o cadastro ERRADO: a linha
+                          some da lista, mas nada apaga a regra que nunca
+                          deveria ter existido (§4.8). */}
+                      <button
+                        onClick={() =>
+                          setExcluindo(excluindo === recorrencia.id ? null : recorrencia.id)
+                        }
+                        className={`text-xs text-slate-500 transition hover:text-red-400 ${ALVO_DE_TOQUE}`}
+                      >
+                        Excluir
+                      </button>
                     </div>
+                    </div>
+
+                    {excluindo === recorrencia.id && (
+                      <ExclusaoDeRecorrencia
+                        recorrencia={recorrencia}
+                        aoTerminar={() => setExcluindo(null)}
+                      />
+                    )}
                   </li>
                 );
               })}

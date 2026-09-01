@@ -1,25 +1,20 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
 import { usarCriarModelo, usarExcluirModelo, usarModelos, usarRecorrencias } from '../dados/usarModelos';
-import {
-  arquivarRecorrencia,
-  contarGeradosDaRecorrencia,
-  excluirRecorrencia,
-} from '../dados/recorrencias';
+import { arquivarRecorrencia } from '../dados/recorrencias';
 import { usarFeriados } from '../dados/usarFeriados';
 
 import { formatarBR, hoje } from '../dominio/datas';
 import { repeticoesRestantes, rotuloDoDia, valorDaOcorrencia } from '../dominio/recorrencias';
 import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
-import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
+import { ExclusaoDeRecorrencia } from '../ui/ExclusaoDeRecorrencia';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { ChipsDeConta } from '../ui/ChipsDeConta';
-import { ConfirmacaoDeExclusao } from '../ui/ConfirmacaoDeExclusao';
 
 /**
  * Modelos e recorrências (§5.2).
@@ -375,52 +370,5 @@ function FormularioModelo({ aoTerminar }: { aoTerminar: () => void }) {
         </p>
       )}
     </Cartao>
-  );
-}
-function ExclusaoDeRecorrencia({
-  recorrencia,
-  aoTerminar,
-}: {
-  recorrencia: { id: string; descricao: string };
-  aoTerminar: () => void;
-}) {
-  const cliente = useQueryClient();
-  const invalidarTransacoes = usarInvalidarTransacoes();
-
-  const gerados = useQuery({
-    queryKey: ['recorrencia-gerados', recorrencia.id],
-    queryFn: () => contarGeradosDaRecorrencia(recorrencia.id),
-  });
-
-  const excluir = useMutation({
-    mutationFn: () => excluirRecorrencia(recorrencia.id),
-    onSuccess: async () => {
-      await cliente.invalidateQueries({ queryKey: ['recorrencias'] });
-      await invalidarTransacoes();
-      aoTerminar();
-    },
-  });
-
-  if (gerados.isPending) {
-    return <p className="mt-3 text-xs text-slate-500">Vendo o que ela já gerou…</p>;
-  }
-
-  const quantos = gerados.data ?? 0;
-
-  return (
-    <ConfirmacaoDeExclusao
-      consequencia={
-        quantos === 0
-          ? 'Esta recorrência nunca gerou lançamento: excluir não deixa rastro.'
-          : quantos === 1
-            ? 'O lançamento que ela já gerou CONTINUA na lista — ele é dinheiro que se moveu. Só a regra some, e ele vira um lançamento comum.'
-            : `Os ${quantos} lançamentos que ela já gerou CONTINUAM na lista — eles são dinheiro que se moveu. Só a regra some, e eles viram lançamentos comuns.`
-      }
-      ajuda="Para parar de gerar sem apagar o cadastro, use Arquivar. Se algum lançamento gerado também estiver errado, apague-o na lista de Lançamentos."
-      emAndamento={excluir.isPending}
-      erro={excluir.isError ? (excluir.error as Error).message : null}
-      aoConfirmar={() => excluir.mutate()}
-      aoCancelar={aoTerminar}
-    />
   );
 }
