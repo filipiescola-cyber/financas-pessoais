@@ -174,3 +174,100 @@ export function taxaImplicita(
 
   return alto > 0 ? alto : null;
 }
+
+/**
+ * Amortização extraordinária: dinheiro a mais, fora da parcela (§4.7).
+ *
+ * Ela quebra a premissa da tabela original — "o contrato mais quantas parcelas
+ * foram pagas" deixa de descrever a dívida no instante em que se paga um extra.
+ * Por isso é registrada como EVENTO, e a tabela passa a ser calculada em
+ * segmentos: até a amortização vale o contrato, dali em diante vale um contrato
+ * novo com o saldo que sobrou.
+ *
+ * Os dois modos, e os dois existem no Brasil:
+ *
+ *   PRAZO — a parcela continua a mesma e o financiamento acaba antes. Economiza
+ *   mais juros, porque juros correm sobre tempo. É o que o banco chama de
+ *   "reduzir prazo" e o que quase sempre compensa.
+ *
+ *   PARCELA — o prazo continua e a parcela cai. Alivia o mês, economiza menos.
+ *
+ * O número de parcelas que somem vem do BANCO, não de uma conta nossa: cada
+ * instituição arredonda de um jeito, e recalcular por fora daria um cronograma
+ * que não bate com o extrato — que é justamente o que este app não pode fazer.
+ */
+export type AmortizacaoExtra = {
+  /** Depois de qual parcela ela entrou. 0 = antes da primeira. */
+  aposParcela: number;
+  valor: Centavos;
+  modo: 'prazo' | 'parcela';
+  /** Só no modo prazo: quantas parcelas sumiram, como o banco informou. */
+  parcelasReduzidas: number;
+};
+
+/**
+ * A tabela inteira considerando as amortizações extraordinárias.
+ *
+ * Sem nenhuma, devolve exatamente `tabelaDeAmortizacao` — quem não amortizou
+ * não pode ver o número mudar.
+ */
+export function tabelaComAmortizacoes(
+  principal: Centavos,
+  taxaMensal: number,
+  parcelas: number,
+  sistema: SistemaDeAmortizacao,
+  amortizacoes: readonly AmortizacaoExtra[],
+): ParcelaDaDivida[] {
+  if (amortizacoes.length === 0) {
+    return tabelaDeAmortizacao(principal, taxaMensal, parcelas, sistema);
+  }
+
+  const ordenadas = [...amortizacoes].sort((a, b) => a.aposParcela - b.aposParcela);
+
+  const linhas: ParcelaDaDivida[] = [];
+  let saldo = principal;
+  let restantes = parcelas;
+  let numero = 0;
+  let usadas = 0;
+
+  // Cada volta gera o trecho até a próxima amortização e então recomeça o
+  // cálculo com o saldo e o prazo novos. É o que o banco faz: refaz o contrato.
+  while (restantes > 0 && saldo > 0) {
+    // As amortizações que caem exatamente aqui, antes de gerar a próxima.
+    while (usadas < ordenadas.length && ordenadas[usadas]!.aposParcela <= numero) {
+      const extra = ordenadas[usadas]!;
+      saldo = Math.max(0, saldo - Math.abs(extra.valor));
+
+      // O saldo da última parcela gerada precisa refletir a amortização: é
+      // dele que sai o "quanto ainda devo" do resumo, e sem isto amortizar o
+      // saldo inteiro deixava a dívida quitada mostrando o valor de antes.
+      const ultima = linhas[linhas.length - 1];
+      if (ultima) ultima.saldoDevedor = saldo;
+
+      if (extra.modo === 'prazo') {
+        restantes = Math.max(0, restantes - Math.max(0, Math.trunc(extra.parcelasReduzidas)));
+      }
+
+      usadas += 1;
+    }
+
+    if (restantes <= 0 || saldo <= 0) break;
+
+    const trecho = tabelaDeAmortizacao(saldo, taxaMensal, restantes, sistema);
+    const proximaAmortizacao = ordenadas[usadas]?.aposParcela ?? Infinity;
+    // Quantas parcelas cabem antes da próxima amortização.
+    const quantas = Math.min(trecho.length, Math.max(0, proximaAmortizacao - numero));
+
+    if (quantas === 0) break;
+
+    for (let i = 0; i < quantas; i += 1) {
+      const linha = trecho[i]!;
+      numero += 1;
+      restantes -= 1;
+      saldo = linha.saldoDevedor;
+      linhas.push({ ...linha, numero });
+    }
+  }
+
+  return linhas;
+}

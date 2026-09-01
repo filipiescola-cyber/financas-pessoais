@@ -60,6 +60,60 @@ export type Database = {
         }
         Relationships: []
       }
+      amortizacoes_divida: {
+        Row: {
+          apos_parcela: number
+          created_at: string
+          data: string
+          divida_id: string
+          id: string
+          modo: string
+          parcelas_reduzidas: number
+          transacao_id: string | null
+          usuario_id: string
+          valor: number
+        }
+        Insert: {
+          apos_parcela: number
+          created_at?: string
+          data: string
+          divida_id: string
+          id?: string
+          modo: string
+          parcelas_reduzidas?: number
+          transacao_id?: string | null
+          usuario_id?: string
+          valor: number
+        }
+        Update: {
+          apos_parcela?: number
+          created_at?: string
+          data?: string
+          divida_id?: string
+          id?: string
+          modo?: string
+          parcelas_reduzidas?: number
+          transacao_id?: string | null
+          usuario_id?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "amortizacoes_divida_divida_id_fkey"
+            columns: ["divida_id"]
+            isOneToOne: false
+            referencedRelation: "dividas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "amortizacoes_divida_transacao_id_fkey"
+            columns: ["transacao_id"]
+            isOneToOne: false
+            referencedRelation: "transacoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       aportes_meta: {
         Row: {
           created_at: string

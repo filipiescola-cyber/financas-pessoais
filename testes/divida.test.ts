@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parcelaPrice,
   resumoDaDivida,
+  tabelaComAmortizacoes,
   tabelaDeAmortizacao,
   taxaAnualDeMensal,
   taxaImplicita,
@@ -154,5 +155,95 @@ describe('taxa implícita: o que ela recusa', () => {
       if (taxa === null) continue;
       expect(parcelaPrice(principal, taxa, n)).toBe(parcela);
     }
+  });
+});
+
+describe('amortização extraordinária', () => {
+  const PRINCIPAL = 10000000;
+  const TAXA = 0.008;
+  const N = 120;
+
+  it('sem nenhuma, devolve exatamente a tabela original', () => {
+    // Quem não amortizou não pode ver o número mudar.
+    const original = tabelaDeAmortizacao(PRINCIPAL, TAXA, N, 'price');
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', []);
+    expect(com).toEqual(original);
+  });
+
+  it('reduzindo prazo, o financiamento acaba antes', () => {
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 2000000, modo: 'prazo', parcelasReduzidas: 30 },
+    ]);
+    expect(com.length).toBe(N - 30);
+    expect(com[com.length - 1]!.saldoDevedor).toBe(0);
+  });
+
+  it('reduzindo prazo, a parcela quase não muda: é o prazo que cai', () => {
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 2000000, modo: 'prazo', parcelasReduzidas: 30 },
+    ]);
+    const antes = com[11]!.valor;
+    const depois = com[12]!.valor;
+    // Mesma ordem de grandeza — não é o alívio de parcela, é o encurtamento.
+    expect(Math.abs(depois - antes) / antes).toBeLessThan(0.2);
+  });
+
+  it('reduzindo parcela, o prazo fica e a parcela cai', () => {
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 2000000, modo: 'parcela', parcelasReduzidas: 0 },
+    ]);
+    expect(com.length).toBe(N);
+    expect(com[12]!.valor).toBeLessThan(com[11]!.valor);
+  });
+
+  it('reduzir prazo economiza mais juros que reduzir parcela', () => {
+    // É a razão de o "reduzir prazo" quase sempre compensar: juros correm
+    // sobre TEMPO, e cortar tempo corta mais do que cortar valor.
+    const juros = (linhas: { juros: number }[]) => linhas.reduce((t, l) => t + l.juros, 0);
+
+    const prazo = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 2000000, modo: 'prazo', parcelasReduzidas: 30 },
+    ]);
+    const parcela = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 2000000, modo: 'parcela', parcelasReduzidas: 0 },
+    ]);
+
+    expect(juros(prazo)).toBeLessThan(juros(parcela));
+  });
+
+  it('duas amortizações no mesmo financiamento se acumulam', () => {
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 1000000, modo: 'prazo', parcelasReduzidas: 15 },
+      { aposParcela: 40, valor: 1000000, modo: 'prazo', parcelasReduzidas: 20 },
+    ]);
+    expect(com.length).toBe(N - 35);
+    expect(com[com.length - 1]!.saldoDevedor).toBe(0);
+  });
+
+  it('amortizar o saldo inteiro quita a dívida ali', () => {
+    const original = tabelaDeAmortizacao(PRINCIPAL, TAXA, N, 'price');
+    const saldoApos12 = original[11]!.saldoDevedor;
+
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: saldoApos12, modo: 'prazo', parcelasReduzidas: 0 },
+    ]);
+
+    expect(com.length).toBe(12);
+    expect(com[11]!.saldoDevedor).toBe(0);
+  });
+
+  it('a numeração continua sequencial depois do corte', () => {
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'price', [
+      { aposParcela: 12, valor: 2000000, modo: 'prazo', parcelasReduzidas: 30 },
+    ]);
+    expect(com.map((l) => l.numero)).toEqual(com.map((_, i) => i + 1));
+  });
+
+  it('vale para SAC também', () => {
+    const com = tabelaComAmortizacoes(PRINCIPAL, TAXA, N, 'sac', [
+      { aposParcela: 24, valor: 3000000, modo: 'prazo', parcelasReduzidas: 40 },
+    ]);
+    expect(com.length).toBe(N - 40);
+    expect(com[com.length - 1]!.saldoDevedor).toBe(0);
   });
 });

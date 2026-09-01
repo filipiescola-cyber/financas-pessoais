@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { hoje, somarMeses, type DataISO } from '../dominio/datas';
+import { formatarBR, hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import {
   parcelaPrice,
@@ -11,7 +11,10 @@ import {
   type SistemaDeAmortizacao,
 } from '../dominio/divida';
 import {
+  amortizarDivida,
   desfazerParcela,
+  excluirAmortizacao,
+  listarAmortizacoes,
   criarDivida,
   pagarParcela,
   excluirDivida,
@@ -143,6 +146,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
   const cliente = useQueryClient();
   const { mostrar } = usarAviso();
   const [aberto, setAberto] = useState(false);
+  const [amortizando, setAmortizando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
 
   const { divida, resumo, tabela, quitacao } = item;
@@ -234,6 +238,14 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
             Desfazer
           </button>
         )}
+        {resumo.parcelasRestantes > 0 && (
+          <button
+            onClick={() => setAmortizando((v) => !v)}
+            className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+          >
+            {amortizando ? 'Cancelar' : 'Amortizar'}
+          </button>
+        )}
         <button
           onClick={() => setAberto((v) => !v)}
           className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
@@ -255,6 +267,15 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
           {excluindo ? 'Cancelar' : 'Excluir'}
         </button>
       </div>
+
+      {amortizando && (
+        <AmortizacaoExtraordinaria
+          dividaId={divida.id}
+          saldoDevedor={resumo.saldoDevedor}
+          parcelasRestantes={resumo.parcelasRestantes}
+          aoTerminar={() => setAmortizando(false)}
+        />
+      )}
 
       {excluindo && (
         <ConfirmacaoDeExclusao
@@ -610,5 +631,171 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
         </Botao>
       </div>
     </Cartao>
+  );
+}
+
+/**
+ * Amortização extraordinária (§4.7).
+ *
+ * Só dava para pagar a próxima parcela. Quem recebe um dinheiro e abate as
+ * ÚLTIMAS não tinha como registrar — e é justamente a operação que mais muda o
+ * resultado de um financiamento longo.
+ *
+ * A tela pede o número de parcelas que sumiram porque quem sabe é o BANCO:
+ * cada instituição arredonda de um jeito, e recalcular por fora daria um
+ * cronograma que não bate com o extrato. O app faz a conta do dinheiro; o
+ * cronograma quem dita é o contrato.
+ */
+function AmortizacaoExtraordinaria({
+  dividaId,
+  saldoDevedor,
+  parcelasRestantes,
+  aoTerminar,
+}: {
+  dividaId: string;
+  saldoDevedor: Centavos;
+  parcelasRestantes: number;
+  aoTerminar: () => void;
+}) {
+  const cliente = useQueryClient();
+  const { mostrar } = usarAviso();
+
+  const [valor, setValor] = useState<Centavos>(0);
+  const [data, setData] = useState<DataISO>(hoje());
+  const [modo, setModo] = useState<'prazo' | 'parcela'>('prazo');
+  const [reduzidas, setReduzidas] = useState('');
+
+  const registradas = useQuery({
+    queryKey: ['amortizacoes', dividaId],
+    queryFn: () => listarAmortizacoes(dividaId),
+  });
+
+  const invalidar = async () => {
+    await cliente.invalidateQueries();
+  };
+
+  const amortizar = useMutation({
+    mutationFn: () =>
+      amortizarDivida({
+        dividaId,
+        valor,
+        data,
+        modo,
+        parcelasReduzidas: Number(reduzidas) || 0,
+      }),
+    onSuccess: async () => {
+      await invalidar();
+      aoTerminar();
+      mostrar('Amortização registrada.');
+    },
+  });
+
+  const remover = useMutation({
+    mutationFn: (id: string) => excluirAmortizacao(id),
+    onSuccess: invalidar,
+  });
+
+  const quita = valor >= saldoDevedor && saldoDevedor > 0;
+  const valido =
+    valor > 0 && (modo === 'parcela' || quita || (Number(reduzidas) || 0) > 0);
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      <CampoValor valor={valor} aoMudar={setValor} rotulo="Quanto você pagou a mais" autoFocus />
+
+      {quita && (
+        <p className="rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-200">
+          Isso cobre o saldo devedor inteiro: a dívida fica quitada.
+        </p>
+      )}
+
+      {!quita && (
+        <>
+          <Campo
+            rotulo="O que o banco reduziu"
+            ajuda={
+              modo === 'prazo'
+                ? 'A parcela continua a mesma e o financiamento acaba antes. Economiza mais juros, porque juros correm sobre tempo.'
+                : 'O prazo continua e a parcela cai. Alivia o mês, economiza menos.'
+            }
+          >
+            <div className="flex flex-wrap gap-2">
+              <Chip ativo={modo === 'prazo'} aoClicar={() => setModo('prazo')}>
+                O prazo
+              </Chip>
+              <Chip ativo={modo === 'parcela'} aoClicar={() => setModo('parcela')}>
+                A parcela
+              </Chip>
+            </div>
+          </Campo>
+
+          {modo === 'prazo' && (
+            <Campo
+              rotulo={`Quantas parcelas sumiram (de ${parcelasRestantes} restantes)`}
+              ajuda="O número é o do banco. Cada instituição arredonda de um jeito, e uma conta nossa daria um cronograma que não bate com o extrato."
+            >
+              <input
+                inputMode="numeric"
+                value={reduzidas}
+                onChange={(e) => setReduzidas(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                placeholder="12"
+                className={ENTRADA}
+              />
+            </Campo>
+          )}
+        </>
+      )}
+
+      <Campo rotulo="Quando">
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => e.target.value && setData(e.target.value)}
+          className={ENTRADA}
+        />
+      </Campo>
+
+      {amortizar.isError && (
+        <p className="text-sm text-red-400">{(amortizar.error as Error).message}</p>
+      )}
+
+      <div className="flex gap-2">
+        <Botao aoClicar={() => amortizar.mutate()} desabilitado={!valido || amortizar.isPending}>
+          {amortizar.isPending ? 'Registrando…' : 'Registrar amortização'}
+        </Botao>
+        <Botao tipo="secundario" aoClicar={aoTerminar}>
+          Cancelar
+        </Botao>
+      </div>
+
+      {(registradas.data ?? []).length > 0 && (
+        <ul className="space-y-1 border-t border-borda pt-2">
+          {registradas.data?.map((item) => (
+            <li key={item.id} className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="text-slate-500">
+                {formatarBR(item.data)} ·{' '}
+                {item.modo === 'prazo'
+                  ? `−${item.parcelasReduzidas} parcela(s)`
+                  : 'parcela menor'}
+              </span>
+              <span className="flex items-baseline gap-3">
+                <Dinheiro centavos={item.valor} className="text-slate-300" />
+                <button
+                  onClick={() => remover.mutate(item.id)}
+                  className="text-slate-600 hover:text-red-400"
+                >
+                  remover
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        O extra abate principal puro — não tem juros. É por isso que ele compensa, e é por isso que
+        a parcela normal, essa sim, se divide em amortização e juros.
+      </p>
+    </div>
   );
 }

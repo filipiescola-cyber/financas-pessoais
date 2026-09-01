@@ -12,7 +12,9 @@ import { hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/dat
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import {
   resumoDaDivida,
+  tabelaComAmortizacoes,
   tabelaDeAmortizacao,
+  type AmortizacaoExtra,
   type ParcelaDaDivida,
   type ResumoDaDivida,
   type SistemaDeAmortizacao,
@@ -89,24 +91,49 @@ export async function listarDividas(incluirQuitadas = false): Promise<DividaCalc
   let consulta = supabase.from('dividas').select('*');
   if (!incluirQuitadas) consulta = consulta.eq('ativo', true);
 
-  const { data, error } = await consulta;
+  const [{ data, error }, extras] = await Promise.all([
+    consulta,
+    supabase
+      .from('amortizacoes_divida')
+      .select('divida_id, valor, apos_parcela, modo, parcelas_reduzidas'),
+  ]);
   if (error) throw error;
+  if (extras.error) throw extras.error;
+
+  const porDivida = new Map<string, AmortizacaoExtra[]>();
+  for (const linha of extras.data ?? []) {
+    porDivida.set(linha.divida_id, [
+      ...(porDivida.get(linha.divida_id) ?? []),
+      {
+        aposParcela: linha.apos_parcela,
+        valor: paraCentavos(linha.valor),
+        modo: linha.modo as 'prazo' | 'parcela',
+        parcelasReduzidas: linha.parcelas_reduzidas,
+      },
+    ]);
+  }
 
   return (data ?? [])
     .map(daLinha)
     .map((divida) => {
-      const tabela = tabelaDeAmortizacao(
+      const tabela = tabelaComAmortizacoes(
         divida.valorFinanciado,
         divida.taxaMensal,
         divida.parcelas,
         divida.sistema,
+        porDivida.get(divida.id) ?? [],
       );
 
       return {
         divida,
         tabela,
         resumo: resumoDaDivida(tabela, divida.parcelasPagas),
-        quitacao: somarMeses(primeiroDiaDoMes(divida.primeiraParcela), divida.parcelas - 1),
+        // Com amortização o prazo encurta, então a quitação vem do TAMANHO da
+        // tabela — não mais do número de parcelas do contrato original.
+        quitacao: somarMeses(
+          primeiroDiaDoMes(divida.primeiraParcela),
+          Math.max(0, tabela.length - 1),
+        ),
       };
     })
     .sort((a, b) => b.divida.taxaMensal - a.divida.taxaMensal);
@@ -264,6 +291,107 @@ export async function desfazerParcela(dividaId: string): Promise<void> {
   if (erroApagar) throw new Error(erroApagar.message);
 
   await atualizarParcelasPagas(dividaId, divida.parcelas_pagas - 1);
+}
+
+/**
+ * Amortização extraordinária: dinheiro a mais, fora da parcela (§4.7).
+ *
+ * O lançamento é UMA linha de transferência, não duas: aqui não há juros. O
+ * extra abate principal puro — que é exatamente por isso que ele compensa, e
+ * por isso que a parcela normal, essa sim, se divide em amortização e juros.
+ *
+ * `parcelasReduzidas` vem do banco. Cada instituição arredonda de um jeito, e
+ * recalcular por fora daria um cronograma que não bate com o extrato.
+ */
+export async function amortizarDivida(dados: {
+  dividaId: string;
+  valor: Centavos;
+  data: DataISO;
+  modo: 'prazo' | 'parcela';
+  parcelasReduzidas: number;
+}): Promise<void> {
+  const { data: linha, error } = await supabase
+    .from('dividas')
+    .select('nome, conta_id, parcelas_pagas')
+    .eq('id', dados.dividaId)
+    .single();
+  if (error) throw new Error(error.message);
+
+  let transacaoId: string | null = null;
+
+  if (linha.conta_id) {
+    const { data: criada, error: erroLancamento } = await supabase
+      .from('transacoes')
+      .insert({
+        conta_id: linha.conta_id,
+        valor: paraNumerico(-Math.abs(dados.valor)),
+        // Transferência, não despesa: abate principal de um gasto já contado.
+        tipo: 'transferencia',
+        data_competencia: dados.data,
+        data_caixa: dados.data,
+        descricao: `${linha.nome} — amortização`,
+        origem: 'manual',
+        revisado: true,
+        divida_id: dados.dividaId,
+      })
+      .select('id')
+      .single();
+    if (erroLancamento) throw new Error(erroLancamento.message);
+    transacaoId = criada.id;
+  }
+
+  const { error: erroAmortizacao } = await supabase.from('amortizacoes_divida').insert({
+    divida_id: dados.dividaId,
+    valor: paraNumerico(Math.abs(dados.valor)),
+    data: dados.data,
+    // Ela entra depois da última parcela paga: é onde o contrato é refeito.
+    apos_parcela: linha.parcelas_pagas,
+    modo: dados.modo,
+    parcelas_reduzidas: dados.modo === 'prazo' ? Math.max(0, dados.parcelasReduzidas) : 0,
+    transacao_id: transacaoId,
+  });
+  if (erroAmortizacao) throw new Error(erroAmortizacao.message);
+}
+
+export type AmortizacaoRegistrada = {
+  id: string;
+  valor: Centavos;
+  data: DataISO;
+  modo: 'prazo' | 'parcela';
+  parcelasReduzidas: number;
+};
+
+export async function listarAmortizacoes(dividaId: string): Promise<AmortizacaoRegistrada[]> {
+  const { data, error } = await supabase
+    .from('amortizacoes_divida')
+    .select('id, valor, data, modo, parcelas_reduzidas')
+    .eq('divida_id', dividaId)
+    .order('data');
+  if (error) throw error;
+
+  return (data ?? []).map((linha) => ({
+    id: linha.id,
+    valor: paraCentavos(linha.valor),
+    data: linha.data,
+    modo: linha.modo as 'prazo' | 'parcela',
+    parcelasReduzidas: linha.parcelas_reduzidas,
+  }));
+}
+
+/** Desfaz uma amortização, apagando o lançamento junto. */
+export async function excluirAmortizacao(id: string): Promise<void> {
+  const { data: linha } = await supabase
+    .from('amortizacoes_divida')
+    .select('transacao_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  const { error } = await supabase.from('amortizacoes_divida').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+
+  if (linha?.transacao_id) {
+    await supabase.from('transacoes').delete().eq('id', linha.transacao_id);
+  }
 }
 
 export async function quitarDivida(id: string, data: DataISO): Promise<void> {
