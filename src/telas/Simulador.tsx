@@ -181,8 +181,8 @@ export function Simulador() {
           )}
 
           {/* 3º: o formato do estrago, mês a mês. */}
-          <Secao titulo="Mês a mês, antes e depois">
-            <MiniFluxo impacto={impacto} />
+          <Secao titulo="Saldo no fim de cada mês, antes e depois">
+            <MiniFluxo impacto={impacto} parcelas={parcelas} />
           </Secao>
 
           {/* 4º: compromisso mensal depois da compra. */}
@@ -229,7 +229,7 @@ export function Simulador() {
  *
  * Sem moralizar (§8.4): a barra mostra o tamanho, não opina sobre ele.
  */
-function MiniFluxo({ impacto }: { impacto: ImpactoDaCompra }) {
+function MiniFluxo({ impacto, parcelas }: { impacto: ImpactoDaCompra; parcelas: number }) {
   // Uma escala só para os doze meses, senão cada barra mediria uma coisa e a
   // comparação — que é o ponto — não existiria.
   const escala = Math.max(
@@ -292,7 +292,8 @@ function MiniFluxo({ impacto }: { impacto: ImpactoDaCompra }) {
           <span className="h-1.5 w-4 rounded-full bg-emerald-500" /> O que sobra
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-1.5 w-4 rounded-full bg-amber-500/60" /> O que a compra levou
+          <span className="h-1.5 w-4 rounded-full bg-amber-500/60" /> O que a compra já levou até
+          aqui
         </span>
         {temNegativo && (
           <span className="flex items-center gap-1.5">
@@ -300,6 +301,17 @@ function MiniFluxo({ impacto }: { impacto: ImpactoDaCompra }) {
           </span>
         )}
       </p>
+
+      {parcelas > 1 && (
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          Cada linha é o <strong>saldo</strong> no fim do mês, não o gasto do mês. Saldo acumula:
+          no terceiro mês você já pagou três parcelas de{' '}
+          <span className="numero dinheiro text-slate-400">
+            {formatar(impacto.valorDaParcela)}
+          </span>
+          , então a distância entre os dois números é três vezes ela — e cresce até a última.
+        </p>
+      )}
     </Cartao>
   );
 }
