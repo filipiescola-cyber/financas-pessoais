@@ -32,7 +32,11 @@ import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
 import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
-import { previstoAteOMes, previstoDoMes, type ItemPrevisto } from '../dominio/previsto';
+import {
+  previstoAteOMes,
+  previstoNoCaixaDoMes,
+  type ItemPrevisto,
+} from '../dominio/previsto';
 import {
   agruparPorCaixa,
   faturasQueAindaVaoSair,
@@ -93,25 +97,38 @@ export function Transacoes() {
   // previstas do mês quanto para a ponte que abre o saldo dos meses distantes.
   const recorrenciasPrevistas = (recorrencias.data ?? [])
     .filter((r) => contaId === null || r.contaId === contaId)
-    .map((r) => ({
-      id: r.id,
-      descricao: r.descricao,
-      tipo: r.tipo,
-      valorPrevisto: r.valorPrevisto,
-      dia: r.dia,
-      regra: r.regra,
-      comecaEm: r.comecaEm,
-      terminaEm: r.terminaEm,
-    }));
+    .map((r) => {
+      // Recorrência no cartão não sai do caixa no dia da cobrança: ela entra
+      // numa fatura, e o dinheiro só sai no vencimento dela (§2.1). Sem a
+      // configuração do cartão aqui, o previsto baixava o saldo semanas antes
+      // e a linha aparecia solta, ao lado da fatura em que deveria estar.
+      const cartao = cartoes.data?.find((c) => c.contaId === r.contaId);
+
+      return {
+        id: r.id,
+        descricao: r.descricao,
+        tipo: r.tipo,
+        valorPrevisto: r.valorPrevisto,
+        dia: r.dia,
+        regra: r.regra,
+        comecaEm: r.comecaEm,
+        terminaEm: r.terminaEm,
+        cartao: cartao
+          ? { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento }
+          : null,
+      };
+    });
 
   const geradas = useQuery({
     queryKey: ['ocorrencias-geradas', mes],
-    queryFn: () => ocorrenciasDoPeriodo(mes, ultimoDiaDoMes(mes)),
+    // Dois meses para trás: a compra de setembro no cartão cai na fatura de
+    // outubro, e é a competência dela que diz se já foi gerada.
+    queryFn: () => ocorrenciasDoPeriodo(somarMeses(mes, -2), ultimoDiaDoMes(mes)),
   });
 
   const previstos =
-    recorrencias.data && geradas.data
-      ? previstoDoMes(
+    recorrencias.data && geradas.data && cartoes.data
+      ? previstoNoCaixaDoMes(
           recorrenciasPrevistas,
           geradas.data.geradas,
           mes,
@@ -205,7 +222,7 @@ export function Transacoes() {
     .filter((p) => p.valor !== null)
     .map((p) => ({
       valor: p.tipo === 'receita' ? p.valor! : -p.valor!,
-      dataCaixa: p.dataPrevista,
+      dataCaixa: p.dataCaixa,
       transacaoPaiId: null,
     }));
 
@@ -446,8 +463,10 @@ function agruparPorDiaDeCaixa(
   }
 
   for (const previsto of previstos) {
-    mapa.set(previsto.dataPrevista, [
-      ...(mapa.get(previsto.dataPrevista) ?? []),
+    // Pelo dia em que o dinheiro sai, não pelo da cobrança: no cartão as duas
+    // datas são separadas por semanas, e a lista corre por caixa (§2.4).
+    mapa.set(previsto.dataCaixa, [
+      ...(mapa.get(previsto.dataCaixa) ?? []),
       { tipo: 'previsto', previsto },
     ]);
   }
@@ -756,6 +775,16 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
               {atrasado ? 'Era para ter acontecido' : 'Previsto'}
               {previsto.valor === null && ' · valor varia'}
             </p>
+            {/*
+              No cartão a cobrança e a saída de dinheiro caem em datas
+              diferentes. A linha está no dia do vencimento, então precisa dizer
+              de qual compra ela veio — senão parece um lançamento avulso.
+            */}
+            {previsto.vencimentoDaFatura && (
+              <p className="truncate text-xs text-slate-600">
+                Cobrança de {formatarBR(previsto.dataPrevista)} · entra na fatura
+              </p>
+            )}
           </div>
         </div>
 

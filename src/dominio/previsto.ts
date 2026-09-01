@@ -11,7 +11,8 @@
 // o que já entrou e o que falta, e o lançamento ser uma decisão sua.
 
 import type { Centavos } from './dinheiro';
-import { somarMeses, type DataISO } from './datas';
+import { somarMeses, ultimoDiaDoMes, type DataISO } from './datas';
+import { faturaDeReferencia, type ConfiguracaoDoCartao } from './fatura';
 import type { Feriados } from './diasUteis';
 import { chaveDaOcorrencia, dataDaOcorrencia, type RegraDoDia } from './recorrencias';
 
@@ -30,6 +31,15 @@ export type RecorrenciaPrevista = {
   comecaEm: DataISO;
   /** Prazo, quando a recorrência tem fim. Depois dele ela some do previsto. */
   terminaEm: DataISO | null;
+  /**
+   * A configuração do cartão, quando a recorrência é cobrada num (§2.1).
+   *
+   * Sem ela o previsto de cartão saía do caixa no dia da COMPRA. Assinatura no
+   * cartão dia 10 baixava o saldo no dia 10, quando o dinheiro só sai no
+   * vencimento da fatura — e ainda aparecia solta na lista, ao lado da fatura
+   * em que deveria estar dentro.
+   */
+  cartao?: ConfiguracaoDoCartao | null;
 };
 
 export type ItemPrevisto = {
@@ -37,7 +47,15 @@ export type ItemPrevisto = {
   descricao: string;
   tipo: 'receita' | 'despesa';
   valor: Centavos | null;
+  /** Quando o fato acontece: a data da compra ou do vencimento da conta. */
   dataPrevista: DataISO;
+  /**
+   * Quando o dinheiro sai (§2.4). Igual à prevista fora do cartão; no cartão é
+   * o vencimento da fatura em que a compra cai.
+   */
+  dataCaixa: DataISO;
+  /** Em qual fatura ela entra, quando é de cartão. Só para a tela dizer. */
+  vencimentoDaFatura: DataISO | null;
   situacao: SituacaoPrevista;
 };
 
@@ -83,6 +101,10 @@ export function previstoDoMes(
           ? 'atrasado'
           : 'aguardando';
 
+      const noCartao = recorrencia.cartao
+        ? faturaDeReferencia(dataPrevista, recorrencia.cartao).dataVencimento
+        : null;
+
       return [
         {
           recorrenciaId: recorrencia.id,
@@ -90,6 +112,8 @@ export function previstoDoMes(
           tipo: recorrencia.tipo,
           valor: recorrencia.valorPrevisto,
           dataPrevista,
+          dataCaixa: noCartao ?? dataPrevista,
+          vencimentoDaFatura: noCartao,
           situacao,
         },
       ];
@@ -167,9 +191,42 @@ export function previstoAteOMes(
   for (let mes = deMes; mes < ateMes; mes = somarMeses(mes, 1)) {
     for (const item of previstoDoMes(recorrencias, jaLancadas, mes, hoje, feriados, puladas)) {
       if (item.situacao === 'lancado' || item.valor === null) continue;
+      // Compra de cartão cuja fatura só vence depois da ponte ainda não saiu
+      // daqui: ela pertence ao mês em que o dinheiro sai, e é lá que a lista a
+      // conta. Sem esta linha ela entrava duas vezes no saldo.
+      if (item.dataCaixa >= ateMes) continue;
       total += item.tipo === 'receita' ? item.valor : -item.valor;
     }
   }
 
   return total;
+}
+
+/**
+ * O previsto que sai do CAIXA no mês (§2.4).
+ *
+ * A lista de lançamentos corre por caixa, e `previstoDoMes` filtra por
+ * competência — as duas coincidem fora do cartão e divergem por semanas dentro
+ * dele. Uma assinatura cobrada no cartão dia 10 de setembro só tira dinheiro no
+ * vencimento de outubro, e é em outubro que ela pertence a esta lista.
+ *
+ * Olha dois meses para trás porque é o máximo que uma compra pode esperar entre
+ * o dia dela e o vencimento da fatura em que caiu.
+ */
+export function previstoNoCaixaDoMes(
+  recorrencias: readonly RecorrenciaPrevista[],
+  jaLancadas: ReadonlySet<string>,
+  mes: DataISO,
+  hoje: DataISO,
+  feriados: Feriados,
+  puladas: ReadonlySet<string> = new Set(),
+): ItemPrevisto[] {
+  const fim = ultimoDiaDoMes(mes);
+
+  return [somarMeses(mes, -2), somarMeses(mes, -1), mes]
+    .flatMap((competencia) =>
+      previstoDoMes(recorrencias, jaLancadas, competencia, hoje, feriados, puladas),
+    )
+    .filter((item) => item.dataCaixa >= mes && item.dataCaixa <= fim)
+    .sort((a, b) => a.dataCaixa.localeCompare(b.dataCaixa));
 }

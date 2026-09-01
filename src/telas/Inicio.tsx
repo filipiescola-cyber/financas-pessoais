@@ -322,6 +322,7 @@ function LinhaDeFatura({
  */
 function PrevistoDoMes({ mes }: { mes: string }) {
   const recorrencias = usarRecorrencias();
+  const cartoes = usarCartoes();
   const feriados = usarFeriados();
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
@@ -346,6 +347,16 @@ function PrevistoDoMes({ mes }: { mes: string }) {
 
   if (!recorrencias.data || recorrencias.data.length === 0 || !geradas.data) return null;
 
+  // No cartão a cobrança e a saída de dinheiro caem em datas diferentes (§2.1).
+  // A lista fica na data da cobrança, que é a que a pessoa reconhece, mas cada
+  // linha diz em qual fatura o valor entra.
+  const cartaoPorConta = new Map(
+    (cartoes.data ?? []).map((c) => [
+      c.contaId,
+      { diaFechamento: c.diaFechamento, diaVencimento: c.diaVencimento },
+    ]),
+  );
+
   const itens = previstoDoMes(
     recorrencias.data.map((r) => ({
       id: r.id,
@@ -356,6 +367,7 @@ function PrevistoDoMes({ mes }: { mes: string }) {
       regra: r.regra,
       comecaEm: r.comecaEm,
       terminaEm: r.terminaEm,
+      cartao: cartaoPorConta.get(r.contaId) ?? null,
     })),
     geradas.data.geradas,
     mes,
@@ -440,6 +452,8 @@ function LinhaPrevista({
             {atrasado ? 'Era para ter acontecido em ' : 'Previsto para '}
             {formatarBR(item.dataPrevista)}
             {item.valor === null && ' · valor varia'}
+            {/* No cartão a cobrança é numa data e a saída de dinheiro é noutra (§2.1). */}
+            {item.vencimentoDaFatura && ` · entra na fatura de ${formatarBR(item.vencimentoDaFatura)}`}
           </p>
         </div>
 

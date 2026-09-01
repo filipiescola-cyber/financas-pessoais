@@ -22,7 +22,7 @@ import { mediana, projetarRenda, type RendaProjetada } from '../dominio/projecao
 import { entraNaProjecaoDeRenda, type Natureza } from '../dominio/natureza';
 import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
 import { lerConfig } from './config';
-import { previstoDoMes, resumirPrevisto } from '../dominio/previsto';
+import { previstoNoCaixaDoMes, resumirPrevisto } from '../dominio/previsto';
 import { ocorrenciasDoPeriodo } from './geracaoRecorrencias';
 import { listarFeriados } from './indicadores';
 import { listarDividas } from './dividas';
@@ -75,7 +75,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     supabase
       .from('recorrencias')
       .select(
-        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza',
+        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id',
       )
       .eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
@@ -239,13 +239,26 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       0,
     );
 
-  const [ocorrencias, feriados] = await Promise.all([
-    ocorrenciasDoPeriodo(primeiroDiaDesteMes, ultimoDiaDoMes(referencia)),
+  const [ocorrencias, feriados, cartoes] = await Promise.all([
+    // Dois meses para trás: a competência de uma compra de cartão fica no mês
+    // anterior ao do vencimento, e é ela que diz se a ocorrência já foi gerada.
+    ocorrenciasDoPeriodo(somarMeses(primeiroDiaDesteMes, -2), ultimoDiaDoMes(referencia)),
     listarFeriados(),
+    supabase.from('cartoes').select('conta_id, dia_fechamento, dia_vencimento'),
   ]);
 
+  const cartaoPorConta = new Map(
+    (cartoes.data ?? []).map((c) => [
+      c.conta_id,
+      { diaFechamento: c.dia_fechamento, diaVencimento: c.dia_vencimento },
+    ]),
+  );
+
+  // Por CAIXA, não por competência: `aindaNesteMes` responde quanto ainda se
+  // mexe de dinheiro no mês, e recorrência no cartão só sai no vencimento da
+  // fatura (§2.1, §2.4). Contá-la aqui adiantava a saída em semanas.
   const resumoDoPrevisto = resumirPrevisto(
-    previstoDoMes(
+    previstoNoCaixaDoMes(
       (recorrencias.data ?? []).map((r) => ({
         id: r.id,
         descricao: r.descricao,
@@ -255,6 +268,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
         regra: r.regra_do_dia as RegraDoDia,
         comecaEm: r.comeca_em,
         terminaEm: r.termina_em,
+        cartao: cartaoPorConta.get(r.conta_id) ?? null,
       })),
       ocorrencias.geradas,
       primeiroDiaDesteMes,

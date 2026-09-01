@@ -3,6 +3,7 @@ import {
   chaveDaOcorrencia,
   previstoAteOMes,
   previstoDoMes,
+  previstoNoCaixaDoMes,
   resumirPrevisto,
   type RecorrenciaPrevista,
 } from '../src/dominio/previsto';
@@ -223,5 +224,54 @@ describe('ocorrência dispensada', () => {
       [aluguel], new Set(), MES, '2026-10-01', '2026-08-01', FERIADOS, puladas,
     );
     expect(pulando - semPular).toBe(150000);
+  });
+});
+
+describe('previsto no cartão', () => {
+  const CARTAO = { diaFechamento: 2, diaVencimento: 9 };
+
+  const assinatura: RecorrenciaPrevista = {
+    id: 'r9',
+    descricao: 'Curso de Inglês',
+    tipo: 'despesa',
+    valorPrevisto: 72900,
+    dia: 10,
+    regra: 'fixo',
+    comecaEm: '2020-01-01',
+    terminaEm: null,
+    cartao: CARTAO,
+  };
+
+  it('o dinheiro sai no vencimento da fatura, não no dia da compra', () => {
+    // O bug: assinatura cobrada no cartão dia 10 baixava o saldo no dia 10.
+    const [item] = previstoDoMes([assinatura], new Set(), '2026-09-01', '2026-09-01', FERIADOS);
+    expect(item!.dataPrevista).toBe('2026-09-10');
+    expect(item!.dataCaixa).toBe('2026-10-09');
+    expect(item!.vencimentoDaFatura).toBe('2026-10-09');
+  });
+
+  it('fora do cartão, caixa e competência coincidem', () => {
+    const [item] = previstoDoMes([aluguel], new Set(), MES, '2026-08-01', FERIADOS);
+    expect(item!.dataCaixa).toBe(item!.dataPrevista);
+    expect(item!.vencimentoDaFatura).toBeNull();
+  });
+
+  it('a lista por caixa põe a compra de setembro no mês de outubro', () => {
+    // É onde o dinheiro sai — e é onde a fatura está.
+    const setembro = previstoNoCaixaDoMes(
+      [assinatura], new Set(), '2026-09-01', '2026-09-01', FERIADOS,
+    );
+    const outubro = previstoNoCaixaDoMes(
+      [assinatura], new Set(), '2026-10-01', '2026-09-01', FERIADOS,
+    );
+
+    expect(setembro.map((i) => i.dataPrevista)).not.toContain('2026-09-10');
+    expect(outubro.map((i) => i.dataPrevista)).toContain('2026-09-10');
+  });
+
+  it('sem cartão, a lista por caixa é a mesma do mês', () => {
+    const porCaixa = previstoNoCaixaDoMes([aluguel], new Set(), MES, '2026-08-01', FERIADOS);
+    const doMes = previstoDoMes([aluguel], new Set(), MES, '2026-08-01', FERIADOS);
+    expect(porCaixa.map((i) => i.dataCaixa)).toEqual(doMes.map((i) => i.dataCaixa));
   });
 });
