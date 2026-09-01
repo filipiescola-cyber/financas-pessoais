@@ -33,16 +33,39 @@ export type Movimento = {
   tipo: 'aporte' | 'resgate';
   valor: Centavos;
   data: DataISO;
+  /**
+   * Percentual do indexador DESTE aporte, quando difere do da aplicação.
+   *
+   * Não é o caso comum — quase sempre o aporte segue a taxa contratada da
+   * aplicação, e aí isto é nulo. Mas quando difere, herdar a taxa da aplicação
+   * rende o dinheiro novo à taxa velha: um número inventado que não avisa que
+   * é inventado.
+   */
+  percentual?: number | null;
+  /** Vencimento próprio deste aporte. Só informativo: não muda o rendimento. */
+  vencimento?: DataISO | null;
 };
 
-/** Um pedaço de principal ainda vivo, com a data em que entrou. */
-export type Parcela = { data: DataISO; valor: Centavos };
+/** Um pedaço de principal ainda vivo, com a data e a taxa em que entrou. */
+export type Parcela = {
+  data: DataISO;
+  valor: Centavos;
+  /** Herdado do aporte. Nulo segue o papel da aplicação. */
+  percentual?: number | null;
+};
 
 /** Aplicação sem o par (valor, data): eles passam a vir dos movimentos. */
 export type Papel = Omit<Aplicacao, 'valorAplicado' | 'dataAplicacao'>;
 
 function aplicacaoDaParcela(papel: Papel, parcela: Parcela): Aplicacao {
-  return { ...papel, valorAplicado: parcela.valor, dataAplicacao: parcela.data };
+  return {
+    ...papel,
+    // A taxa da parcela vence a da aplicação: dinheiro que entrou a 105% não
+    // rende a 120% só porque o primeiro aporte foi contratado assim.
+    percentualIndexador: parcela.percentual ?? papel.percentualIndexador,
+    valorAplicado: parcela.valor,
+    dataAplicacao: parcela.data,
+  };
 }
 
 /**
@@ -68,7 +91,13 @@ export function parcelasVivas(
 
   for (const movimento of ordenados) {
     if (movimento.tipo === 'aporte') {
-      if (movimento.valor > 0) parcelas.push({ data: movimento.data, valor: movimento.valor });
+      if (movimento.valor > 0) {
+        parcelas.push({
+          data: movimento.data,
+          valor: movimento.valor,
+          percentual: movimento.percentual ?? null,
+        });
+      }
       continue;
     }
 

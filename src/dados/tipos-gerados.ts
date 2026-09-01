@@ -522,6 +522,7 @@ export type Database = {
         Row: {
           ativo: boolean
           calculo_automatico: boolean
+          conta_id: string | null
           data_aplicacao: string
           data_conferencia: string | null
           id: string
@@ -542,6 +543,7 @@ export type Database = {
         Insert: {
           ativo?: boolean
           calculo_automatico?: boolean
+          conta_id?: string | null
           data_aplicacao: string
           data_conferencia?: string | null
           id?: string
@@ -562,6 +564,7 @@ export type Database = {
         Update: {
           ativo?: boolean
           calculo_automatico?: boolean
+          conta_id?: string | null
           data_aplicacao?: string
           data_conferencia?: string | null
           id?: string
@@ -579,7 +582,22 @@ export type Database = {
           valor_aplicado?: number
           vencimento?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "investimentos_conta_id_fkey"
+            columns: ["conta_id"]
+            isOneToOne: false
+            referencedRelation: "contas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investimentos_conta_id_fkey"
+            columns: ["conta_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_contas"
+            referencedColumns: ["conta_id"]
+          },
+        ]
       }
       memoria_descricao: {
         Row: {
@@ -756,28 +774,34 @@ export type Database = {
           data: string
           id: string
           investimento_id: string
+          percentual_indexador: number | null
           tipo: string
           transacao_id: string | null
           usuario_id: string
           valor: number
+          vencimento: string | null
         }
         Insert: {
           data: string
           id?: string
           investimento_id: string
+          percentual_indexador?: number | null
           tipo: string
           transacao_id?: string | null
           usuario_id?: string
           valor: number
+          vencimento?: string | null
         }
         Update: {
           data?: string
           id?: string
           investimento_id?: string
+          percentual_indexador?: number | null
           tipo?: string
           transacao_id?: string | null
           usuario_id?: string
           valor?: number
+          vencimento?: string | null
         }
         Relationships: [
           {

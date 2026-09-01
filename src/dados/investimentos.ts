@@ -32,6 +32,14 @@ export type Investimento = {
   saldoManual: Centavos | null;
   saldoConferido: Centavos | null;
   dataConferencia: DataISO | null;
+  /**
+   * A conta de investimento onde a aplicação mora (§7.4).
+   *
+   * Antes o destino do aporte era sempre a PRIMEIRA conta do tipo criada: quem
+   * tem C6 Invest e E Trade via tudo cair no C6. A aplicação não sabia onde
+   * morava, então o código escolhia por ela — e escolhia errado.
+   */
+  contaId: string | null;
   ativo: boolean;
 };
 
@@ -78,6 +86,7 @@ export async function listarInvestimentos(incluirArquivados = false): Promise<In
     saldoManual: linha.saldo_manual === null ? null : paraCentavos(linha.saldo_manual),
     saldoConferido: linha.saldo_conferido === null ? null : paraCentavos(linha.saldo_conferido),
     dataConferencia: linha.data_conferencia,
+    contaId: linha.conta_id,
     ativo: linha.ativo,
   }));
 }
@@ -102,6 +111,8 @@ export type NovoInvestimento = {
    * surgir do nada.
    */
   contaOrigemId?: string | null;
+  /** Onde a aplicação mora. Sem isto, o aporte não sabe para onde ir. */
+  contaId?: string | null;
 };
 
 /**
@@ -151,6 +162,7 @@ export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
     data_aplicacao: novo.dataAplicacao,
     valor_aplicado: paraNumerico(novo.valorAplicado),
     vencimento: novo.vencimento ?? null,
+    conta_id: novo.contaId ?? null,
     liquidez_diaria: novo.liquidezDiaria ?? true,
     isento_ir: TIPOS_ISENTOS.includes(novo.tipo),
     calculo_automatico: calculoAutomatico,
@@ -171,7 +183,10 @@ export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
     valor: novo.valorAplicado,
     data: novo.dataAplicacao,
     contaDoCaixa: novo.contaOrigemId ?? null,
+    contaDaAplicacao: novo.contaId ?? null,
     descricao: `Aplicação em ${novo.nome.trim()}`,
+    percentual: null,
+    vencimento: novo.vencimento ?? null,
   });
 }
 
@@ -197,15 +212,23 @@ async function registrarMovimento(dados: {
   valor: Centavos;
   data: DataISO;
   contaDoCaixa: string | null;
+  /** Onde a aplicação mora. Nulo cai na conta genérica, como antes. */
+  contaDaAplicacao?: string | null;
   descricao: string;
+  percentual?: number | null;
+  vencimento?: DataISO | null;
 }): Promise<void> {
   const ehAporte = dados.tipo === 'aporte';
+  // O outro lado da transferência é a conta DA APLICAÇÃO. Cair sempre na
+  // primeira conta de investimento criada fazia o dinheiro aparecer no lugar
+  // errado para quem tem mais de uma corretora.
+  const daAplicacao = dados.contaDaAplicacao ?? (await contaDeInvestimentos());
 
   const ids = dados.contaDoCaixa
     ? await criarTransferencia({
         valor: dados.valor,
-        contaOrigemId: ehAporte ? dados.contaDoCaixa : await contaDeInvestimentos(),
-        contaDestinoId: ehAporte ? await contaDeInvestimentos() : dados.contaDoCaixa,
+        contaOrigemId: ehAporte ? dados.contaDoCaixa : daAplicacao,
+        contaDestinoId: ehAporte ? daAplicacao : dados.contaDoCaixa,
         data: dados.data,
         descricao: dados.descricao,
       })
@@ -216,6 +239,8 @@ async function registrarMovimento(dados: {
     tipo: dados.tipo,
     valor: paraNumerico(dados.valor),
     data: dados.data,
+    percentual_indexador: dados.percentual ?? null,
+    vencimento: dados.vencimento ?? null,
     // Guarda a perna que saiu do caixa: é por ela que se acha o lançamento
     // a partir do investimento, e vice-versa.
     transacao_id: ids[0] ?? null,
@@ -238,12 +263,19 @@ export async function resgatarInvestimento(dados: {
   contaDestinoId: string;
   encerrar: boolean;
 }): Promise<void> {
+  const { data: aplicacao } = await supabase
+    .from('investimentos')
+    .select('conta_id')
+    .eq('id', dados.investimentoId)
+    .maybeSingle();
+
   await registrarMovimento({
     investimentoId: dados.investimentoId,
     tipo: 'resgate',
     valor: dados.valor,
     data: dados.data,
     contaDoCaixa: dados.contaDestinoId,
+    contaDaAplicacao: aplicacao?.conta_id ?? null,
     descricao: `Resgate de ${dados.nome.trim()}`,
   });
 
@@ -290,6 +322,7 @@ export async function atualizarInvestimento(
     instituicao?: string | null;
     vencimento?: DataISO | null;
     liquidezDiaria?: boolean;
+    contaId?: string | null;
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -302,6 +335,7 @@ export async function atualizarInvestimento(
       ...(campos.liquidezDiaria !== undefined
         ? { liquidez_diaria: campos.liquidezDiaria }
         : {}),
+      ...(campos.contaId !== undefined ? { conta_id: campos.contaId } : {}),
     })
     .eq('id', id);
 
@@ -507,7 +541,7 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
 async function listarMovimentos(): Promise<Map<string, Movimento[]>> {
   const { data, error } = await supabase
     .from('movimentacoes_investimento')
-    .select('investimento_id, tipo, valor, data')
+    .select('investimento_id, tipo, valor, data, percentual_indexador')
     .order('data');
   if (error) throw error;
 
@@ -519,6 +553,8 @@ async function listarMovimentos(): Promise<Map<string, Movimento[]>> {
       tipo: linha.tipo as 'aporte' | 'resgate',
       valor: paraCentavos(linha.valor),
       data: linha.data,
+      percentual:
+        linha.percentual_indexador === null ? null : Number(linha.percentual_indexador),
     });
     porInvestimento.set(linha.investimento_id, lista);
   }
@@ -539,6 +575,10 @@ export async function aportarEmInvestimento(dados: {
   valor: Centavos;
   data: DataISO;
   contaOrigemId: string;
+  contaDaAplicacao?: string | null;
+  /** Só quando este aporte foi contratado a uma taxa diferente da aplicação. */
+  percentual?: number | null;
+  vencimento?: DataISO | null;
 }): Promise<void> {
   await registrarMovimento({
     investimentoId: dados.investimentoId,
@@ -546,6 +586,45 @@ export async function aportarEmInvestimento(dados: {
     valor: dados.valor,
     data: dados.data,
     contaDoCaixa: dados.contaOrigemId,
+    contaDaAplicacao: dados.contaDaAplicacao ?? null,
     descricao: `Aplicação em ${dados.nome.trim()}`,
+    percentual: dados.percentual ?? null,
+    vencimento: dados.vencimento ?? null,
   });
+}
+
+export type MovimentoDaAplicacao = {
+  id: string;
+  tipo: 'aporte' | 'resgate';
+  valor: Centavos;
+  data: DataISO;
+  percentual: number | null;
+  vencimento: DataISO | null;
+};
+
+/**
+ * O histórico de aportes e resgates de uma aplicação (§7.3).
+ *
+ * Sem ele o saldo era um número só, e conferir com o extrato do banco exigia
+ * lembrar de cabeça o que entrou quando — que é exatamente o que a conferência
+ * existe para não depender.
+ */
+export async function listarMovimentosDe(
+  investimentoId: string,
+): Promise<MovimentoDaAplicacao[]> {
+  const { data, error } = await supabase
+    .from('movimentacoes_investimento')
+    .select('id, tipo, valor, data, percentual_indexador, vencimento')
+    .eq('investimento_id', investimentoId)
+    .order('data');
+  if (error) throw error;
+
+  return (data ?? []).map((linha) => ({
+    id: linha.id,
+    tipo: linha.tipo as 'aporte' | 'resgate',
+    valor: paraCentavos(linha.valor),
+    data: linha.data,
+    percentual: linha.percentual_indexador === null ? null : Number(linha.percentual_indexador),
+    vencimento: linha.vencimento,
+  }));
 }

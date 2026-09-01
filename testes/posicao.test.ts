@@ -186,3 +186,44 @@ describe('o valor do resgate é o LÍQUIDO, que é o que o banco credita', () =>
     expect(Math.abs(depois.saldoLiquido - posicao.saldoLiquido / 2)).toBeLessThanOrEqual(2);
   });
 });
+
+describe('aporte com taxa própria', () => {
+  it('cada parcela rende à SUA taxa, não à da aplicação', () => {
+    // Não é o caso comum, mas herdar a taxa da aplicação renderia o dinheiro
+    // novo à taxa velha — um número inventado que não avisa que é inventado.
+    const movimentos: Movimento[] = [
+      { tipo: 'aporte', valor: 100000, data: '2026-01-05' },
+      { tipo: 'aporte', valor: 100000, data: '2026-01-05', percentual: 50 },
+    ];
+
+    const posicao = calcularPosicao(PAPEL, movimentos, CDI, '2026-08-30', FERIADOS, TABELA_IR);
+
+    const cheio = calcular(
+      { ...PAPEL, valorAplicado: 100000, dataAplicacao: '2026-01-05' },
+      CDI, '2026-08-30', FERIADOS, TABELA_IR,
+    );
+    const metade = calcular(
+      { ...PAPEL, percentualIndexador: 50, valorAplicado: 100000, dataAplicacao: '2026-01-05' },
+      CDI, '2026-08-30', FERIADOS, TABELA_IR,
+    );
+
+    expect(posicao.saldoBruto).toBe(cheio.saldoBruto + metade.saldoBruto);
+    // O de 50% rendeu menos: as duas parcelas não podem ter o mesmo saldo.
+    expect(metade.saldoBruto).toBeLessThan(cheio.saldoBruto);
+  });
+
+  it('sem taxa própria, segue a da aplicação como antes', () => {
+    const movimentos: Movimento[] = [
+      { tipo: 'aporte', valor: 100000, data: '2026-01-05' },
+      { tipo: 'aporte', valor: 100000, data: '2026-01-05', percentual: null },
+    ];
+
+    const posicao = calcularPosicao(PAPEL, movimentos, CDI, '2026-08-30', FERIADOS, TABELA_IR);
+    const uma = calcular(
+      { ...PAPEL, valorAplicado: 200000, dataAplicacao: '2026-01-05' },
+      CDI, '2026-08-30', FERIADOS, TABELA_IR,
+    );
+
+    expect(Math.abs(posicao.saldoBruto - uma.saldoBruto)).toBeLessThanOrEqual(1);
+  });
+});

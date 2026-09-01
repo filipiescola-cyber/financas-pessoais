@@ -10,6 +10,7 @@ import {
   calcularTodos,
   conferirInvestimento,
   aportarEmInvestimento,
+  listarMovimentosDe,
   atualizarInvestimento,
   excluirInvestimento,
   previaDaExclusao,
@@ -331,6 +332,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const [resgatando, setResgatando] = useState(false);
   const [editando, setEditando] = useState(false);
   const [aportando, setAportando] = useState(false);
+  const [historico, setHistorico] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
 
   const arquivar = useMutation({
@@ -443,6 +445,12 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           {aportando ? 'Cancelar' : 'Aplicar mais'}
         </button>
         <button
+          onClick={() => setHistorico((v) => !v)}
+          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {historico ? 'Fechar histórico' : 'Histórico'}
+        </button>
+        <button
           onClick={() => setResgatando((v) => !v)}
           className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
@@ -477,10 +485,19 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
         />
       )}
 
+      {historico && (
+        <HistoricoDaAplicacao
+          investimentoId={inv.id}
+          percentualDaAplicacao={inv.percentualIndexador}
+        />
+      )}
+
       {aportando && (
         <AporteNoInvestimento
           investimentoId={inv.id}
           nome={inv.nome}
+          contaDaAplicacao={inv.contaId}
+          percentualDaAplicacao={inv.percentualIndexador}
           aoTerminar={() => setAportando(false)}
         />
       )}
@@ -541,6 +558,8 @@ function EdicaoDoInvestimento({
   const [instituicao, setInstituicao] = useState(investimento.instituicao ?? '');
   const [vencimento, setVencimento] = useState(investimento.vencimento ?? '');
   const [liquidezDiaria, setLiquidezDiaria] = useState(investimento.liquidezDiaria);
+  const [contaId, setContaId] = useState<string | null>(investimento.contaId);
+  const contas = usarContas();
 
   const salvar = useMutation({
     mutationFn: () =>
@@ -548,6 +567,7 @@ function EdicaoDoInvestimento({
         instituicao,
         vencimento: vencimento || null,
         liquidezDiaria,
+        contaId,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['investimentos'] });
@@ -571,6 +591,15 @@ function EdicaoDoInvestimento({
 
       <CampoDeLiquidez liquidezDiaria={liquidezDiaria} aoMudar={setLiquidezDiaria} />
 
+      <Campo rotulo="Onde a aplicação fica">
+        <ChipsDeContaDaAplicacao
+          contas={contas.data ?? []}
+          escolhida={contaId}
+          aoEscolher={setContaId}
+          apenasInvestimento
+        />
+      </Campo>
+
       {salvar.isError && <p className="text-sm text-red-400">{(salvar.error as Error).message}</p>}
 
       <div className="flex gap-2">
@@ -593,6 +622,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
   const [instituicao, setInstituicao] = useState('');
   const [vencimento, setVencimento] = useState('');
   const [liquidezDiaria, setLiquidezDiaria] = useState(true);
+  const [contaDaAplicacao, setContaDaAplicacao] = useState<string | null>(null);
   const [tipo, setTipo] = useState<TipoDeInvestimento>('cdb');
   const [indexador, setIndexador] = useState<Indexador>('CDI');
   const [percentual, setPercentual] = useState('100');
@@ -610,6 +640,7 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
         instituicao,
         vencimento: vencimento || null,
         liquidezDiaria,
+        contaId: contaDaAplicacao,
         tipo,
         indexador: semCalculo ? null : indexador,
         percentualIndexador: ehPrefixado ? null : Number(percentual.replace(',', '.')),
@@ -637,6 +668,18 @@ function FormularioDeInvestimento({ aoTerminar }: { aoTerminar: () => void }) {
       </Campo>
 
       <CampoInstituicao instituicao={instituicao} aoMudar={(nova) => setInstituicao(nova)} />
+
+      <Campo
+        rotulo="Onde a aplicação fica (opcional)"
+        ajuda="A conta de investimento da corretora. É para lá que o aporte é transferido — antes ele caía sempre na primeira conta de investimento criada, mesmo que o dinheiro tivesse ido para outra."
+      >
+        <ChipsDeContaDaAplicacao
+          contas={contas.data ?? []}
+          escolhida={contaDaAplicacao}
+          aoEscolher={setContaDaAplicacao}
+          apenasInvestimento
+        />
+      </Campo>
 
       <Campo
         rotulo="Tipo"
@@ -1045,10 +1088,14 @@ function CampoDeLiquidez({
 function AporteNoInvestimento({
   investimentoId,
   nome,
+  contaDaAplicacao,
+  percentualDaAplicacao,
   aoTerminar,
 }: {
   investimentoId: string;
   nome: string;
+  contaDaAplicacao: string | null;
+  percentualDaAplicacao: number | null;
   aoTerminar: () => void;
 }) {
   const cliente = useQueryClient();
@@ -1057,6 +1104,9 @@ function AporteNoInvestimento({
   const [valor, setValor] = useState<Centavos>(0);
   const [data, setData] = useState<DataISO>(hoje());
   const [contaOrigemId, setContaOrigemId] = useState<string | null>(null);
+  const [outrasCondicoes, setOutrasCondicoes] = useState(false);
+  const [percentual, setPercentual] = useState('');
+  const [vencimento, setVencimento] = useState('');
 
   const aportar = useMutation({
     mutationFn: () =>
@@ -1066,6 +1116,14 @@ function AporteNoInvestimento({
         valor,
         data,
         contaOrigemId: contaOrigemId!,
+        contaDaAplicacao,
+        // Só grava o percentual quando ele DIFERE do da aplicação: repetir o
+        // mesmo número marcaria o aporte como especial sem ele ser.
+        percentual:
+          outrasCondicoes && percentual.trim() !== ''
+            ? Number(percentual.replace(',', '.'))
+            : null,
+        vencimento: outrasCondicoes && vencimento !== '' ? vencimento : null,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries();
@@ -1106,6 +1164,44 @@ function AporteNoInvestimento({
           className={ENTRADA}
         />
       </Campo>
+
+      <div>
+        <button
+          onClick={() => setOutrasCondicoes((v) => !v)}
+          className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+        >
+          {outrasCondicoes ? 'Mesmas condições da aplicação' : 'Este aporte tem outra taxa ou vencimento'}
+        </button>
+
+        {outrasCondicoes && (
+          <div className="mt-2 space-y-3 rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
+            <Campo rotulo={`Percentual do indexador (a aplicação é ${percentualDaAplicacao ?? 100}%)`}>
+              <input
+                inputMode="decimal"
+                value={percentual}
+                onChange={(e) => setPercentual(e.target.value)}
+                placeholder={String(percentualDaAplicacao ?? 100)}
+                className={ENTRADA}
+              />
+            </Campo>
+
+            <Campo rotulo="Vencimento deste aporte (opcional)">
+              <input
+                type="date"
+                value={vencimento}
+                onChange={(e) => setVencimento(e.target.value)}
+                className={ENTRADA}
+              />
+            </Campo>
+
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              Raro, mas acontece: aportar num mês em que o banco oferece outra taxa. Sem isto o app
+              renderia o dinheiro novo à taxa velha — um número inventado que não avisa que é
+              inventado.
+            </p>
+          </div>
+        )}
+      </div>
 
       {aportar.isError && <p className="text-sm text-red-400">{(aportar.error as Error).message}</p>}
 
@@ -1220,5 +1316,116 @@ function ExclusaoDoInvestimento({
         </Botao>
       </div>
     </div>
+  );
+}
+
+/** Chips de conta. `apenasInvestimento` troca o caixa pela corretora. */
+function ChipsDeContaDaAplicacao({
+  contas,
+  escolhida,
+  aoEscolher,
+  apenasInvestimento = false,
+}: {
+  contas: { id: string; nome: string; cor: string | null; tipo: string }[];
+  escolhida: string | null;
+  aoEscolher: (id: string | null) => void;
+  apenasInvestimento?: boolean;
+}) {
+  const elegiveis = contas.filter((c) =>
+    apenasInvestimento ? c.tipo === 'investimento' : podePagarFatura({ tipo: c.tipo as never }),
+  );
+
+  if (elegiveis.length === 0) {
+    return (
+      <p className="text-xs text-slate-500">
+        {apenasInvestimento
+          ? 'Nenhuma conta de investimento cadastrada. Crie uma em Contas para separar por corretora.'
+          : 'Nenhuma conta disponível.'}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {elegiveis.map((conta) => (
+        <Chip
+          key={conta.id}
+          ativo={escolhida === conta.id}
+          aoClicar={() => aoEscolher(escolhida === conta.id ? null : conta.id)}
+        >
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
+            />
+            {conta.nome}
+          </span>
+        </Chip>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * O histórico da aplicação (§7.3).
+ *
+ * Sem ele o saldo era um número só, e conferir com o extrato exigia lembrar de
+ * cabeça o que entrou quando — que é justamente o que a conferência existe para
+ * não depender.
+ *
+ * O aporte com taxa própria aparece marcado: é raro, e o que é raro precisa
+ * saltar aos olhos, senão passa por engano de digitação.
+ */
+function HistoricoDaAplicacao({
+  investimentoId,
+  percentualDaAplicacao,
+}: {
+  investimentoId: string;
+  percentualDaAplicacao: number | null;
+}) {
+  const movimentos = useQuery({
+    queryKey: ['movimentos-investimento', investimentoId],
+    queryFn: () => listarMovimentosDe(investimentoId),
+  });
+
+  if (movimentos.isPending) {
+    return <p className="mt-3 text-xs text-slate-500">Carregando histórico…</p>;
+  }
+
+  const lista = movimentos.data ?? [];
+  if (lista.length === 0) {
+    return <p className="mt-3 text-xs text-slate-500">Nenhum movimento registrado.</p>;
+  }
+
+  return (
+    <ul className="mt-3 space-y-1.5 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+      {lista.map((movimento) => {
+        const proprio =
+          movimento.percentual !== null && movimento.percentual !== percentualDaAplicacao;
+
+        return (
+          <li key={movimento.id} className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="text-slate-500">{formatarBR(movimento.data)}</span>
+              <span className={movimento.tipo === 'aporte' ? 'text-slate-300' : 'text-amber-400/80'}>
+                {movimento.tipo === 'aporte' ? 'aporte' : 'resgate'}
+              </span>
+              {proprio && (
+                <span className="rounded border border-sky-800 px-1 text-[10px] text-sky-300">
+                  {movimento.percentual}% do CDI
+                </span>
+              )}
+              {movimento.vencimento && (
+                <span className="text-slate-600">vence {formatarBR(movimento.vencimento)}</span>
+              )}
+            </span>
+            <Dinheiro
+              centavos={movimento.valor}
+              className={movimento.tipo === 'aporte' ? 'text-slate-300' : 'text-amber-400/80'}
+            />
+          </li>
+        );
+      })}
+    </ul>
   );
 }
