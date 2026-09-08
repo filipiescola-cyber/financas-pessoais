@@ -1,14 +1,25 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
+import {
+  hoje,
+  primeiroDiaDoMes,
+  somarMeses,
+  ultimoDiaDoMes,
+  type DataISO,
+} from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import {
   ROTULO_CENARIO,
+  melhorMesParaComprar,
+  mesesParaComprar,
   simularCompra,
   type Cenario,
   type ImpactoDaCompra,
 } from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
+import { listarOrcamentos } from '../dados/orcamentos';
+import { orcamentoComACompra } from '../dominio/orcamento';
+import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { CampoValor } from '../ui/CampoValor';
 import { Link } from 'react-router-dom';
 import { Botao, Cartao, CartaoIndicador, Chip, Nota, Pagina, Secao, Vazio } from '../ui/base';
@@ -36,8 +47,20 @@ export function Simulador() {
   const [valor, setValor] = useState<Centavos>(0);
   const [parcelas, setParcelas] = useState(1);
   const [cenario, setCenario] = useState<Cenario>('pessimista');
+  const [quando, setQuando] = useState<DataISO>(primeiroDiaDoMes(hoje()));
+  const [categoriaId, setCategoriaId] = useState<string | null>(null);
 
   const dados = useQuery({ queryKey: ['projecao'], queryFn: () => montarDadosDaProjecao() });
+  const categorias = usarCategorias();
+
+  // O teto e o já gasto são do MÊS DA COMPRA, não do mês corrente: adiar uma
+  // compra para dezembro e ver o teto de setembro responderia outra pergunta.
+  const orcamentos = useQuery({
+    queryKey: ['orcamentos', quando],
+    queryFn: () => listarOrcamentos(quando),
+  });
+
+  const doMesDaCompra = usarTransacoes({ de: quando, ate: ultimoDiaDoMes(quando) });
 
   if (dados.isPending) {
     return (
@@ -97,11 +120,38 @@ export function Simulador() {
 
   const impacto =
     valor > 0
-      ? simularCompra(entrada, cenario, {
-          valor,
-          parcelas,
-          primeiroMes: primeiroDiaDoMes(hoje()),
-        })
+      ? simularCompra(entrada, cenario, { valor, parcelas, primeiroMes: quando })
+      : null;
+
+  /**
+   * Em que mês essa compra dói menos (§8.4).
+   *
+   * A mesma compra em meses diferentes dá resultados diferentes, e a diferença
+   * não é intuitiva: adiar um mês pode não resolver nada — se o aperto vem de
+   * parcelas que só acabam em março — como pode resolver tudo, se o mês
+   * seguinte é o que uma dívida termina. Só a conta responde.
+   */
+  const opcoes = valor > 0 ? mesesParaComprar(entrada, cenario, { valor, parcelas }, 6) : [];
+  const melhorMes = melhorMesParaComprar(opcoes);
+
+  const teto = (orcamentos.data ?? []).find((o) => o.categoriaId === categoriaId) ?? null;
+  const nomeDaCategoria =
+    (categorias.data ?? []).find((c) => c.id === categoriaId)?.nome ?? null;
+
+  const jaGastoNaCategoria = (doMesDaCompra.data ?? [])
+    .filter((t) => t.tipo === 'despesa' && t.categoriaId === categoriaId)
+    .reduce((total, t) => total + Math.abs(t.valor), 0);
+
+  // Só a primeira parcela pesa no teto do mês da compra: as outras caem em
+  // meses que têm teto próprio.
+  const noOrcamento =
+    teto && impacto
+      ? orcamentoComACompra(
+          teto.valorPlanejado,
+          jaGastoNaCategoria,
+          impacto.valorDaParcela,
+          hoje(),
+        )
       : null;
 
   const aumentoDoCompromisso = impacto
@@ -120,6 +170,45 @@ export function Simulador() {
             aoMudar={setParcelas}
             opcoes={[1, 2, 3, 4, 6, 10, 12, 18, 24]}
           />
+        </div>
+
+        <div>
+          <span className="text-sm text-slate-400">Quando</span>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+            A primeira parcela cai neste mês. Mudar a data muda tudo: uma dívida que acaba em
+            janeiro deixa fevereiro bem mais folgado que dezembro.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[0, 1, 2, 3].map((n) => {
+              const mes = primeiroDiaDoMes(somarMeses(hoje(), n));
+              return (
+                <Chip key={mes} ativo={quando === mes} aoClicar={() => setQuando(mes)}>
+                  {n === 0 ? 'Este mês' : n === 1 ? 'Mês que vem' : mesCurto(mes)}
+                </Chip>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <span className="text-sm text-slate-400">Categoria (opcional)</span>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+            Com ela o app também diz se a compra fura o teto que você definiu. Ter dinheiro e
+            furar o teto são coisas diferentes.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(categorias.data ?? [])
+              .filter((c) => c.tipo === 'despesa')
+              .map((c) => (
+                <Chip
+                  key={c.id}
+                  ativo={categoriaId === c.id}
+                  aoClicar={() => setCategoriaId(categoriaId === c.id ? null : c.id)}
+                >
+                  {c.nome}
+                </Chip>
+              ))}
+          </div>
         </div>
 
         <div>
@@ -177,6 +266,66 @@ export function Simulador() {
             <Nota tom="atencao">
               O saldo já ficaria negativo em {mesCurto(impacto.primeiroNegativoAntes.mes)} sem esta
               compra. Com ela, em {mesCurto(impacto.primeiroNegativoDepois.mes)}.
+            </Nota>
+          )}
+
+          {/*
+            O teto da categoria (§8.4). Ter dinheiro e furar o teto são
+            perguntas independentes: dá para o saldo aguentar e a compra ainda
+            estourar o que você tinha decidido gastar ali.
+          */}
+          {noOrcamento && (
+            <Nota tom={noOrcamento.passaAEstourar ? 'atencao' : undefined}>
+              {noOrcamento.passaAEstourar ? (
+                <>
+                  A primeira parcela fura o teto de{' '}
+                  <strong>{nomeDaCategoria ?? 'a categoria'}</strong> deste mês: cabiam{' '}
+                  {formatar(noOrcamento.cabiaAinda)} e a compra pede{' '}
+                  {formatar(impacto.valorDaParcela)}.
+                </>
+              ) : (
+                <>
+                  Cabe no teto de <strong>{nomeDaCategoria ?? 'a categoria'}</strong>: sobram{' '}
+                  {formatar(noOrcamento.depois.restante)} depois dela, de{' '}
+                  {formatar(noOrcamento.antes.planejado)} planejados.
+                </>
+              )}
+            </Nota>
+          )}
+
+          {categoriaId !== null && teto === null && (
+            <Nota>
+              Sem teto definido para essa categoria em {mesCurto(quando)}, não dá para dizer se a
+              compra fura alguma coisa — só o saldo responde.
+            </Nota>
+          )}
+
+          {/*
+            Em que mês comprar (§8.4).
+            Aparece só quando ADIAR muda o resultado: sugerir esperar por nada
+            seria moralizar, que é exatamente o que o §8.4 proíbe. Quando o mês
+            escolhido já é o indicado, também vale dizer — é uma resposta.
+          */}
+          {melhorMes && melhorMes.mes !== quando && (
+            <Nota tom={melhorMes.ficaNegativo ? undefined : 'positivo'}>
+              {melhorMes.ficaNegativo ? (
+                <>
+                  Nenhum dos próximos seis meses escapa do vermelho com esta compra. O menos ruim
+                  é <strong>{mesCurto(melhorMes.mes)}</strong>, com pior saldo de{' '}
+                  {formatar(melhorMes.piorSaldo)}.
+                </>
+              ) : (
+                <>
+                  Começando em <strong>{mesCurto(melhorMes.mes)}</strong>, nenhum mês do horizonte
+                  fica negativo — o pior fecha em {formatar(melhorMes.piorSaldo)}.
+                </>
+              )}
+            </Nota>
+          )}
+
+          {melhorMes && melhorMes.mes === quando && !melhorMes.ficaNegativo && (
+            <Nota tom="positivo">
+              {mesCurto(quando)} já é o melhor mês: adiar não melhora o pior saldo.
             </Nota>
           )}
 

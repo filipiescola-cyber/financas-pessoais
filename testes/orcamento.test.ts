@@ -4,6 +4,7 @@ import {
   conferir,
   dataPadraoDaConferencia,
   mereceAlerta,
+  orcamentoComACompra,
   progressoDaMeta,
   progressoDoOrcamento,
 } from '../src/dominio/orcamento';
@@ -141,5 +142,39 @@ describe('data padrão da conferência', () => {
 
   it('mês curto: o último dia é o dele, não o dia 31', () => {
     expect(dataPadraoDaConferencia('2026-03-01')).toBe('2026-02-28');
+  });
+});
+
+describe('o teto com a compra', () => {
+  const DIA = '2026-10-10';
+
+  it('mostra a virada: cabia, e com a compra não cabe mais', () => {
+    // Saber que o saldo aguenta não é saber que a compra cabe no que você
+    // tinha decidido gastar ali. São perguntas independentes.
+    const r = orcamentoComACompra(100000, 60000, 50000, DIA);
+    expect(r.antes.situacao).not.toBe('estourado');
+    expect(r.depois.situacao).toBe('estourado');
+    expect(r.passaAEstourar).toBe(true);
+  });
+
+  it('diz quanto ainda cabia', () => {
+    expect(orcamentoComACompra(100000, 60000, 50000, DIA).cabiaAinda).toBe(40000);
+  });
+
+  it('compra que cabe não vira aviso', () => {
+    const r = orcamentoComACompra(100000, 20000, 30000, DIA);
+    expect(r.passaAEstourar).toBe(false);
+    expect(r.depois.situacao).toBe('dentro');
+  });
+
+  it('teto já estourado antes não conta como virada', () => {
+    // O aviso é sobre a compra ter causado o estouro, não sobre ele existir.
+    const r = orcamentoComACompra(100000, 120000, 5000, DIA);
+    expect(r.antes.situacao).toBe('estourado');
+    expect(r.passaAEstourar).toBe(false);
+  });
+
+  it('o sinal da compra não muda a conta', () => {
+    expect(orcamentoComACompra(100000, 60000, -50000, DIA).depois.realizado).toBe(110000);
   });
 });

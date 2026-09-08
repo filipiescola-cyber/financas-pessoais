@@ -167,3 +167,40 @@ export function conferir(saldoDoApp: Centavos, saldoReal: Centavos): Conferencia
   const diferenca = saldoReal - saldoDoApp;
   return { saldoDoApp, saldoReal, diferenca, bate: diferenca === 0 };
 }
+
+export type OrcamentoComACompra = {
+  antes: ProgressoDoOrcamento;
+  depois: ProgressoDoOrcamento;
+  /** Estava dentro e passa a estourar. É a única virada que interessa avisar. */
+  passaAEstourar: boolean;
+  /** Quanto ainda cabia no teto antes da compra. Negativo se já estourava. */
+  cabiaAinda: Centavos;
+};
+
+/**
+ * O teto da categoria, com e sem a compra (§8.4).
+ *
+ * O §8.4 pede isso na lista do simulador e faltava: saber que o saldo aguenta
+ * não é a mesma coisa que saber que a compra cabe no que você tinha decidido
+ * gastar naquela categoria. As duas perguntas são independentes — dá para ter
+ * dinheiro e mesmo assim furar o teto, e é aí que a informação vale.
+ *
+ * Sem teto definido não há o que dizer, e dizer "0% de R$ 0" seria pior que
+ * calar (§13.5). Quem chama decide mostrar pelo `planejado`.
+ */
+export function orcamentoComACompra(
+  planejado: Centavos,
+  realizado: Centavos,
+  valorDaCompra: Centavos,
+  data: DataISO,
+): OrcamentoComACompra {
+  const antes = progressoDoOrcamento(planejado, realizado, data);
+  const depois = progressoDoOrcamento(planejado, realizado + Math.abs(valorDaCompra), data);
+
+  return {
+    antes,
+    depois,
+    passaAEstourar: antes.situacao !== 'estourado' && depois.situacao === 'estourado',
+    cabiaAinda: antes.restante,
+  };
+}

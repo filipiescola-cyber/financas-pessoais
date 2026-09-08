@@ -5,7 +5,9 @@ import {
   compromissosDoMes,
   diagnosticar,
   mediana,
+  melhorMesParaComprar,
   mesEmQueOCompromissoAcaba,
+  mesesParaComprar,
   mesesRestantes,
   piorMes,
   primeiroMesNegativo,
@@ -454,5 +456,58 @@ describe('agrupado por categoria', () => {
 
   it('lista vazia não inventa grupo', () => {
     expect(agruparPorCategoria([])).toEqual([]);
+  });
+});
+
+describe('em que mês comprar', () => {
+  const base = {
+    // Sobram R$ 1.000 por mês, partindo de R$ 1.000 em caixa.
+    saldoAtual: 100000,
+    aPartirDe: '2026-10-01',
+    horizonteEmMeses: 6,
+    renda: {
+      pessimista: 600000,
+      provavel: 600000,
+      otimista: 600000,
+      origem: 'recorrencia' as const,
+      mesesDeHistorico: 0,
+    },
+    fixasMensais: 500000,
+    fixasComPrazo: [] as { nome: string; valor: number; ate: string }[],
+    compromissos: [],
+    provisaoEventualMensal: 0,
+    medianaDasVariaveis: 0,
+    jaLancadoPorMes: {},
+  };
+
+  it('avalia um mês por vez, na ordem', () => {
+    const opcoes = mesesParaComprar(base, 'provavel', { valor: 120000, parcelas: 1 }, 3);
+    expect(opcoes.map((o) => o.mes)).toEqual(['2026-10-01', '2026-11-01', '2026-12-01']);
+  });
+
+  it('adiar melhora quando o saldo cresce até lá', () => {
+    // R$ 2.500 em outubro fura; esperando, o próprio mês já cobre.
+    const opcoes = mesesParaComprar(base, 'provavel', { valor: 250000, parcelas: 1 }, 4);
+    expect(opcoes[0]!.ficaNegativo).toBe(true);
+    expect(opcoes.at(-1)!.ficaNegativo).toBe(false);
+  });
+
+  it('indica o PRIMEIRO que não fica negativo, não o de maior folga', () => {
+    // Adiar além do necessário não melhora nada que interesse — só empurra a
+    // compra, e o app não está aqui para convencer ninguém a esperar.
+    const opcoes = mesesParaComprar(base, 'provavel', { valor: 250000, parcelas: 1 }, 6);
+    const melhor = melhorMesParaComprar(opcoes);
+    expect(melhor!.mes).toBe(opcoes.find((o) => !o.ficaNegativo)!.mes);
+  });
+
+  it('quando nenhum escapa, devolve o de menor estrago', () => {
+    const opcoes = mesesParaComprar(base, 'provavel', { valor: 9000000, parcelas: 1 }, 3);
+    const melhor = melhorMesParaComprar(opcoes);
+    expect(melhor!.ficaNegativo).toBe(true);
+    expect(melhor!.piorSaldo).toBe(Math.max(...opcoes.map((o) => o.piorSaldo)));
+  });
+
+  it('sem opções não inventa mês', () => {
+    expect(melhorMesParaComprar([])).toBeNull();
   });
 });
