@@ -198,16 +198,6 @@ export function FluxoDeCaixa() {
         />
       </div>
 
-      <Secao titulo={`Para onde vai, em ${mesCurto(entrada.aPartirDe)}`}>
-        <QuadrosPorCategoria
-          compromissos={compromissosDoMes(entrada.compromissos, entrada.aPartirDe)}
-          mes={entrada.aPartirDe}
-          provisao={entrada.provisaoEventualMensal}
-          variaveis={entrada.medianaDasVariaveis}
-          entra={dados.data.renda[cenario]}
-        />
-      </Secao>
-
       <Secao titulo="Mês a mês">
         {/* De onde a primeira linha parte. Sem isto o número aparece do nada, e
             um saldo projetado que ninguém consegue conferir não serve. */}
@@ -215,7 +205,8 @@ export function FluxoDeCaixa() {
           Começa no mês que vem, partindo de{' '}
           <Dinheiro centavos={entrada.saldoAtual} className="text-slate-300" /> — o saldo de hoje
           mais o que ainda falta acontecer em {mesCurto(primeiroDiaDoMes(hoje()))}. O mês corrente
-          está em Lançamentos, com o saldo dia a dia.
+          está em Lançamentos, com o saldo dia a dia. Toque num mês para ver por onde o dinheiro
+          sai nele, por categoria.
         </p>
 
         <Cartao>
