@@ -23,6 +23,7 @@ import { entraNaProjecaoDeRenda, type Natureza } from '../dominio/natureza';
 import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
 import { lerConfig } from './config';
 import { previstoNoCaixaDoMes, resumirPrevisto } from '../dominio/previsto';
+import type { Compromisso } from '../dominio/projecao';
 import { ocorrenciasDoPeriodo } from './geracaoRecorrencias';
 import { listarFeriados } from './indicadores';
 import { listarDividas } from './dividas';
@@ -36,7 +37,9 @@ export type DadosDaProjecao = {
   renda: RendaProjetada;
   fixasMensais: Centavos;
   /** As fixas com prazo, que param de pesar depois da última parcela. */
-  fixasComPrazo: { valor: Centavos; ate: DataISO }[];
+  fixasComPrazo: { nome: string; valor: Centavos; ate: DataISO }[];
+  /** Para onde o dinheiro vai, com nome — sem isso o total é caixa-preta. */
+  compromissos: Compromisso[];
   provisaoEventualMensal: Centavos;
   medianaDasVariaveis: Centavos;
   jaLancadoPorMes: Record<DataISO, Centavos>;
@@ -162,9 +165,19 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   const fixasComPrazo = despesasFixas
     .filter((r) => r.termina_em !== null)
     .map((r) => ({
+      nome: r.descricao,
       valor: Math.abs(paraCentavos(r.valor_previsto ?? 0)),
       ate: r.termina_em!,
     }));
+
+  // A mesma informação, com nome e sem prazo junto: é o que a tela mostra para
+  // responder "o que está causando isso", que o total sozinho não responde.
+  const compromissos: Compromisso[] = despesasFixas.map((r) => ({
+    nome: r.descricao,
+    valor: Math.abs(paraCentavos(r.valor_previsto ?? 0)),
+    ate: r.termina_em,
+    especie: 'fixa' as const,
+  }));
 
   // As dívidas entram aqui, e não como recorrência: a parcela de financiamento
   // não é despesa inteira (a amortização repaga gasto já contado), então ela não
@@ -176,9 +189,13 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   // projeção (§8.2).
   for (const item of await listarDividas()) {
     if (item.resumo.proxima === null) continue;
-    fixasComPrazo.push({
+    const ate = somarMeses(item.divida.primeiraParcela, item.divida.parcelas - 1);
+    fixasComPrazo.push({ nome: item.divida.nome, valor: item.resumo.proxima.valor, ate });
+    compromissos.push({
+      nome: item.divida.nome,
       valor: item.resumo.proxima.valor,
-      ate: somarMeses(item.divida.primeiraParcela, item.divida.parcelas - 1),
+      ate,
+      especie: 'divida',
     });
   }
 
@@ -207,7 +224,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   // parte de confiança alta da projeção: fato consumado, não estimativa.
   const { data: futuras, error: erroFuturas } = await supabase
     .from('transacoes')
-    .select('valor, data_caixa, tipo')
+    .select('valor, data_caixa, tipo, descricao')
     .gt('data_caixa', referencia)
     .neq('tipo', 'transferencia');
   if (erroFuturas) throw erroFuturas;
@@ -217,6 +234,37 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     if (linha.tipo !== 'despesa') continue;
     const mes = primeiroDiaDoMes(linha.data_caixa);
     jaLancadoPorMes[mes] = (jaLancadoPorMes[mes] ?? 0) + Math.abs(paraCentavos(linha.valor));
+  }
+
+  /**
+   * As parcelas já lançadas, agrupadas por descrição.
+   *
+   * Sem o nome, "parcelas R$ 3.212" não diz se são doze compras pequenas ou um
+   * celular parcelado em dez — e a diferença muda inteiramente o que dá para
+   * fazer a respeito.
+   */
+  const porDescricao = new Map<string, { valor: Centavos; ate: DataISO }>();
+  const mesSeguinte = primeiroDiaDoMes(somarMeses(referencia, 1));
+
+  for (const linha of futuras ?? []) {
+    if (linha.tipo !== 'despesa') continue;
+    const mes = primeiroDiaDoMes(linha.data_caixa);
+    if (mes < mesSeguinte) continue;
+
+    const nome = linha.descricao?.trim() || 'Sem descrição';
+    const atual = porDescricao.get(nome);
+    const valor = Math.abs(paraCentavos(linha.valor));
+
+    porDescricao.set(nome, {
+      // O peso mensal é o da PRIMEIRA competência: somar todas as parcelas
+      // daria o total do parcelamento, que não é o que sai por mês.
+      valor: mes === mesSeguinte ? (atual?.valor ?? 0) + valor : (atual?.valor ?? 0),
+      ate: atual && atual.ate > mes ? atual.ate : mes,
+    });
+  }
+
+  for (const [nome, { valor, ate }] of porDescricao) {
+    if (valor > 0) compromissos.push({ nome, valor, ate, especie: 'parcela' });
   }
 
   // --- o que ainda falta acontecer neste mês -----------------------------
@@ -291,6 +339,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     ),
     fixasMensais,
     fixasComPrazo,
+    compromissos,
     provisaoEventualMensal,
     medianaDasVariaveis: mediana(historicoDeVariaveis) ?? 0,
     aindaNesteMes,

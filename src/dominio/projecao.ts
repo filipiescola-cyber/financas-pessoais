@@ -379,3 +379,39 @@ export const ROTULO_CENARIO: Record<Cenario, string> = {
   otimista: 'Mês bom',
 };
 
+export type EspecieDoCompromisso = 'fixa' | 'divida' | 'parcela' | 'estimativa';
+
+export type Compromisso = {
+  nome: string;
+  valor: Centavos;
+  /** Última competência em que ele pesa. Nulo quando não tem fim. */
+  ate: DataISO | null;
+  especie: EspecieDoCompromisso;
+};
+
+/**
+ * Para onde o dinheiro vai, com NOME (§8.5).
+ *
+ * "Fixas: R$ 5.094" é uma caixa-preta: o número diz o tamanho do problema e
+ * esconde o problema. Quem olha um fluxo de caixa quer saber o que cortar ou
+ * quando acaba, e as duas respostas dependem de saber o que está lá dentro.
+ *
+ * Ordena por valor porque é assim que se decide: o primeiro item costuma valer
+ * mais do que os cinco últimos somados, e mexer nele é o que muda o número.
+ */
+export function compromissosDoMes(
+  compromissos: readonly Compromisso[],
+  mes: DataISO,
+): Compromisso[] {
+  return compromissos
+    .filter((c) => c.valor > 0 && (c.ate === null || mes <= c.ate))
+    .sort((a, b) => b.valor - a.valor);
+}
+
+/** Quantos meses faltam até o compromisso sair da conta. Nulo se não acaba. */
+export function mesesRestantes(compromisso: Compromisso, mes: DataISO): number | null {
+  if (compromisso.ate === null) return null;
+  const [anoA, mesA] = mes.split('-').map(Number);
+  const [anoB, mesB] = compromisso.ate.split('-').map(Number);
+  return Math.max(0, (anoB! - anoA!) * 12 + (mesB! - mesA!) + 1);
+}

@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatarBR, hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
-import { formatar } from '../dominio/dinheiro';
+import { formatar, type Centavos } from '../dominio/dinheiro';
 import {
   ROTULO_CENARIO,
   compromissoMensal,
+  compromissosDoMes,
   diagnosticar,
   mesEmQueOCompromissoAcaba,
+  mesesRestantes,
   piorMes,
   primeiroMesNegativo,
   projetarFluxo,
   resultadoDoMes,
   type Cenario,
+  type Compromisso,
 } from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { Botao, Cartao, CartaoIndicador, Chip, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
@@ -67,6 +70,7 @@ export function FluxoDeCaixa() {
     renda: dados.data.renda,
     fixasMensais: dados.data.fixasMensais,
     fixasComPrazo: dados.data.fixasComPrazo,
+    compromissos: dados.data.compromissos,
     provisaoEventualMensal: dados.data.provisaoEventualMensal,
     medianaDasVariaveis: dados.data.medianaDasVariaveis,
     jaLancadoPorMes: dados.data.jaLancadoPorMes,
@@ -189,6 +193,14 @@ export function FluxoDeCaixa() {
           }
         />
       </div>
+
+      <ParaOndeVai
+        compromissos={compromissosDoMes(entrada.compromissos, entrada.aPartirDe)}
+        mes={entrada.aPartirDe}
+        provisao={entrada.provisaoEventualMensal}
+        variaveis={entrada.medianaDasVariaveis}
+        entra={dados.data.renda[cenario]}
+      />
 
       <Secao titulo="Mês a mês">
         {/* De onde a primeira linha parte. Sem isto o número aparece do nada, e
@@ -339,5 +351,102 @@ function OrigemDaRenda({
       Sem fonte de renda cadastrada e sem histórico, a projeção assume receita zero. Cadastre suas
       fontes no onboarding para os números fazerem sentido.
     </Nota>
+  );
+}
+
+const ROTULO_ESPECIE: Record<string, string> = {
+  fixa: 'recorrência',
+  divida: 'dívida',
+  parcela: 'já lançado',
+  estimativa: 'estimativa',
+};
+
+/**
+ * Para onde o dinheiro vai, com NOME (§8.5).
+ *
+ * "Fixas: R$ 5.094" diz o tamanho do problema e esconde o problema. Quem olha
+ * um fluxo de caixa quer saber o que cortar ou quando acaba, e as duas
+ * respostas dependem de saber o que está lá dentro.
+ *
+ * Ordenado por valor porque é assim que se decide: o primeiro item costuma
+ * valer mais do que os últimos somados, e é nele que mexer muda o número.
+ *
+ * A provisão e as variáveis entram no fim, separadas: elas não têm nome porque
+ * não são um compromisso — são uma média do que costuma acontecer, e tratá-las
+ * como conta a pagar sugeriria um corte que não existe.
+ */
+function ParaOndeVai({
+  compromissos,
+  mes,
+  provisao,
+  variaveis,
+  entra,
+}: {
+  compromissos: readonly Compromisso[];
+  mes: DataISO;
+  provisao: Centavos;
+  variaveis: Centavos;
+  entra: Centavos;
+}) {
+  const [tudo, setTudo] = useState(false);
+
+  if (compromissos.length === 0) return null;
+
+  const total = compromissos.reduce((soma, c) => soma + c.valor, 0) + provisao + variaveis;
+  const visiveis = tudo ? compromissos : compromissos.slice(0, 6);
+
+  return (
+    <Secao titulo={`Para onde vai, em ${mesCurto(mes)}`}>
+      <Cartao>
+        <ul className="divide-y divide-borda">
+          {visiveis.map((c) => {
+            const faltam = mesesRestantes(c, mes);
+            // A fatia do que ENTRA, não do que sai: "consome 35% da renda" é a
+            // frase que decide alguma coisa; "é 35% dos gastos" não é.
+            const fatia = entra > 0 ? Math.round((c.valor / entra) * 100) : 0;
+
+            return (
+              <li key={`${c.especie}-${c.nome}`} className="px-4 py-2.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate text-sm text-slate-200">{c.nome}</span>
+                  <Dinheiro centavos={-c.valor} className="shrink-0 text-sm text-slate-300" />
+                </div>
+                <p className="mt-0.5 truncate text-[11px] text-slate-600">
+                  {ROTULO_ESPECIE[c.especie]}
+                  {faltam !== null && ` · faltam ${faltam}x, até ${mesCurto(c.ate!)}`}
+                  {faltam === null && ' · sem prazo para acabar'}
+                  {fatia > 0 && ` · ${fatia}% do que entra`}
+                </p>
+              </li>
+            );
+          })}
+
+          {(provisao > 0 || variaveis > 0) && (
+            <li className="px-4 py-2.5">
+              <p className="text-xs leading-relaxed text-slate-500">
+                Mais {provisao > 0 && <>{formatar(provisao)} de provisão para eventuais</>}
+                {provisao > 0 && variaveis > 0 && ' e '}
+                {variaveis > 0 && <>{formatar(variaveis)} de gastos variáveis</>} — estes não têm
+                nome porque não são compromisso: são a média do que costuma acontecer.
+              </p>
+            </li>
+          )}
+        </ul>
+      </Cartao>
+
+      {compromissos.length > 6 && (
+        <button
+          onClick={() => setTudo((v) => !v)}
+          className="text-xs text-slate-500 transition hover:text-slate-300"
+        >
+          {tudo ? 'Mostrar só os maiores' : `Ver os ${compromissos.length} compromissos`}
+        </button>
+      )}
+
+      <p className="text-xs leading-relaxed text-slate-500">
+        Somando tudo, saem {formatar(total)} por mês. O que tem prazo sai da conta quando acaba —
+        é por isso que os meses do fim da lista costumam ser mais leves que os do começo.
+      </p>
+    </Secao>
   );
 }

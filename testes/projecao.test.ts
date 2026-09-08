@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   compromissoMensal,
+  compromissosDoMes,
   diagnosticar,
   mediana,
   mesEmQueOCompromissoAcaba,
+  mesesRestantes,
   piorMes,
   primeiroMesNegativo,
   projetarFluxo,
@@ -371,5 +373,48 @@ describe('diagnóstico do fluxo', () => {
 
   it('sem projeção não inventa diagnóstico', () => {
     expect(diagnosticar([])).toBeNull();
+  });
+});
+
+describe('para onde o dinheiro vai', () => {
+  const c = (
+    nome: string,
+    valor: number,
+    ate: string | null = null,
+    especie: 'fixa' | 'divida' | 'parcela' = 'fixa',
+  ) => ({ nome, valor, ate, especie }) as const;
+
+  const lista = [
+    c('Aluguel', 210000),
+    c('Empréstimo Nubank', 41337, '2029-09-01', 'divida'),
+    c('Curso de Inglês', 72900, '2026-11-01', 'parcela'),
+    c('Já acabou', 50000, '2026-08-01'),
+  ];
+
+  it('ordena por valor: é assim que se decide o que cortar', () => {
+    const ativos = compromissosDoMes(lista, '2026-10-01');
+    expect(ativos.map((x) => x.nome)).toEqual([
+      'Aluguel',
+      'Curso de Inglês',
+      'Empréstimo Nubank',
+    ]);
+  });
+
+  it('o que já acabou sai da conta', () => {
+    // É o alívio da última parcela, que é o que se quer enxergar num fluxo.
+    expect(compromissosDoMes(lista, '2026-10-01').map((x) => x.nome)).not.toContain('Já acabou');
+  });
+
+  it('compromisso de valor zero não vira linha', () => {
+    expect(compromissosDoMes([c('Vazio', 0)], '2026-10-01')).toEqual([]);
+  });
+
+  it('conta quantas parcelas faltam, incluindo a do mês', () => {
+    expect(mesesRestantes(c('x', 100, '2026-12-01'), '2026-10-01')).toBe(3);
+    expect(mesesRestantes(c('x', 100, '2026-10-01'), '2026-10-01')).toBe(1);
+  });
+
+  it('sem prazo não tem contagem', () => {
+    expect(mesesRestantes(c('Aluguel', 210000), '2026-10-01')).toBeNull();
   });
 });
