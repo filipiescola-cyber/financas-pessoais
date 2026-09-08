@@ -78,7 +78,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     supabase
       .from('recorrencias')
       .select(
-        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id, incremento',
+        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id, incremento, categoria_id',
       )
       .eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
@@ -174,6 +174,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   // responder "o que está causando isso", que o total sozinho não responde.
   const compromissos: Compromisso[] = despesasFixas.map((r) => ({
     nome: r.descricao,
+    categoriaId: r.categoria_id,
     valor: Math.abs(paraCentavos(r.valor_previsto ?? 0)),
     ate: r.termina_em,
     especie: 'fixa' as const,
@@ -193,6 +194,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     fixasComPrazo.push({ nome: item.divida.nome, valor: item.resumo.proxima.valor, ate });
     compromissos.push({
       nome: item.divida.nome,
+      categoriaId: item.divida.categoriaJurosId,
       valor: item.resumo.proxima.valor,
       ate,
       especie: 'divida',
@@ -224,7 +226,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   // parte de confiança alta da projeção: fato consumado, não estimativa.
   const { data: futuras, error: erroFuturas } = await supabase
     .from('transacoes')
-    .select('valor, data_caixa, tipo, descricao')
+    .select('valor, data_caixa, tipo, descricao, categoria_id')
     .gt('data_caixa', referencia)
     .neq('tipo', 'transferencia');
   if (erroFuturas) throw erroFuturas;
@@ -243,7 +245,10 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
    * celular parcelado em dez — e a diferença muda inteiramente o que dá para
    * fazer a respeito.
    */
-  const porDescricao = new Map<string, { valor: Centavos; ate: DataISO }>();
+  const porDescricao = new Map<
+    string,
+    { valor: Centavos; ate: DataISO; categoriaId: string | null }
+  >();
   const mesSeguinte = primeiroDiaDoMes(somarMeses(referencia, 1));
 
   for (const linha of futuras ?? []) {
@@ -260,11 +265,12 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       // daria o total do parcelamento, que não é o que sai por mês.
       valor: mes === mesSeguinte ? (atual?.valor ?? 0) + valor : (atual?.valor ?? 0),
       ate: atual && atual.ate > mes ? atual.ate : mes,
+      categoriaId: atual?.categoriaId ?? linha.categoria_id,
     });
   }
 
-  for (const [nome, { valor, ate }] of porDescricao) {
-    if (valor > 0) compromissos.push({ nome, valor, ate, especie: 'parcela' });
+  for (const [nome, { valor, ate, categoriaId }] of porDescricao) {
+    if (valor > 0) compromissos.push({ nome, categoriaId, valor, ate, especie: 'parcela' });
   }
 
   // --- o que ainda falta acontecer neste mês -----------------------------

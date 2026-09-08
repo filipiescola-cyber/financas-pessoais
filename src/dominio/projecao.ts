@@ -383,6 +383,8 @@ export type EspecieDoCompromisso = 'fixa' | 'divida' | 'parcela' | 'estimativa';
 
 export type Compromisso = {
   nome: string;
+  /** Para agrupar. Nulo em compromisso que ninguém categorizou ainda. */
+  categoriaId: string | null;
   valor: Centavos;
   /** Última competência em que ele pesa. Nulo quando não tem fim. */
   ate: DataISO | null;
@@ -414,4 +416,44 @@ export function mesesRestantes(compromisso: Compromisso, mes: DataISO): number |
   const [anoA, mesA] = mes.split('-').map(Number);
   const [anoB, mesB] = compromisso.ate.split('-').map(Number);
   return Math.max(0, (anoB! - anoA!) * 12 + (mesB! - mesA!) + 1);
+}
+
+export type GrupoDeCategoria = {
+  categoriaId: string | null;
+  total: Centavos;
+  itens: Compromisso[];
+};
+
+/**
+ * O mesmo dinheiro, arrumado por categoria (§2.5).
+ *
+ * Uma lista de vinte compromissos soltos responde "o que é isso" e não responde
+ * "onde eu gasto" — e é a segunda pergunta que decide corte. Categoria é a
+ * unidade em que se pensa gasto: ninguém corta "Claro Internet", corta
+ * "Assinaturas".
+ *
+ * Ordena os grupos por total e os itens dentro deles também: em qualquer nível,
+ * o que está no topo é onde mexer muda o número.
+ */
+export function agruparPorCategoria(
+  compromissos: readonly Compromisso[],
+): GrupoDeCategoria[] {
+  const grupos = new Map<string, GrupoDeCategoria>();
+
+  for (const item of compromissos) {
+    const chave = item.categoriaId ?? '';
+    const atual = grupos.get(chave) ?? {
+      categoriaId: item.categoriaId,
+      total: 0,
+      itens: [],
+    };
+
+    atual.total += item.valor;
+    atual.itens.push(item);
+    grupos.set(chave, atual);
+  }
+
+  return [...grupos.values()]
+    .map((g) => ({ ...g, itens: [...g.itens].sort((a, b) => b.valor - a.valor) }))
+    .sort((a, b) => b.total - a.total);
 }

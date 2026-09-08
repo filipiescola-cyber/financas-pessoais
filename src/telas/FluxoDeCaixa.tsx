@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatarBR, hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
+import { usarBuscaDeCategoria } from '../dados/usarTransacoes';
+import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 import {
   ROTULO_CENARIO,
+  agruparPorCategoria,
   compromissoMensal,
   compromissosDoMes,
   diagnosticar,
@@ -15,6 +18,7 @@ import {
   resultadoDoMes,
   type Cenario,
   type Compromisso,
+  type MesProjetado,
 } from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { Botao, Cartao, CartaoIndicador, Chip, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
@@ -194,13 +198,15 @@ export function FluxoDeCaixa() {
         />
       </div>
 
-      <ParaOndeVai
-        compromissos={compromissosDoMes(entrada.compromissos, entrada.aPartirDe)}
-        mes={entrada.aPartirDe}
-        provisao={entrada.provisaoEventualMensal}
-        variaveis={entrada.medianaDasVariaveis}
-        entra={dados.data.renda[cenario]}
-      />
+      <Secao titulo={`Para onde vai, em ${mesCurto(entrada.aPartirDe)}`}>
+        <QuadrosPorCategoria
+          compromissos={compromissosDoMes(entrada.compromissos, entrada.aPartirDe)}
+          mes={entrada.aPartirDe}
+          provisao={entrada.provisaoEventualMensal}
+          variaveis={entrada.medianaDasVariaveis}
+          entra={dados.data.renda[cenario]}
+        />
+      </Secao>
 
       <Secao titulo="Mês a mês">
         {/* De onde a primeira linha parte. Sem isto o número aparece do nada, e
@@ -215,60 +221,13 @@ export function FluxoDeCaixa() {
         <Cartao>
           <ul className="divide-y divide-borda">
             {projecao.map((mes) => (
-              <li key={mes.mes} className="px-4 py-3">
-                {/*
-                  Dois números, e a ordem importa: o do MÊS explica, o
-                  acumulado só mostra o estrago. Antes só o acumulado aparecia,
-                  em destaque, e ele é o que menos ajuda a entender.
-                */}
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm text-slate-200">{formatarBR(mes.mes).slice(3)}</span>
-                  <span className="flex items-baseline gap-3">
-                    <span className="text-right">
-                      <span className="block text-[10px] uppercase tracking-wider text-slate-600">
-                        no mês
-                      </span>
-                      <Dinheiro
-                        centavos={resultadoDoMes(mes)}
-                        className={`text-sm ${
-                          resultadoDoMes(mes) < 0 ? 'text-amber-400' : 'text-emerald-400'
-                        }`}
-                      />
-                    </span>
-                    <span className="w-px self-stretch bg-borda" />
-                    <span className="text-right">
-                      <span className="block text-[10px] uppercase tracking-wider text-slate-600">
-                        acumulado
-                      </span>
-                      <Dinheiro
-                        centavos={mes.saldoFinal}
-                        className={`text-sm ${mes.saldoFinal < 0 ? 'text-red-400' : 'text-slate-100'}`}
-                      />
-                    </span>
-                  </span>
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                  <span className="text-emerald-400/70">entra {formatar(mes.receita)}</span>
-                  <span className="text-amber-400/70">sai {formatar(mes.totalDeSaidas)}</span>
-                  <span className="text-slate-700">·</span>
-                  {mes.saidas.jaLancado > 0 && (
-                    <span title="Já lançado no banco: fato consumado">
-                      parcelas {formatar(mes.saidas.jaLancado)}
-                    </span>
-                  )}
-                  {mes.saidas.fixas > 0 && <span>fixas {formatar(mes.saidas.fixas)}</span>}
-                  {mes.saidas.provisaoEventual > 0 && (
-                    <span title="Eventual do ano dividido por 12">
-                      provisão {formatar(mes.saidas.provisaoEventual)}
-                    </span>
-                  )}
-                  {mes.saidas.variaveis > 0 && (
-                    <span title="Mediana dos últimos meses: a parte mais incerta">
-                      variáveis {formatar(mes.saidas.variaveis)}
-                    </span>
-                  )}
-                </div>
-              </li>
+              <LinhaDoMes
+                key={mes.mes}
+                mes={mes}
+                compromissos={compromissosDoMes(entrada.compromissos, mes.mes)}
+                provisao={entrada.provisaoEventualMensal}
+                variaveis={entrada.medianaDasVariaveis}
+              />
             ))}
           </ul>
         </Cartao>
@@ -358,24 +317,100 @@ const ROTULO_ESPECIE: Record<string, string> = {
   fixa: 'recorrência',
   divida: 'dívida',
   parcela: 'já lançado',
-  estimativa: 'estimativa',
 };
 
 /**
- * Para onde o dinheiro vai, com NOME (§8.5).
+ * Uma linha do mês, que abre.
  *
- * "Fixas: R$ 5.094" diz o tamanho do problema e esconde o problema. Quem olha
- * um fluxo de caixa quer saber o que cortar ou quando acaba, e as duas
- * respostas dependem de saber o que está lá dentro.
- *
- * Ordenado por valor porque é assim que se decide: o primeiro item costuma
- * valer mais do que os últimos somados, e é nele que mexer muda o número.
- *
- * A provisão e as variáveis entram no fim, separadas: elas não têm nome porque
- * não são um compromisso — são uma média do que costuma acontecer, e tratá-las
- * como conta a pagar sugeriria um corte que não existe.
+ * O total do mês responde "quanto" e cala sobre "o quê". Abrir era a única
+ * coisa que faltava para a resposta estar na mesma tela em vez de exigir uma
+ * ida a Lançamentos e uma volta — e num mês FUTURO essa ida nem resolve, porque
+ * metade do que pesa ainda não virou lançamento.
  */
-function ParaOndeVai({
+function LinhaDoMes({
+  mes,
+  compromissos,
+  provisao,
+  variaveis,
+}: {
+  mes: MesProjetado;
+  compromissos: readonly Compromisso[];
+  provisao: Centavos;
+  variaveis: Centavos;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const resultado = resultadoDoMes(mes);
+
+  return (
+    <li className="px-4 py-3">
+      {/*
+        Dois números, e a ordem importa: o do MÊS explica, o acumulado só
+        mostra o estrago. Antes só o acumulado aparecia, em destaque, e ele é o
+        que menos ajuda a entender.
+      */}
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className="flex w-full items-baseline justify-between gap-3 text-left"
+      >
+        <span className="flex items-baseline gap-2 text-sm text-slate-200">
+          {formatarBR(mes.mes).slice(3)}
+          <span className="text-xs text-slate-600">{aberto ? '−' : '+'}</span>
+        </span>
+        <span className="flex items-baseline gap-3">
+          <span className="text-right">
+            <span className="block text-[10px] uppercase tracking-wider text-slate-600">
+              no mês
+            </span>
+            <Dinheiro
+              centavos={resultado}
+              className={`text-sm ${resultado < 0 ? 'text-amber-400' : 'text-emerald-400'}`}
+            />
+          </span>
+          <span className="w-px self-stretch bg-borda" />
+          <span className="text-right">
+            <span className="block text-[10px] uppercase tracking-wider text-slate-600">
+              acumulado
+            </span>
+            <Dinheiro
+              centavos={mes.saldoFinal}
+              className={`text-sm ${mes.saldoFinal < 0 ? 'text-red-400' : 'text-slate-100'}`}
+            />
+          </span>
+        </span>
+      </button>
+
+      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+        <span className="text-emerald-400/70">entra {formatar(mes.receita)}</span>
+        <span className="text-amber-400/70">sai {formatar(mes.totalDeSaidas)}</span>
+      </div>
+
+      {aberto && (
+        <div className="mt-3">
+          <QuadrosPorCategoria
+            compromissos={compromissos}
+            mes={mes.mes}
+            provisao={provisao}
+            variaveis={variaveis}
+            entra={mes.receita}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Para onde vai o dinheiro, um quadro por categoria (§2.5).
+ *
+ * Uma lista de vinte compromissos soltos responde "o que é isso" e não responde
+ * "onde eu gasto" — e é a segunda que decide corte. Categoria é a unidade em
+ * que se pensa gasto: ninguém corta "Claro Internet", corta "Assinaturas".
+ *
+ * Dentro do quadro os itens aparecem com nome, porque cortar exige saber qual
+ * deles é. Os dois níveis existem pela mesma razão: um diz onde olhar, o outro
+ * diz onde mexer.
+ */
+function QuadrosPorCategoria({
   compromissos,
   mes,
   provisao,
@@ -388,65 +423,84 @@ function ParaOndeVai({
   variaveis: Centavos;
   entra: Centavos;
 }) {
-  const [tudo, setTudo] = useState(false);
+  const buscarCategoria = usarBuscaDeCategoria();
+  const grupos = agruparPorCategoria(compromissos);
 
-  if (compromissos.length === 0) return null;
-
-  const total = compromissos.reduce((soma, c) => soma + c.valor, 0) + provisao + variaveis;
-  const visiveis = tudo ? compromissos : compromissos.slice(0, 6);
+  if (grupos.length === 0 && provisao === 0 && variaveis === 0) {
+    return <p className="text-xs text-slate-500">Nada comprometido neste mês.</p>;
+  }
 
   return (
-    <Secao titulo={`Para onde vai, em ${mesCurto(mes)}`}>
-      <Cartao>
-        <ul className="divide-y divide-borda">
-          {visiveis.map((c) => {
-            const faltam = mesesRestantes(c, mes);
-            // A fatia do que ENTRA, não do que sai: "consome 35% da renda" é a
-            // frase que decide alguma coisa; "é 35% dos gastos" não é.
-            const fatia = entra > 0 ? Math.round((c.valor / entra) * 100) : 0;
+    <div className="space-y-2">
+      {grupos.map((grupo) => {
+        const categoria = buscarCategoria(grupo.categoriaId);
+        // A fatia do que ENTRA, não do que sai: "consome 35% da renda" decide
+        // alguma coisa; "é 35% dos gastos" não decide nada.
+        const fatia = entra > 0 ? Math.round((grupo.total / entra) * 100) : 0;
 
-            return (
-              <li key={`${c.especie}-${c.nome}`} className="px-4 py-2.5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm text-slate-200">{c.nome}</span>
-                  <Dinheiro centavos={-c.valor} className="shrink-0 text-sm text-slate-300" />
-                </div>
-                <p className="mt-0.5 truncate text-[11px] text-slate-600">
-                  {ROTULO_ESPECIE[c.especie]}
-                  {faltam !== null && ` · faltam ${faltam}x, até ${mesCurto(c.ate!)}`}
-                  {faltam === null && ' · sem prazo para acabar'}
-                  {fatia > 0 && ` · ${fatia}% do que entra`}
-                </p>
-              </li>
-            );
-          })}
+        return (
+          <div
+            key={grupo.categoriaId ?? 'sem'}
+            className="rounded-lg border border-borda bg-superficie-alta p-3"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <IconeDeCategoria
+                  chave={categoria?.icone ?? null}
+                  cor={categoria?.cor ?? null}
+                  className="h-4 w-4 shrink-0"
+                />
+                <span className="truncate text-sm text-slate-100">
+                  {categoria?.nome ?? 'Sem categoria'}
+                </span>
+              </span>
+              <span className="shrink-0 text-right">
+                <Dinheiro centavos={-grupo.total} className="text-sm text-slate-200" />
+                {fatia > 0 && (
+                  <span className="block text-[10px] text-slate-600">
+                    {fatia}% do que entra
+                  </span>
+                )}
+              </span>
+            </div>
 
-          {(provisao > 0 || variaveis > 0) && (
-            <li className="px-4 py-2.5">
-              <p className="text-xs leading-relaxed text-slate-500">
-                Mais {provisao > 0 && <>{formatar(provisao)} de provisão para eventuais</>}
-                {provisao > 0 && variaveis > 0 && ' e '}
-                {variaveis > 0 && <>{formatar(variaveis)} de gastos variáveis</>} — estes não têm
-                nome porque não são compromisso: são a média do que costuma acontecer.
-              </p>
-            </li>
-          )}
-        </ul>
-      </Cartao>
+            <ul className="mt-2 space-y-1 border-l border-borda pl-2.5">
+              {grupo.itens.map((item) => {
+                const faltam = mesesRestantes(item, mes);
 
-      {compromissos.length > 6 && (
-        <button
-          onClick={() => setTudo((v) => !v)}
-          className="text-xs text-slate-500 transition hover:text-slate-300"
-        >
-          {tudo ? 'Mostrar só os maiores' : `Ver os ${compromissos.length} compromissos`}
-        </button>
+                return (
+                  <li
+                    key={`${item.especie}-${item.nome}`}
+                    className="flex items-baseline justify-between gap-3 text-xs"
+                  >
+                    <span className="min-w-0 truncate text-slate-400">
+                      {item.nome}
+                      <span className="text-slate-600">
+                        {' · '}
+                        {ROTULO_ESPECIE[item.especie]}
+                        {faltam !== null && ` · faltam ${faltam}x`}
+                      </span>
+                    </span>
+                    <Dinheiro centavos={-item.valor} className="shrink-0 text-slate-500" />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+
+      {(provisao > 0 || variaveis > 0) && (
+        <div className="rounded-lg border border-dashed border-borda-forte p-3">
+          <p className="text-xs leading-relaxed text-slate-500">
+            Mais {provisao > 0 && <>{formatar(provisao)} de provisão para eventuais</>}
+            {provisao > 0 && variaveis > 0 && ' e '}
+            {variaveis > 0 && <>{formatar(variaveis)} de gastos variáveis</>}. Estes ficam sem
+            categoria de propósito: não são compromisso, são a média do que costuma acontecer, e
+            listá-los como conta a pagar sugeriria um corte que não existe.
+          </p>
+        </div>
       )}
-
-      <p className="text-xs leading-relaxed text-slate-500">
-        Somando tudo, saem {formatar(total)} por mês. O que tem prazo sai da conta quando acaba —
-        é por isso que os meses do fim da lista costumam ser mais leves que os do começo.
-      </p>
-    </Secao>
+    </div>
   );
 }

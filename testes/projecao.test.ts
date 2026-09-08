@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  agruparPorCategoria,
   compromissoMensal,
   compromissosDoMes,
   diagnosticar,
@@ -382,7 +383,8 @@ describe('para onde o dinheiro vai', () => {
     valor: number,
     ate: string | null = null,
     especie: 'fixa' | 'divida' | 'parcela' = 'fixa',
-  ) => ({ nome, valor, ate, especie }) as const;
+    categoriaId: string | null = null,
+  ) => ({ nome, categoriaId, valor, ate, especie }) as const;
 
   const lista = [
     c('Aluguel', 210000),
@@ -416,5 +418,41 @@ describe('para onde o dinheiro vai', () => {
 
   it('sem prazo não tem contagem', () => {
     expect(mesesRestantes(c('Aluguel', 210000), '2026-10-01')).toBeNull();
+  });
+});
+
+describe('agrupado por categoria', () => {
+  const c = (nome: string, valor: number, categoriaId: string | null) =>
+    ({ nome, categoriaId, valor, ate: null, especie: 'fixa' as const });
+
+  it('junta o que é da mesma categoria e ordena pelo total', () => {
+    // Ninguém corta "Claro Internet": corta "Assinaturas". Categoria é a
+    // unidade em que se pensa gasto.
+    const grupos = agruparPorCategoria([
+      c('Claro Internet', 27806, 'assinaturas'),
+      c('Aluguel', 210000, 'moradia'),
+      c('Claro TV', 28547, 'assinaturas'),
+    ]);
+
+    expect(grupos.map((g) => g.categoriaId)).toEqual(['moradia', 'assinaturas']);
+    expect(grupos[1]!.total).toBe(27806 + 28547);
+  });
+
+  it('dentro do grupo, o maior primeiro', () => {
+    const grupos = agruparPorCategoria([
+      c('Claro Internet', 27806, 'assinaturas'),
+      c('Claro TV', 28547, 'assinaturas'),
+    ]);
+    expect(grupos[0]!.itens.map((i) => i.nome)).toEqual(['Claro TV', 'Claro Internet']);
+  });
+
+  it('sem categoria vira um grupo próprio, não some', () => {
+    const grupos = agruparPorCategoria([c('Algo', 1000, null)]);
+    expect(grupos).toHaveLength(1);
+    expect(grupos[0]!.categoriaId).toBeNull();
+  });
+
+  it('lista vazia não inventa grupo', () => {
+    expect(agruparPorCategoria([])).toEqual([]);
   });
 });
