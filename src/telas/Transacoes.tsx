@@ -473,6 +473,7 @@ export function Transacoes() {
                     key={linha.bloco.faturaId}
                     bloco={linha.bloco}
                     paga={statusDeFatura.data?.get(linha.bloco.faturaId)?.status === 'paga'}
+                    pagaEm={statusDeFatura.data?.get(linha.bloco.faturaId)?.pagaEm ?? null}
                     nomeCartao={nomeConta.get(linha.bloco.contaId) ?? 'Cartão'}
                     buscarCategoria={buscarCategoria}
                     aoEditar={setEditando}
@@ -934,12 +935,21 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
 function BlocoDaFatura({
   bloco,
   paga,
+  pagaEm,
   nomeCartao,
   buscarCategoria,
   aoEditar,
 }: {
   bloco: BlocoDeFatura<Transacao>;
   paga: boolean;
+  /**
+   * Quando o dinheiro saiu. Não é o vencimento, e a diferença confundia: a
+   * fatura já paga aparecia no dia do vencimento com o valor cheio, do lado da
+   * transferência que a pagou dias antes — a mesma quantia duas vezes na lista,
+   * como se fosse sair de novo. O saldo sempre esteve certo; a leitura é que
+   * não estava.
+   */
+  pagaEm: DataISO | null;
   nomeCartao: string;
   buscarCategoria: (id: string | null) => Categoria | null;
   aoEditar: (transacao: Transacao) => void;
@@ -961,11 +971,25 @@ function BlocoDaFatura({
             <span className="block truncate text-xs text-slate-500">
               {bloco.compras.length + bloco.previstas.length} lançamento(s)
               {bloco.previstas.length > 0 && ` · ${bloco.previstas.length} por vir`} ·{' '}
-              {paga ? `paga · venceu ${formatarBR(bloco.vencimento)}` : `vence ${formatarBR(bloco.vencimento)}`}
+              {paga
+                ? pagaEm
+                  ? `paga em ${formatarBR(pagaEm)}`
+                  : 'paga'
+                : `vence ${formatarBR(bloco.vencimento)}`}
             </span>
+            {/* Dizer ONDE o dinheiro saiu resolve a pergunta que a lista
+                levantava: por que este valor aparece duas vezes? */}
+            {paga && pagaEm && pagaEm !== bloco.vencimento && (
+              <span className="block truncate text-xs text-slate-600">
+                O dinheiro saiu em {formatarBR(pagaEm)}, pela transferência daquele dia
+              </span>
+            )}
           </span>
         </span>
-        <Dinheiro centavos={bloco.total} className="shrink-0 text-slate-200" />
+        <Dinheiro
+          centavos={bloco.total}
+          className={`shrink-0 ${paga ? 'text-slate-500' : 'text-slate-200'}`}
+        />
       </button>
 
       {aberto && (

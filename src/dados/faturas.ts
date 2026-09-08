@@ -231,7 +231,12 @@ export type DividaDoCartao = {
  * do dia tem que contar com ela. A paga não — nessa o dinheiro já saiu pela
  * transferência da quitação, e somar de novo tiraria o valor duas vezes.
  */
-export type SituacaoDaFatura = { status: StatusFatura; pago: Centavos };
+export type SituacaoDaFatura = {
+  status: StatusFatura;
+  pago: Centavos;
+  /** Quando o dinheiro saiu de verdade. É outra data que o vencimento. */
+  pagaEm: DataISO | null;
+};
 
 /**
  * Status e quanto já foi pago, por fatura.
@@ -248,24 +253,36 @@ export async function situacaoDasFaturas(
 
   const [faturas, pagamentos] = await Promise.all([
     supabase.from('faturas').select('id, status').in('id', [...ids]),
-    supabase.from('transacoes').select('valor, fatura_paga_id').in('fatura_paga_id', [...ids]),
+    supabase
+      .from('transacoes')
+      .select('valor, data_caixa, fatura_paga_id')
+      .in('fatura_paga_id', [...ids]),
   ]);
   if (faturas.error) throw faturas.error;
   if (pagamentos.error) throw pagamentos.error;
 
   const pagoPorFatura = new Map<string, Centavos>();
+  const pagaEm = new Map<string, DataISO>();
+
   for (const linha of pagamentos.data ?? []) {
     if (linha.fatura_paga_id === null) continue;
     pagoPorFatura.set(
       linha.fatura_paga_id,
       (pagoPorFatura.get(linha.fatura_paga_id) ?? 0) + Math.abs(paraCentavos(linha.valor)),
     );
+    // Com pagamento parcial há vários: vale o último, que é quando ela fechou.
+    const atual = pagaEm.get(linha.fatura_paga_id);
+    if (!atual || linha.data_caixa > atual) pagaEm.set(linha.fatura_paga_id, linha.data_caixa);
   }
 
   return new Map(
     (faturas.data ?? []).map((f) => [
       f.id,
-      { status: f.status as StatusFatura, pago: pagoPorFatura.get(f.id) ?? 0 },
+      {
+        status: f.status as StatusFatura,
+        pago: pagoPorFatura.get(f.id) ?? 0,
+        pagaEm: pagaEm.get(f.id) ?? null,
+      },
     ]),
   );
 }
