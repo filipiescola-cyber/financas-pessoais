@@ -200,6 +200,69 @@ export function projetarFluxo(entrada: EntradaDaProjecao, cenario: Cenario): Mes
   return meses;
 }
 
+/**
+ * O que sobra ou falta NO mês, sem o acumulado (§8.2).
+ *
+ * A tela mostrava só o saldo acumulado, que desce em bloco e não explica nada:
+ * dá para olhar doze meses de números vermelhos crescendo sem descobrir que a
+ * causa é a mesma toda vez, e que ela cabe numa linha — entram seis mil, saem
+ * nove e oitocentos.
+ */
+export function resultadoDoMes(mes: MesProjetado): Centavos {
+  return mes.receita - mes.totalDeSaidas;
+}
+
+export type Diagnostico = {
+  /** O resultado de um mês típico. Mediana, nunca média (§8.3). */
+  tipico: Centavos;
+  mesesNoVermelho: number;
+  totalDeMeses: number;
+  /** A maior saída, com nome. É por onde começa quem quer mudar o número. */
+  maiorSaida: { nome: string; valor: Centavos } | null;
+};
+
+const NOME_DA_SAIDA: Record<keyof ComponentesDoMes, string> = {
+  fixas: 'as despesas fixas',
+  jaLancado: 'as parcelas já assumidas',
+  provisaoEventual: 'a provisão para despesas eventuais',
+  variaveis: 'os gastos variáveis',
+};
+
+/**
+ * O buraco, em uma frase (§8.1).
+ *
+ * A pergunta do fluxo de caixa não é "quanto vou ter em julho de 2027" — é
+ * "por que isso está descendo e o que faz parar". A mediana responde a
+ * primeira metade; a maior saída aponta onde mexer para a segunda.
+ *
+ * Mediana e não média porque um mês com IPVA ou 13º puxaria o número para um
+ * lado que não descreve nenhum mês real (§8.3).
+ */
+export function diagnosticar(projecao: readonly MesProjetado[]): Diagnostico | null {
+  if (projecao.length === 0) return null;
+
+  const tipico = mediana(projecao.map(resultadoDoMes)) ?? 0;
+
+  // A composição do mês típico serve de referência: pegar o primeiro mês
+  // mostraria a parcela que acaba em três meses como se fosse permanente.
+  const referencia =
+    [...projecao].sort((a, b) => resultadoDoMes(a) - resultadoDoMes(b))[
+      Math.floor(projecao.length / 2)
+    ] ?? projecao[0]!;
+
+  const saidas = (Object.keys(NOME_DA_SAIDA) as (keyof ComponentesDoMes)[])
+    .map((chave) => ({ nome: NOME_DA_SAIDA[chave], valor: referencia.saidas[chave] }))
+    .filter((s) => s.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+
+  return {
+    tipico,
+    mesesNoVermelho: projecao.filter((m) => m.saldoFinal < 0).length,
+    totalDeMeses: projecao.length,
+    maiorSaida: saidas[0] ?? null,
+  };
+}
+
 /** O mês mais apertado da projeção. É esse número que muda comportamento (§8.4). */
 export function piorMes(projecao: readonly MesProjetado[]): MesProjetado | null {
   if (projecao.length === 0) return null;

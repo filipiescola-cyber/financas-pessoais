@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   compromissoMensal,
+  diagnosticar,
   mediana,
   mesEmQueOCompromissoAcaba,
   piorMes,
   primeiroMesNegativo,
   projetarFluxo,
   projetarRenda,
+  resultadoDoMes,
   simularCompra,
   type EntradaDaProjecao,
+  type MesProjetado,
 } from '../src/dominio/projecao';
 
 describe('mediana (§8.3)', () => {
@@ -306,5 +309,67 @@ describe('as duas projeções do simulador', () => {
     const distancia = impacto.antes.map((m, i) => m.saldoFinal - impacto.depois[i]!.saldoFinal);
     expect(distancia[1]).toBe(120000);
     expect(distancia[5]).toBe(120000);
+  });
+});
+
+describe('diagnóstico do fluxo', () => {
+  const mes = (nome: string, receita: number, fixas: number, jaLancado = 0): MesProjetado => {
+    const saidas = { fixas, jaLancado, provisaoEventual: 0, variaveis: 0 };
+    const totalDeSaidas = fixas + jaLancado;
+    return {
+      mes: nome,
+      saldoInicial: 0,
+      receita,
+      saidas,
+      totalDeSaidas,
+      saldoFinal: receita - totalDeSaidas,
+    };
+  };
+
+  it('o resultado do mês é o buraco, sem o acumulado', () => {
+    // O saldo acumulado desce em bloco e não explica nada. Isto explica.
+    expect(resultadoDoMes(mes('2026-10-01', 600000, 984000))).toBe(-384000);
+  });
+
+  it('nomeia quanto falta num mês típico', () => {
+    const d = diagnosticar([
+      mes('2026-10-01', 600000, 900000),
+      mes('2026-11-01', 600000, 984000),
+      mes('2026-12-01', 600000, 1000000),
+    ]);
+    expect(d!.tipico).toBe(-384000);
+  });
+
+  it('mediana, nunca média: um mês de 13º não descreve mês nenhum', () => {
+    const d = diagnosticar([
+      mes('2026-10-01', 600000, 700000),
+      mes('2026-11-01', 600000, 700000),
+      mes('2026-12-01', 5000000, 700000),
+    ]);
+    expect(d!.tipico).toBe(-100000);
+  });
+
+  it('aponta a maior saída: é por onde começa quem quer mudar o número', () => {
+    const d = diagnosticar([mes('2026-10-01', 600000, 500000, 300000)]);
+    expect(d!.maiorSaida).toEqual({ nome: 'as despesas fixas', valor: 500000 });
+  });
+
+  it('conta quantos meses fecham no vermelho', () => {
+    const d = diagnosticar([
+      mes('2026-10-01', 600000, 100000),
+      mes('2026-11-01', 600000, 900000),
+    ]);
+    expect(d!.mesesNoVermelho).toBe(1);
+    expect(d!.totalDeMeses).toBe(2);
+  });
+
+  it('mês que sobra dinheiro dá número positivo', () => {
+    const d = diagnosticar([mes('2026-10-01', 600000, 400000)]);
+    expect(d!.tipico).toBe(200000);
+    expect(d!.mesesNoVermelho).toBe(0);
+  });
+
+  it('sem projeção não inventa diagnóstico', () => {
+    expect(diagnosticar([])).toBeNull();
   });
 });

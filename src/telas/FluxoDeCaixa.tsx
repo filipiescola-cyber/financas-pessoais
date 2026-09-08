@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { formatarBR, hoje, primeiroDiaDoMes, somarMeses, type DataISO } from '../dominio/datas';
 import { formatar } from '../dominio/dinheiro';
 import {
+  ROTULO_CENARIO,
   compromissoMensal,
+  diagnosticar,
   mesEmQueOCompromissoAcaba,
   piorMes,
   primeiroMesNegativo,
   projetarFluxo,
-  ROTULO_CENARIO,
+  resultadoDoMes,
   type Cenario,
 } from '../dominio/projecao';
 import { montarDadosDaProjecao } from '../dados/projecao';
@@ -87,6 +89,10 @@ export function FluxoDeCaixa() {
   }
 
   const projecao = projetarFluxo(entrada, cenario);
+  const diagnostico = diagnosticar(projecao);
+  // A saída do mês típico sai da própria mediana: entra menos o que falta.
+  const saidaTipica = diagnostico ? dados.data.renda[cenario] - diagnostico.tipico : 0;
+
   const pior = piorMes(projecao);
   const negativo = primeiroMesNegativo(projecao);
   const compromisso = compromissoMensal(entrada.jaLancadoPorMes, entrada.aPartirDe);
@@ -108,10 +114,58 @@ export function FluxoDeCaixa() {
         valor={dados.data.renda[cenario]}
       />
 
+      {/*
+        O diagnóstico vem antes de tudo porque era ele que faltava. A tela
+        mostrava doze saldos ACUMULADOS descendo, e saldo acumulado não explica
+        nada: dá para olhar a coluna inteira sem descobrir que a causa é a mesma
+        todo mês, e que ela cabe numa linha — entram seis mil, saem nove e
+        oitocentos, faltam três mil e oitocentos. Sempre os mesmos.
+      */}
+      {diagnostico && (
+        <div
+          className={`rounded-xl border p-4 ${
+            diagnostico.tipico < 0
+              ? 'border-amber-900/50 bg-amber-950/20'
+              : 'border-emerald-900/50 bg-emerald-950/20'
+          }`}
+        >
+          <p className="text-[11px] uppercase tracking-wider text-slate-500">
+            {diagnostico.tipico < 0 ? 'Num mês típico, falta' : 'Num mês típico, sobra'}
+          </p>
+          <p
+            className={`dinheiro mt-0.5 text-3xl font-semibold ${
+              diagnostico.tipico < 0 ? 'text-amber-300' : 'text-emerald-300'
+            }`}
+          >
+            {formatar(Math.abs(diagnostico.tipico))}
+          </p>
+
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">
+            Entram <Dinheiro centavos={dados.data.renda[cenario]} className="text-slate-100" /> e
+            saem <Dinheiro centavos={saidaTipica} className="text-slate-100" />.
+            {diagnostico.maiorSaida && (
+              <>
+                {' '}
+                A maior parte são <strong>{diagnostico.maiorSaida.nome}</strong>, com{' '}
+                {formatar(diagnostico.maiorSaida.valor)}.
+              </>
+            )}
+          </p>
+
+          {diagnostico.tipico < 0 && (
+            <p className="mt-2 text-xs leading-relaxed text-slate-400">
+              É essa diferença que se acumula mês a mês na lista abaixo — não um gasto novo em
+              cada um deles. {diagnostico.mesesNoVermelho} dos {diagnostico.totalDeMeses} meses
+              projetados fecham no vermelho.
+            </p>
+          )}
+        </div>
+      )}
+
       {negativo && (
         <Nota tom="atencao">
-          No cenário "{ROTULO_CENARIO[cenario].toLowerCase()}", o saldo fica negativo em{' '}
-          {mesCurto(negativo.mes)}: {formatar(negativo.saldoFinal)}.
+          No cenário "{ROTULO_CENARIO[cenario].toLowerCase()}", o saldo passa de zero em{' '}
+          {mesCurto(negativo.mes)} — é quando a soma das diferenças come o que você tem hoje.
         </Nota>
       )}
 
@@ -150,15 +204,41 @@ export function FluxoDeCaixa() {
           <ul className="divide-y divide-borda">
             {projecao.map((mes) => (
               <li key={mes.mes} className="px-4 py-3">
+                {/*
+                  Dois números, e a ordem importa: o do MÊS explica, o
+                  acumulado só mostra o estrago. Antes só o acumulado aparecia,
+                  em destaque, e ele é o que menos ajuda a entender.
+                */}
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-sm text-slate-200">{formatarBR(mes.mes).slice(3)}</span>
-                  <Dinheiro
-                    centavos={mes.saldoFinal}
-                    className={`text-sm ${mes.saldoFinal < 0 ? 'text-red-400' : 'text-slate-100'}`}
-                  />
+                  <span className="flex items-baseline gap-3">
+                    <span className="text-right">
+                      <span className="block text-[10px] uppercase tracking-wider text-slate-600">
+                        no mês
+                      </span>
+                      <Dinheiro
+                        centavos={resultadoDoMes(mes)}
+                        className={`text-sm ${
+                          resultadoDoMes(mes) < 0 ? 'text-amber-400' : 'text-emerald-400'
+                        }`}
+                      />
+                    </span>
+                    <span className="w-px self-stretch bg-borda" />
+                    <span className="text-right">
+                      <span className="block text-[10px] uppercase tracking-wider text-slate-600">
+                        acumulado
+                      </span>
+                      <Dinheiro
+                        centavos={mes.saldoFinal}
+                        className={`text-sm ${mes.saldoFinal < 0 ? 'text-red-400' : 'text-slate-100'}`}
+                      />
+                    </span>
+                  </span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                  <span>entra {formatar(mes.receita)}</span>
+                  <span className="text-emerald-400/70">entra {formatar(mes.receita)}</span>
+                  <span className="text-amber-400/70">sai {formatar(mes.totalDeSaidas)}</span>
+                  <span className="text-slate-700">·</span>
                   {mes.saidas.jaLancado > 0 && (
                     <span title="Já lançado no banco: fato consumado">
                       parcelas {formatar(mes.saidas.jaLancado)}
