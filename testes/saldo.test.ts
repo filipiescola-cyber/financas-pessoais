@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   empresaComSaldoSuspeito,
   entraNoConsolidado,
+  podeResgatarHoje,
   rotuloDaContaEmpresa,
   saldoConsolidado,
   saldoDaConta,
+  travadoEmAplicacao,
   type TransacaoParaSaldo,
 } from '../src/dominio/saldo';
 
@@ -96,5 +98,54 @@ describe('rótulo da conta Empresa (§2.6)', () => {
     // Quase sempre é pró-labore marcado como devolução de aporte.
     expect(empresaComSaldoSuspeito(-1)).toBe(true);
     expect(empresaComSaldoSuspeito(0)).toBe(false);
+  });
+});
+
+describe('o que dá para resgatar hoje', () => {
+  const HOJE = '2026-09-02';
+
+  it('liquidez diária está sempre disponível', () => {
+    expect(podeResgatarHoje({ liquidezDiaria: true, vencimento: '2028-01-01' }, HOJE)).toBe(true);
+  });
+
+  it('vencimento no futuro prende', () => {
+    expect(podeResgatarHoje({ liquidezDiaria: false, vencimento: '2028-01-01' }, HOJE)).toBe(false);
+  });
+
+  it('vencido já voltou: não está mais preso', () => {
+    // Tratá-lo como travado esconderia dinheiro que já é seu.
+    expect(podeResgatarHoje({ liquidezDiaria: false, vencimento: '2026-09-01' }, HOJE)).toBe(true);
+    expect(podeResgatarHoje({ liquidezDiaria: false, vencimento: HOJE }, HOJE)).toBe(true);
+  });
+
+  it('sem liquidez e sem vencimento, fica preso', () => {
+    expect(podeResgatarHoje({ liquidezDiaria: false, vencimento: null }, HOJE)).toBe(false);
+  });
+});
+
+describe('travado em aplicação', () => {
+  const HOJE = '2026-09-02';
+  const livre = { liquidezDiaria: true, vencimento: null, aplicado: 500000 };
+  const preso = { liquidezDiaria: false, vencimento: '2028-01-01', aplicado: 300000 };
+
+  it('só o que não dá para resgatar conta', () => {
+    expect(travadoEmAplicacao([livre, preso], 800000, HOJE)).toBe(300000);
+  });
+
+  it('carteira toda líquida não prende nada', () => {
+    expect(travadoEmAplicacao([livre], 500000, HOJE)).toBe(0);
+  });
+
+  it('nunca passa do saldo que existe nas contas de investimento', () => {
+    // Aplicação cadastrada sem conta de origem existe de propósito, para quem
+    // registra o que já tinha: sem o teto ela empurraria o disponível para
+    // baixo do que realmente há.
+    expect(travadoEmAplicacao([preso], 100000, HOJE)).toBe(100000);
+    expect(travadoEmAplicacao([preso], 0, HOJE)).toBe(0);
+  });
+
+  it('o que venceu volta para o disponível', () => {
+    const venceu = { liquidezDiaria: false, vencimento: '2026-08-31', aplicado: 300000 };
+    expect(travadoEmAplicacao([venceu], 800000, HOJE)).toBe(0);
   });
 });

@@ -14,6 +14,8 @@ import { arquivarRecorrenciasDaConta } from '../dados/recorrencias';
 import { empresaComSaldoSuspeito, entraNoConsolidado, rotuloDaContaEmpresa } from '../dominio/saldo';
 import { CampoValor } from '../ui/CampoValor';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, CartaoIndicador, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import { calcularTodos } from '../dados/investimentos';
+import { travadoEmAplicacao } from '../dominio/saldo';
 import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 import {
   usarAtualizarConta,
@@ -59,6 +61,32 @@ export function Contas() {
   const disponiveis = lista.filter(entraNoConsolidado);
   const empresa = lista.find((c) => c.tipo === 'empresa');
   const consolidado = disponiveis.reduce((total, c) => total + c.saldoAtual, 0);
+
+  /**
+   * O que está preso em aplicação (§4.6, §7.1).
+   *
+   * A conta de investimentos entrava inteira no saldo, e o saldo lê como
+   * "quanto tenho para gastar" — que é a mesma pergunta que o §4.6 já responde
+   * de outro jeito para a conta Empresa: dinheiro seu que não está disponível
+   * fica fora do disponível. Um CDB que vence em 2028 é exatamente esse caso.
+   */
+  const investimentos = useQuery({ queryKey: ['investimentos'], queryFn: () => calcularTodos() });
+
+  const saldoEmInvestimento = disponiveis
+    .filter((c) => c.tipo === 'investimento')
+    .reduce((total, c) => total + c.saldoAtual, 0);
+
+  const travado = travadoEmAplicacao(
+    (investimentos.data ?? []).map((i) => ({
+      liquidezDiaria: i.investimento.liquidezDiaria,
+      vencimento: i.investimento.vencimento,
+      aplicado: i.aplicado,
+    })),
+    saldoEmInvestimento,
+    hoje(),
+  );
+
+  const disponivelHoje = consolidado - travado;
   const inativas = (todas.data ?? []).filter((c) => !c.ativo);
   const dividasDeConta = lista.filter((c) => c.tipo === 'divida');
 
@@ -87,11 +115,25 @@ export function Contas() {
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             <CartaoIndicador
-              rotulo="Saldo"
+              rotulo={travado > 0 ? 'Disponível hoje' : 'Saldo'}
               sotaque="verde"
-              valor={formatar(consolidado)}
-              detalhe="Soma de conta corrente, poupança, carteira e investimento. Não inclui Empresa, dívidas nem faturas."
+              valor={formatar(disponivelHoje)}
+              detalhe={
+                travado > 0
+                  ? 'Conta corrente, poupança, carteira e aplicação com resgate a qualquer momento. Não inclui Empresa, dívidas nem faturas.'
+                  : 'Soma de conta corrente, poupança, carteira e investimento. Não inclui Empresa, dívidas nem faturas.'
+              }
             />
+            {/* Só aparece quando existe: quem não tem aplicação presa não
+                precisa de um cartão dizendo que tem zero preso (§13.5). */}
+            {travado > 0 && (
+              <CartaoIndicador
+                rotulo="Preso até o vencimento"
+                sotaque="neutro"
+                valor={formatar(travado)}
+                detalhe="Aplicação que só volta na data. É seu e conta no patrimônio, mas não dá para gastar hoje — por isso fica fora do disponível."
+              />
+            )}
             {empresa && (
               <CartaoIndicador
                 rotulo={rotuloDaContaEmpresa(empresa.saldoAtual)}

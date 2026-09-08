@@ -111,3 +111,49 @@ export function rotuloDaContaEmpresa(saldo: Centavos): string {
 export function empresaComSaldoSuspeito(saldo: Centavos): boolean {
   return saldo < 0;
 }
+
+/**
+ * Dá para resgatar hoje? (§7.1, §4.6)
+ *
+ * Liquidez diária resolve a maioria. O vencimento resolve o resto: um CDB de
+ * dois anos que venceu ontem não está mais preso — o dinheiro voltou, e tratá-lo
+ * como travado seria esconder dinheiro que já é seu.
+ */
+export function podeResgatarHoje(
+  aplicacao: { liquidezDiaria: boolean; vencimento: DataISO | null },
+  referencia: DataISO,
+): boolean {
+  return aplicacao.liquidezDiaria || (aplicacao.vencimento !== null && aplicacao.vencimento <= referencia);
+}
+
+/**
+ * Quanto do saldo está preso em aplicação que só volta no vencimento.
+ *
+ * O saldo consolidado soma a conta de investimentos inteira, e isso lê como
+ * "quanto tenho para gastar" — que é a pergunta que o §4.6 já responde de forma
+ * diferente para a conta Empresa: dinheiro seu que não está disponível fica
+ * fora do disponível. Um CDB que vence em 2028 é exatamente esse caso.
+ *
+ * Desconta o PRINCIPAL, não o saldo com rendimento: rendimento é calculado, não
+ * lançado (§7.1), então ele nunca entrou na conta e descontá-lo tiraria um
+ * dinheiro que não está lá.
+ *
+ * O teto é o próprio saldo das contas de investimento. Sem ele, uma aplicação
+ * cadastrada sem conta de origem — que existe de propósito, para quem registra
+ * o que já tinha — empurraria o disponível para baixo do que realmente há.
+ */
+export function travadoEmAplicacao(
+  aplicacoes: readonly {
+    liquidezDiaria: boolean;
+    vencimento: DataISO | null;
+    aplicado: Centavos;
+  }[],
+  saldoDasContasDeInvestimento: Centavos,
+  referencia: DataISO,
+): Centavos {
+  const preso = aplicacoes
+    .filter((a) => !podeResgatarHoje(a, referencia))
+    .reduce((total, a) => total + Math.max(0, a.aplicado), 0);
+
+  return Math.min(preso, Math.max(0, saldoDasContasDeInvestimento));
+}
