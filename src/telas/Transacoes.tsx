@@ -9,7 +9,7 @@ import {
   type DataISO,
 } from '../dominio/datas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
-import { usarContas } from '../dados/usarContas';
+import { usarContas, usarContasComSaldo } from '../dados/usarContas';
 import { usarBuscaDeCategoria, usarTransacoes } from '../dados/usarTransacoes';
 import type { Categoria } from '../dados/tipos';
 import { entraNoConsolidado } from '../dominio/saldo';
@@ -31,7 +31,18 @@ import { usarAviso } from '../ui/Aviso';
 import { listarPendentes } from '../dados/fila';
 import { usarFila } from '../dados/usarFila';
 import { somarDias } from '../dominio/datas';
-import { ALVO_DE_TOQUE, Botao, Cartao, CartaoIndicador, Dinheiro, Etiqueta, Pagina, Secao, Vazio } from '../ui/base';
+import {
+  ALVO_DE_TOQUE,
+  Botao,
+  Cartao,
+  CartaoIndicador,
+  Dinheiro,
+  Etiqueta,
+  Nota,
+  Pagina,
+  Secao,
+  Vazio,
+} from '../ui/base';
 import {
   previstoNoCaixaDoMes,
   previstoNoCaixaEntre,
@@ -40,6 +51,8 @@ import {
 import { extratoDoMes } from '../dominio/extrato';
 import { parcelasPrevistas, type ParcelaPrevista } from '../dominio/divida';
 import { listarDividas } from '../dados/dividas';
+import { calcularTodos } from '../dados/investimentos';
+import { travadoEmAplicacao } from '../dominio/saldo';
 
 /** Previsto vira movimento de caixa. Sem valor não vira nada: somar zero por
  *  ele empurraria o saldo para um número que ninguém prometeu. */
@@ -141,6 +154,63 @@ export function Transacoes() {
   // A lista não sabia nada de dívida: num mês futuro o saldo previsto ignorava
   // as parcelas inteiras, e o mês parecia bem mais folgado do que é.
   const dividas = useQuery({ queryKey: ['dividas'], queryFn: () => listarDividas() });
+
+  /**
+   * O que está preso em aplicação (§4.6, §7.1).
+   *
+   * A linha somava a conta de investimentos inteira, e ela responde "quanto eu
+   * tenho" — pergunta que um CDB de 2028 não ajuda a responder. Mesmo critério
+   * da aba de Contas: conta o que dá para resgatar, e o resto sai.
+   */
+  const investimentos = useQuery({ queryKey: ['investimentos'], queryFn: () => calcularTodos() });
+
+  const aplicacoes = (investimentos.data ?? []).filter(
+    (i) => contaId === null || i.investimento.contaId === contaId,
+  );
+
+  // O teto do desconto é o que existe de fato nas contas de investimento:
+  // aplicação cadastrada sem conta de origem — permitida de propósito, para
+  // quem registra o que já tinha — empurraria a linha para baixo do real.
+  const contasComSaldo = usarContasComSaldo();
+
+  const saldoEmInvestimento = (contasComSaldo.data ?? [])
+    .filter((c) => c.tipo === 'investimento' && (contaId === null || c.id === contaId))
+    .reduce((total, c) => total + c.saldoAtual, 0);
+
+  const travado = travadoEmAplicacao(
+    aplicacoes.map((i) => ({
+      liquidezDiaria: i.investimento.liquidezDiaria,
+      vencimento: i.investimento.vencimento,
+      aplicado: i.aplicado,
+    })),
+    saldoEmInvestimento,
+    hoje(),
+  );
+
+  /**
+   * O dinheiro voltando no vencimento.
+   *
+   * Sem isto a linha desceria pelo travado e nunca subiria de volta: o mês em
+   * que o papel vence apareceria apertado justamente por causa do dinheiro que
+   * chega nele. O que sai da âncora tem que voltar em algum dia.
+   */
+  const vencimentosQueLiberam = aplicacoes
+    .filter(
+      (i) =>
+        !i.investimento.liquidezDiaria &&
+        i.investimento.vencimento !== null &&
+        i.investimento.vencimento > hoje(),
+    )
+    .map((i) => ({
+      valor: i.aplicado,
+      dataCaixa: i.investimento.vencimento!,
+      transacaoPaiId: null,
+    }));
+
+  const liberamAteOMes = vencimentosQueLiberam.filter((v) => v.dataCaixa < mes);
+  const liberamNoMes = vencimentosQueLiberam.filter(
+    (v) => v.dataCaixa >= mes && v.dataCaixa <= ultimoDiaDoMes(mes),
+  );
 
   const geradas = useQuery({
     queryKey: ['ocorrencias-geradas', mes],
@@ -322,15 +392,18 @@ export function Transacoes() {
   );
 
   const extrato =
-    abertura.data !== undefined && movimentos.data && pontePronta
+    abertura.data !== undefined && movimentos.data && investimentos.data && pontePronta
       ? extratoDoMes({
-          ancora: abertura.data,
-          movimentosAteOMes: movimentosDaPonte,
+          // Menos o que está preso: a linha passa a dizer o que dá para
+          // gastar, e não o que está guardado em algum papel até 2028.
+          ancora: abertura.data - travado,
+          movimentosAteOMes: [...movimentosDaPonte, ...liberamAteOMes],
           movimentosDoMes: [
             ...movimentos.data,
             ...movimentosPrevistos,
             ...movimentosDeFatura,
             ...movimentosDeParcela,
+            ...liberamNoMes,
           ],
           dias: porDia.map(([dia]) => dia),
         })
@@ -353,6 +426,16 @@ export function Transacoes() {
         </div>
       }
     >
+      {/* A linha de saldo deixou de somar aplicação presa, e um número que
+          muda de significado precisa dizer isso — senão ele lê como erro. */}
+      {travado > 0 && (
+        <Nota>
+          O saldo da linha não inclui {formatar(travado)} presos em aplicação que só volta no
+          vencimento. Ele mostra o que dá para gastar; o valor aparece de volta no dia em que o
+          papel vence.
+        </Nota>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <CartaoIndicador rotulo="Entrou no mês" sotaque="azul" tamanho="medio" valor={formatar(receitas)} />
         <CartaoIndicador
