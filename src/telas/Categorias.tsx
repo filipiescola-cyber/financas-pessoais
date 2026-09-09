@@ -115,7 +115,8 @@ type CategoriaDaLista = {
 
 function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
   const cliente = useQueryClient();
-  const { mostrar } = usarAviso();
+  // O erro de "arquivar categoria de sistema" agora sobe pelo tratamento
+  // global do QueryClient, junto com o das outras setenta e quatro mutations.
   const invalidar = () => cliente.invalidateQueries({ queryKey: chaves.categorias.todas });
 
   const [escolhendoIcone, setEscolhendoIcone] = useState(false);
@@ -138,7 +139,6 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
   const arquivar = useMutation({
     mutationFn: () => arquivarCategoria(categoria.id),
     onSuccess: invalidar,
-    onError: (erro) => mostrar((erro as Error).message),
   });
 
   return (
