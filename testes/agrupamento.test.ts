@@ -56,8 +56,18 @@ describe('agrupar por caixa', () => {
     expect(dias[0]?.linhas.every((l) => l.tipo === 'fatura')).toBe(true);
   });
 
-  it('filha de divisão aparece na fatura mas não soma duas vezes (§5.5)', () => {
-    // O pai já moveu o saldo; as filhas existem para o relatório por categoria.
+  it('filha de divisão não vira linha na fatura, nem soma duas vezes (§5.5)', () => {
+    /*
+      O total sempre filtrou filha — o pai já moveu o saldo. A LISTA não
+      filtrava, e a intenção registrada aqui era mostrar as partes como linhas
+      dentro da fatura. Na tela isso não se sustenta: a fatura anunciaria
+      "3 lançamentos" para uma compra só, com R$ 100 e os pedaços de R$ 60 e
+      R$ 40 empilhados, somando R$ 200 aos olhos de quem lê.
+
+      As partes continuam existindo e continuam alimentando o relatório por
+      categoria (§5.5) — elas aparecem DENTRO da linha do pai, onde a soma
+      delas tem contexto.
+    */
     const dias = agruparPorCaixa([
       t({ id: 'pai', faturaId: 'f1', dataCaixa: '2026-09-10', valor: -10000 }),
       t({ id: 'filha', faturaId: 'f1', dataCaixa: '2026-09-10', valor: -6000, transacaoPaiId: 'pai' }),
@@ -67,7 +77,8 @@ describe('agrupar por caixa', () => {
     const bloco = dias[0]!.linhas[0]!;
     if (bloco.tipo !== 'fatura') throw new Error('esperava bloco de fatura');
     expect(bloco.total).toBe(-10000);
-    expect(bloco.compras).toHaveLength(3);
+    expect(bloco.compras).toHaveLength(1);
+    expect(bloco.compras[0]!.id).toBe('pai');
   });
 
   it('dentro da fatura, a ordem é a das compras — não a de chegada', () => {
@@ -102,6 +113,25 @@ describe('agrupar por caixa', () => {
   it('lista vazia não vira dia nenhum', () => {
     expect(agruparPorCaixa([])).toEqual([]);
   });
+
+  it('filha de divisão não vira linha própria (§5.5)', () => {
+    /*
+      Ela tem a conta e a data do pai, então cairia no mesmo dia e apareceria
+      ao lado dele: a compra de R$ 80 e os pedaços de R$ 50 e R$ 30 na mesma
+      lista, somando R$ 160 aos olhos de quem lê.
+    */
+    const dias = agruparPorCaixa([
+      t({ id: 'pai', valor: -8000 }),
+      t({ id: 'filha-1', valor: -5000, transacaoPaiId: 'pai' }),
+      t({ id: 'filha-2', valor: -3000, transacaoPaiId: 'pai' }),
+    ]);
+
+    expect(dias[0]?.linhas).toHaveLength(1);
+    const linha = dias[0]?.linhas[0];
+    expect(linha?.tipo).toBe('lancamento');
+    expect(linha?.tipo === 'lancamento' && linha.transacao.id).toBe('pai');
+  });
+
 });
 
 describe('fatura no saldo previsto', () => {

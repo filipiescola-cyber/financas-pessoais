@@ -18,6 +18,8 @@ import {
   type Transacao,
 } from '../dados/transacoes';
 import { ConfirmacaoDeExclusao } from '../ui/ConfirmacaoDeExclusao';
+import { DivisaoDeTransacao } from '../ui/DivisaoDeTransacao';
+import { podeDividir } from '../dominio/divisao';
 
 /**
  * Edição de lançamento. Abre na mesma folha de baixo do lançamento rápido —
@@ -51,6 +53,7 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
   const [data, setData] = useState<DataISO>(transacao.dataCompetencia);
   const [escopo, setEscopo] = useState<EscopoDeParcelamento>('esta');
   const [excluindo, setExcluindo] = useState(false);
+  const [dividindo, setDividindo] = useState(false);
 
   const ehParcelado = transacao.grupoParcelamentoId !== null;
   const ehTransferencia = transacao.tipo === 'transferencia';
@@ -249,6 +252,30 @@ function Formulario({ transacao, aoFechar }: { transacao: Transacao; aoFechar: (
                 Cancelar
               </button>
             </div>
+
+            {/* Dividir mora aqui, e não na folha de lançamento rápido: o §5.1
+                mede o lançamento comum em três toques, e um campo a mais na
+                folha cobraria esse preço de todo lançamento para servir aos
+                poucos que se dividem. Dividir é quase sempre uma segunda
+                olhada na compra, e segunda olhada acontece na edição. */}
+            {podeDividir(transacao) && !dividindo && (
+              <button
+                onClick={() => setDividindo(true)}
+                className="w-full text-center text-xs text-slate-500 transition hover:text-slate-300"
+              >
+                Dividir em categorias
+              </button>
+            )}
+
+            {dividindo && (
+              <DivisaoDeTransacao
+                transacao={transacao}
+                aoTerminar={() => {
+                  setDividindo(false);
+                  aoFechar();
+                }}
+              />
+            )}
 
             <button
               onClick={() => setExcluindo(true)}

@@ -93,6 +93,8 @@ export const DERIVADO_DE_TRANSACAO: readonly (readonly string[])[] = [
   // Parcela de dívida grava transação e mexe no contador de pagas (§4.7).
   ['dividas'],
   ['amortizacoes'],
+  // As partes de uma transação dividida (§5.5).
+  ['filhas-da-transacao'],
   // Quantas transações uma categoria tem, na prévia de exclusão (§4.8).
   ['categoria-previa-exclusao'],
   ['investimento-previa-exclusao'],

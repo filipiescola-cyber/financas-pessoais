@@ -64,6 +64,10 @@ export async function candidatosAConciliacao(
     // Transferência tem duas pontas e vínculo próprio; conciliar uma ponta com
     // uma linha de extrato desalinharia o par (§2.3).
     .neq('tipo', 'transferencia')
+    // Extrato e conciliação usam o PAI (§5.5). A filha tem o valor de um
+    // pedaço da compra e casaria com qualquer linha de extrato daquele valor —
+    // marcando como conciliada uma parte que nunca passou sozinha no banco.
+    .is('transacao_pai_id', null)
     .gte('data_caixa', de)
     .lte('data_caixa', ate);
   if (error) throw error;

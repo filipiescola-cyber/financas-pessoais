@@ -19,6 +19,11 @@ import { idDaFatura, idsDasFaturas } from './faturas';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 import { pularOcorrencia } from './geracaoRecorrencias';
+import {
+  filhasDaDivisao,
+  podeDividir,
+  type ParteDaDivisao,
+} from '../dominio/divisao';
 
 type InsercaoTransacao = Database['public']['Tables']['transacoes']['Insert'];
 type LinhaTransacao = Database['public']['Tables']['transacoes']['Row'];
@@ -352,11 +357,38 @@ export async function excluirParcelamento(
 export async function excluirTransacao(transacao: Transacao): Promise<void> {
   const ids = [transacao.id];
   if (transacao.transferenciaParId) ids.push(transacao.transferenciaParId);
+
+  /*
+    As filhas somem por cascata do banco; as PERNAS DELAS não.
+
+    A parte da empresa de uma compra dividida (§5.5, §2.6) tem uma perna do
+    outro lado, na conta Empresa, e essa perna vive fora da árvore do pai — ela
+    precisa contar no saldo daquela conta, então não pode ser filha. Sem
+    recolhê-la aqui, apagar a compra deixaria a Empresa devendo um dinheiro que
+    nunca mais foi emprestado: a mesma família de defeito da fatura paga sem
+    pagamento e do aporte que sumia sozinho.
+  */
+  ids.push(...(await pernasDasFilhas(transacao.id)));
+
   await excluirTransacoes(ids);
 
   if (transacao.recorrenciaId) {
     await pularOcorrencia(transacao.recorrenciaId, transacao.dataCompetencia);
   }
+}
+
+/** Os ids das pernas na conta Empresa penduradas nas filhas de um pai. */
+async function pernasDasFilhas(paiId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('transferencia_par_id')
+    .eq('transacao_pai_id', paiId)
+    .not('transferencia_par_id', 'is', null);
+  if (error) throw error;
+
+  return (data ?? [])
+    .map((linha) => linha.transferencia_par_id)
+    .filter((id): id is string => id !== null);
 }
 
 export async function marcarRevisado(id: string, revisado: boolean): Promise<void> {
@@ -668,4 +700,178 @@ export async function saldoAte(data: DataISO, contaId?: string | null): Promise<
   });
   if (error) throw new Error(error.message);
   return paraCentavos(Number(resultado ?? 0));
+}
+
+// ------------------------------------------------------------ divisão (§5.5) --
+//
+// Uma compra, mais de uma categoria. O pai continua sendo o único que move
+// saldo; as filhas existem para o relatório por categoria.
+//
+// O que mora aqui é só a gravação. A aritmética — a soma que precisa bater, o
+// arredondamento, o sinal, o que impede de salvar — está em `dominio/divisao`,
+// testada sem banco (§13.4).
+
+/** As partes de uma transação dividida, na ordem em que foram criadas. */
+export async function filhasDe(paiId: string): Promise<Transacao[]> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('*')
+    .eq('transacao_pai_id', paiId)
+    .order('created_at');
+  if (error) throw error;
+  return (data ?? []).map(daLinha);
+}
+
+/**
+ * Divide uma transação em partes com categoria própria (§5.5).
+ *
+ * Redividir SUBSTITUI: as filhas antigas saem antes das novas entrarem. É o
+ * único jeito de a soma continuar batendo com o pai depois de um ajuste —
+ * acrescentar por cima dobraria a compra no relatório por categoria.
+ *
+ * A parte marcada como da empresa ganha uma perna do outro lado, na conta
+ * Empresa (§2.6). Sem ela o patrimônio ficaria errado: você gastou R$ 80 do
+ * cartão mas só R$ 50 eram seus — os outros R$ 30 viraram um recebível, e
+ * recebível que não aparece em lugar nenhum é dinheiro que some.
+ */
+export async function dividirTransacao(dados: {
+  pai: Transacao;
+  partes: readonly ParteDaDivisao[];
+}): Promise<void> {
+  if (!podeDividir(dados.pai)) {
+    throw new Error('Este lançamento não pode ser dividido.');
+  }
+
+  // Lança antes de gravar qualquer coisa: `filhasDaDivisao` recusa uma divisão
+  // que não fecha, e é melhor recusar com o banco intacto.
+  const filhas = filhasDaDivisao(dados.pai.valor, dados.partes);
+
+  const precisaDaEmpresa = filhas.some((filha) => filha.ehTransferencia);
+  const contaEmpresaId = precisaDaEmpresa ? await idDaContaEmpresa() : null;
+
+  if (precisaDaEmpresa && contaEmpresaId === null) {
+    throw new Error(
+      'Para separar a parte da empresa é preciso ter uma conta do tipo Empresa (§2.6). Crie em Contas e divida de novo.',
+    );
+  }
+
+  await desfazerDivisao(dados.pai.id);
+
+  /*
+    As filhas entram TODAS numa inserção só.
+
+    Uma por vez, uma falha no meio deixaria o pai partido pela metade: as
+    antigas já apagadas, algumas novas gravadas, e uma soma que não bate com
+    nada. Não há transação de banco pelo PostgREST, mas um único `insert`
+    é atômico — e isso reduz a janela de risco a uma linha de código.
+  */
+  const { data: criadas, error } = await supabase
+    .from('transacoes')
+    .insert(
+      filhas.map((filha) => ({
+        conta_id: dados.pai.contaId,
+        categoria_id: filha.categoriaId,
+        descricao: filha.descricao || dados.pai.descricao,
+        valor: paraNumerico(filha.valor),
+        // A parte da empresa é transferência, não despesa (§2.6): ela move
+        // patrimônio de um bolso para outro e não é custo de vida.
+        tipo: filha.ehTransferencia ? 'transferencia' : dados.pai.tipo,
+        data_competencia: dados.pai.dataCompetencia,
+        data_caixa: dados.pai.dataCaixa,
+        transacao_pai_id: dados.pai.id,
+        // A filha fica FORA da fatura: o pai já está nela, e pô-la também faria
+        // a fatura mostrar a compra e os pedaços dela lado a lado (§5.5).
+        fatura_id: null,
+        motivo_empresa: filha.motivoEmpresa,
+        origem: 'manual' as const,
+        revisado: true,
+      })),
+    )
+    .select('id');
+
+  if (error) throw new Error(error.message);
+  if (contaEmpresaId === null) return;
+
+  /*
+    A outra ponta de cada parte da empresa: sinal invertido, na conta Empresa.
+
+    Ela NÃO é filha — precisa contar no saldo daquela conta, e filha nunca soma
+    saldo. É o que faz o §2.6 fechar: você gastou R$ 80 do cartão mas só R$ 50
+    eram seus, e os outros R$ 30 viraram um recebível.
+
+    A ordem de `criadas` é a mesma de `filhas`: o PostgREST devolve as linhas na
+    ordem em que foram inseridas.
+  */
+  const pernas = filhas
+    .map((filha, indice) => ({ filha, filhaId: criadas?.[indice]?.id }))
+    .filter((par) => par.filha.ehTransferencia && par.filhaId !== undefined)
+    .map(({ filha, filhaId }) => ({
+      conta_id: contaEmpresaId,
+      valor: paraNumerico(-filha.valor),
+      tipo: 'transferencia' as const,
+      data_competencia: dados.pai.dataCompetencia,
+      data_caixa: dados.pai.dataCaixa,
+      descricao: filha.descricao || dados.pai.descricao,
+      motivo_empresa: filha.motivoEmpresa,
+      transferencia_par_id: filhaId!,
+      origem: 'manual' as const,
+      revisado: true,
+    }));
+
+  if (pernas.length === 0) return;
+
+  const { data: criadasPernas, error: erroPernas } = await supabase
+    .from('transacoes')
+    .insert(pernas)
+    .select('id, transferencia_par_id');
+  if (erroPernas) throw new Error(erroPernas.message);
+
+  // O vínculo de volta, para excluir por qualquer uma das duas pontas achar a
+  // outra — é o que `excluirTransacao` já sabe fazer com transferência (§2.3).
+  for (const perna of criadasPernas ?? []) {
+    if (perna.transferencia_par_id === null) continue;
+    const { error: erroVinculo } = await supabase
+      .from('transacoes')
+      .update({ transferencia_par_id: perna.id })
+      .eq('id', perna.transferencia_par_id);
+    if (erroVinculo) throw new Error(erroVinculo.message);
+  }
+}
+
+/**
+ * Desfaz a divisão: a transação volta a ser uma linha só.
+ *
+ * As pernas na conta Empresa saem junto. O saldo do pai não se mexe em momento
+ * nenhum — ele nunca dependeu das filhas (§5.5).
+ */
+export async function desfazerDivisao(paiId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('id, transferencia_par_id')
+    .eq('transacao_pai_id', paiId);
+  if (error) throw error;
+  if (!data || data.length === 0) return;
+
+  const ids = data.flatMap((linha) =>
+    linha.transferencia_par_id ? [linha.id, linha.transferencia_par_id] : [linha.id],
+  );
+
+  await excluirTransacoes(ids);
+}
+
+/**
+ * A conta Empresa ativa, se houver (§4.6).
+ *
+ * Só pode existir uma, e o banco garante isso com uma restrição única — por
+ * isso aqui não há desempate a fazer.
+ */
+async function idDaContaEmpresa(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('contas')
+    .select('id')
+    .eq('tipo', 'empresa')
+    .eq('ativo', true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.id ?? null;
 }

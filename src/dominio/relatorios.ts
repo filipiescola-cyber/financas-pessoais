@@ -32,27 +32,37 @@ export type TransacaoDeRelatorio = {
 const ehMovimento = (t: TransacaoDeRelatorio) => t.tipo !== 'transferencia';
 
 /**
- * Para somar totais: o pai conta, as filhas não. O pai é o valor que saiu de
- * fato da conta; as filhas só repartem esse valor entre categorias.
+ * O que entra numa soma de relatório: a PONTA da árvore.
+ *
+ * Quem tem filhas cede o lugar a elas, e a filha conta por si. Vale igual para
+ * o total e para a repartição por categoria — eram duas regras diferentes, e a
+ * diferença só não aparecia porque as filhas somavam exatamente o pai.
+ *
+ * A parte "Empresa" quebrou esse empate (§2.6). Numa compra de R$ 80 em que
+ * R$ 30 são da empresa, a filha de R$ 30 é TRANSFERÊNCIA, não despesa: ela
+ * move patrimônio de um bolso para outro. Contando o pai, o total de despesas
+ * dizia R$ 80; contando as filhas, a soma por categoria dizia R$ 50 — dois
+ * números para a mesma pergunta, na mesma tela.
+ *
+ * R$ 50 é a resposta certa: o §2.6 é explícito em que aporte não é despesa
+ * pessoal, "senão o custo de vida mínimo inflaria e o número perderia a
+ * serventia".
+ *
+ * Sem divisão nenhuma — que é a esmagadora maioria — a regra não muda nada:
+ * a transação é a própria ponta.
  */
-const contaNoTotal = (t: TransacaoDeRelatorio) => ehMovimento(t) && t.transacaoPaiId === null;
-
-/**
- * Para repartir por categoria: quem tem filhas cede o lugar a elas, porque são
- * elas que carregam as categorias verdadeiras da compra dividida.
- */
-const contaPorCategoria = (t: TransacaoDeRelatorio) => ehMovimento(t) && !t.temFilhas;
+const contaNaSoma = (t: TransacaoDeRelatorio) => ehMovimento(t) && !t.temFilhas;
 
 export function totalDeReceitas(transacoes: readonly TransacaoDeRelatorio[]): Centavos {
   return transacoes
-    .filter((t) => contaNoTotal(t) && t.tipo === 'receita')
+    .filter((t) => contaNaSoma(t) && t.tipo === 'receita')
     .reduce((soma, t) => soma + t.valor, 0);
 }
 
 export function totalDeDespesas(transacoes: readonly TransacaoDeRelatorio[]): Centavos {
   return Math.abs(
     transacoes
-      .filter((t) => contaNoTotal(t) && t.tipo === 'despesa')
+      .filter((t) => contaNaSoma(t) && t.tipo === 'despesa')
       .reduce((soma, t) => soma + t.valor, 0),
   );
 }
@@ -70,7 +80,7 @@ export function gastoPorCategoria(
   const soma = new Map<string | null, { total: Centavos; quantidade: number }>();
 
   for (const transacao of transacoes) {
-    if (!contaPorCategoria(transacao) || transacao.tipo !== 'despesa') continue;
+    if (!contaNaSoma(transacao) || transacao.tipo !== 'despesa') continue;
     const atual = soma.get(transacao.categoriaId) ?? { total: 0, quantidade: 0 };
     soma.set(transacao.categoriaId, {
       total: atual.total + Math.abs(transacao.valor),
@@ -101,7 +111,7 @@ export function despesaPorNatureza(transacoes: readonly TransacaoDeRelatorio[]):
   const resultado: PorNatureza = { fixa: 0, variavel: 0, eventual: 0, semNatureza: 0 };
 
   for (const transacao of transacoes) {
-    if (!contaPorCategoria(transacao) || transacao.tipo !== 'despesa') continue;
+    if (!contaNaSoma(transacao) || transacao.tipo !== 'despesa') continue;
     const valor = Math.abs(transacao.valor);
 
     if (transacao.natureza === 'fixa') resultado.fixa += valor;

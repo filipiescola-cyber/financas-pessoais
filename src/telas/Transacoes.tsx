@@ -53,6 +53,7 @@ import { parcelasPrevistas, type ParcelaPrevista } from '../dominio/divida';
 import { listarDividas } from '../dados/dividas';
 import { calcularTodos } from '../dados/investimentos';
 import { travadoEmAplicacao } from '../dominio/saldo';
+import { ParteNaLista } from '../ui/DivisaoDeTransacao';
 
 /** Previsto vira movimento de caixa. Sem valor não vira nada: somar zero por
  *  ele empurraria o saldo para um número que ninguém prometeu. */
@@ -111,7 +112,20 @@ export function Transacoes() {
 
   const nomeConta = new Map((contas.data ?? []).map((c) => [c.id, c.nome]));
   const buscarCategoria = usarBuscaDeCategoria();
+
   const lista = transacoes.data ?? [];
+  /*
+    As partes de cada lançamento dividido (§5.5).
+
+    Sai da MESMA lista que já veio do banco — filha tem a data do pai, então
+    está sempre no mesmo mês. Uma consulta por linha dividida seria uma ida ao
+    banco para cada compra de mercado.
+  */
+  const filhasPorPai = new Map<string, Transacao[]>();
+  for (const t of lista) {
+    if (t.transacaoPaiId === null) continue;
+    filhasPorPai.set(t.transacaoPaiId, [...(filhasPorPai.get(t.transacaoPaiId) ?? []), t]);
+  }
 
   // Receita e despesa nunca viram um total único (§14). Transferência fica fora
   // das duas: ela só move saldo.
@@ -568,6 +582,8 @@ export function Transacoes() {
                     transacao={linha.transacao}
                     nomeConta={nomeConta.get(linha.transacao.contaId) ?? '—'}
                     categoria={buscarCategoria(linha.transacao.categoriaId)}
+                    filhas={filhasPorPai.get(linha.transacao.id) ?? []}
+                    buscarCategoria={buscarCategoria}
                     aoEditar={() => setEditando(linha.transacao)}
                   />
                 ) : linha.tipo === 'transferencia' ? (
@@ -719,11 +735,16 @@ function ItemDeTransacao({
   transacao,
   nomeConta,
   categoria,
+  filhas,
+  buscarCategoria,
   aoEditar,
 }: {
   transacao: Transacao;
   nomeConta: string;
   categoria: Categoria | null;
+  /** As partes, quando o lançamento foi dividido (§5.5). */
+  filhas: readonly Transacao[];
+  buscarCategoria: (id: string | null) => Categoria | null;
   aoEditar: () => void;
 }) {
   const [confirmandoParcelamento, setConfirmandoParcelamento] = useState(false);
@@ -862,6 +883,27 @@ function ItemDeTransacao({
           </div>
         </div>
       </div>
+
+      {/*
+        As partes, embaixo da linha do pai (§5.5).
+
+        Recuadas e em cinza de propósito: elas NÃO são lançamentos, e mostrá-las
+        com o mesmo peso faria a compra de R$ 80 parecer R$ 160. O valor grande
+        continua sendo o do pai, que é o que saiu da conta.
+      */}
+      {filhas.length > 0 && (
+        <ul className="ml-7 mt-2 space-y-1 border-l border-borda pl-3">
+          {filhas.map((filha) => (
+            <ParteNaLista
+              key={filha.id}
+              descricao={filha.descricao}
+              categoria={buscarCategoria(filha.categoriaId)?.nome ?? null}
+              valor={filha.valor}
+              daEmpresa={filha.motivoEmpresa !== null}
+            />
+          ))}
+        </ul>
+      )}
 
       {confirmandoParcelamento && (
         <div className="mt-3 space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">

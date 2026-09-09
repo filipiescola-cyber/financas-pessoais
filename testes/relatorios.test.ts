@@ -167,3 +167,55 @@ describe('quanto histórico existe (§13.5)', () => {
     expect(mesesComMovimento([t({ tipo: 'transferencia' })])).toBe(0);
   });
 });
+
+describe('compra dividida (§5.5)', () => {
+  /*
+    Uma compra de R$ 80 no mercado: R$ 50 de comida sua, R$ 30 de embalagem da
+    empresa. É o caso que o §5.5 cita por extenso.
+
+    O pai é quem moveu o saldo, mas quem responde "quanto eu gastei" são as
+    partes — e a parte da empresa não é gasto seu (§2.6).
+  */
+  const compraDividida = () => [
+    t({ valor: -8000, temFilhas: true, categoriaId: 'mercado' }),
+    t({ valor: -5000, transacaoPaiId: 'pai', categoriaId: 'alimentacao', natureza: 'variavel' }),
+    t({ valor: -3000, transacaoPaiId: 'pai', tipo: 'transferencia', categoriaId: null }),
+  ];
+
+  it('a soma por categoria e o total de despesas dão o MESMO número', () => {
+    // Enquanto eram duas regras diferentes, o total dizia R$ 80 e a soma por
+    // categoria dizia R$ 50 — na mesma tela, para a mesma pergunta.
+    const lista = compraDividida();
+    const porCategoria = gastoPorCategoria(lista).reduce((soma, f) => soma + f.total, 0);
+
+    expect(totalDeDespesas(lista)).toBe(5000);
+    expect(porCategoria).toBe(5000);
+  });
+
+  it('a parte da empresa não infla o custo de vida mínimo (§2.6)', () => {
+    // "Se aporte contasse como despesa pessoal, o custo de vida mínimo
+    // inflaria e o número perderia a serventia."
+    const natureza = despesaPorNatureza(compraDividida());
+    expect(natureza.variavel).toBe(5000);
+    expect(natureza.fixa + natureza.eventual + natureza.semNatureza).toBe(0);
+  });
+
+  it('o pai não aparece na sua própria categoria', () => {
+    // Senão "Mercado R$ 80" e "Alimentação R$ 50" conviveriam, e a compra
+    // apareceria duas vezes no mesmo gráfico.
+    const fatias = gastoPorCategoria(compraDividida());
+    expect(fatias.map((f) => f.categoriaId)).toEqual(['alimentacao']);
+  });
+
+  it('divisão sem parte de empresa não muda total nenhum', () => {
+    // O caso comum: repartir uma compra entre duas categorias suas.
+    const lista = [
+      t({ valor: -8000, temFilhas: true, categoriaId: 'mercado' }),
+      t({ valor: -5000, transacaoPaiId: 'pai', categoriaId: 'alimentacao' }),
+      t({ valor: -3000, transacaoPaiId: 'pai', categoriaId: 'pets' }),
+    ];
+
+    expect(totalDeDespesas(lista)).toBe(8000);
+    expect(gastoPorCategoria(lista).reduce((soma, f) => soma + f.total, 0)).toBe(8000);
+  });
+});

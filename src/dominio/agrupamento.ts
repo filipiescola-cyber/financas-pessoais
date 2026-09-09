@@ -145,6 +145,17 @@ export function agruparPorCaixa<T extends TransacaoAgrupavel>(
   };
 
   for (const transacao of transacoes) {
+    /*
+      Filha de divisão não vira linha (§5.5).
+
+      Ela tem conta e data do pai, então cairia no mesmo dia e apareceria ao
+      lado dele — a compra de R$ 80 e os pedaços de R$ 50 e R$ 30 na mesma
+      lista, somando R$ 160 aos olhos de quem lê. O extrato usa o PAI; as
+      filhas são dos relatórios por categoria, e a tela as mostra dentro da
+      linha dele.
+    */
+    if (transacao.transacaoPaiId !== null) continue;
+
     const registro = doDia(transacao.dataCaixa);
     if (transacao.faturaId === null) {
       registro.soltas.push(transacao);
