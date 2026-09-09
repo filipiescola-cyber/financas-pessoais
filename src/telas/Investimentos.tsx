@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatarBR, hoje, somarDias, type DataISO } from '../dominio/datas';
+import {
+  formatarBR,
+  hoje,
+  somarDias,
+  somarMeses,
+  ultimoDiaDoMes,
+  type DataISO,
+} from '../dominio/datas';
+import { dataPadraoDaConferencia } from '../dominio/orcamento';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import type { Indexador } from '../dominio/rendimento';
 import {
@@ -357,6 +365,11 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   const { mostrar } = usarAviso();
   const [aberto, setAberto] = useState(false);
   const [saldo, setSaldo] = useState<Centavos>(item.saldoExibido);
+  // Mesmo padrão da conferência de contas: nos primeiros dias do mês quem
+  // abre a tela está fechando o mês que acabou, e o extrato na mão é o dele.
+  const [dataDaConferencia, setDataDaConferencia] = useState<DataISO>(
+    dataPadraoDaConferencia(hoje()),
+  );
 
   const { investimento: inv, resultado } = item;
   const rendimento = item.saldoExibido - item.aplicado;
@@ -371,7 +384,7 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
   });
 
   const conferir = useMutation({
-    mutationFn: () => conferirInvestimento(inv.id, saldo),
+    mutationFn: () => conferirInvestimento(inv.id, saldo, dataDaConferencia),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: ['investimentos'] });
       setAberto(false);
@@ -621,6 +634,41 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
             aoMudar={setSaldo}
             rotulo={inv.calculoAutomatico ? 'Saldo que o banco mostra' : 'Saldo atual'}
           />
+
+          {/* A data do extrato, e não a de hoje: o app refaz a posição até ela
+              para comparar dois números do mesmo dia. Sem escolher, o saldo de
+              31/08 era comparado com a posição de hoje e a diferença de dias
+              aparecia como erro. */}
+          {inv.calculoAutomatico && (
+            <Campo
+              rotulo="Data do extrato"
+              ajuda="O dia a que esse saldo se refere. O app recalcula a posição até essa data para comparar dois números do mesmo dia."
+            >
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Chip
+                    ativo={dataDaConferencia === ultimoDiaDoMes(somarMeses(hoje(), -1))}
+                    aoClicar={() => setDataDaConferencia(ultimoDiaDoMes(somarMeses(hoje(), -1)))}
+                  >
+                    Fim do mês passado
+                  </Chip>
+                  <Chip
+                    ativo={dataDaConferencia === hoje()}
+                    aoClicar={() => setDataDaConferencia(hoje())}
+                  >
+                    Hoje
+                  </Chip>
+                </div>
+                <input
+                  type="date"
+                  value={dataDaConferencia}
+                  onChange={(e) => e.target.value && setDataDaConferencia(e.target.value)}
+                  className={ENTRADA}
+                />
+              </div>
+            </Campo>
+          )}
+
           <div className="flex gap-2">
             <Botao
               aoClicar={() => (inv.calculoAutomatico ? conferir.mutate() : salvarManual.mutate())}

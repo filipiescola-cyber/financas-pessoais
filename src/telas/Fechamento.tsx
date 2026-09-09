@@ -122,10 +122,20 @@ export function Fechamento() {
     (t) => t.categoriaId === null && t.tipo !== 'transferencia',
   );
 
+  /*
+    Conferida ANTES do fim do mês não conferiu o mês.
+
+    O corte era o primeiro dia: quem conferisse o saldo no dia 5 de agosto via
+    o passo "conferir saldos" já dado como feito ao fechar agosto — com os
+    outros vinte e seis dias do mês nunca comparados com o extrato. O passo
+    existe justamente para impedir a diferença de virar bola de neve (§5.3), e
+    dará-lo por cumprido cedo demais é pior do que não ter o passo: cria a
+    sensação de que o mês foi conferido.
+  */
   const semConferencia = (contas.data ?? []).filter(
     (c) =>
       ['corrente', 'poupanca', 'carteira'].includes(c.tipo) &&
-      (c.dataConferencia === null || c.dataConferencia < mes),
+      (c.dataConferencia === null || c.dataConferencia < fimDoMes),
   );
 
   /**

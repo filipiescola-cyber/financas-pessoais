@@ -358,11 +358,27 @@ export async function atualizarSaldoManual(id: string, saldo: Centavos): Promise
   if (error) throw new Error(error.message);
 }
 
-/** Conferência obrigatória (§7.3): o número real é o do banco, não o calculado. */
-export async function conferirInvestimento(id: string, saldoReal: Centavos): Promise<void> {
+/**
+ * Conferência obrigatória (§7.3): o número real é o do banco, não o calculado.
+ *
+ * A DATA é do extrato, não de hoje — e essa distinção é o que faz a
+ * conferência funcionar. O cálculo da divergência refaz a posição até
+ * `data_conferencia` para comparar dois números do MESMO dia. Gravando `hoje()`
+ * aí, quem digitasse o saldo do extrato de 31/08 no dia 9 de setembro via o
+ * app comparar o número de agosto com a posição de setembro: nove dias de
+ * rendimento viravam "divergência", e conferir passava a CRIAR o erro que
+ * existia para achar.
+ *
+ * É a mesma correção que a conferência de contas já recebeu (§5.3), aqui.
+ */
+export async function conferirInvestimento(
+  id: string,
+  saldoReal: Centavos,
+  data: DataISO = hoje(),
+): Promise<void> {
   const { error } = await supabase
     .from('investimentos')
-    .update({ saldo_conferido: paraNumerico(saldoReal), data_conferencia: hoje() })
+    .update({ saldo_conferido: paraNumerico(saldoReal), data_conferencia: data })
     .eq('id', id);
   if (error) throw new Error(error.message);
 }
