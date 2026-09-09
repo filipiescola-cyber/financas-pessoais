@@ -3,6 +3,7 @@ import {
   dataDaOcorrencia,
   repeticoesRestantes,
   rotuloDoDia,
+  temOcorrenciaNoMes,
   terminoParaRepeticoes,
   valorDaOcorrencia,
   vencimentosPendentes,
@@ -175,5 +176,41 @@ describe('recorrência gradativa', () => {
   it('sem base não inventa valor', () => {
     // "Valor varia" continua sendo a resposta honesta de quem não sabe o passo.
     expect(valorDaOcorrencia(null, 20000, INICIO, '2026-09-10')).toBeNull();
+  });
+});
+
+describe('recorrência anual', () => {
+  it('a anual só cai no mês do aniversário', () => {
+    // IPVA cadastrado em janeiro vence em janeiro, todo ano — e não todo mês,
+    // que é o que acontecia com quem tentasse registrá-lo.
+    expect(temOcorrenciaNoMes('anual', '2026-01-10', '2026-01-01')).toBe(true);
+    expect(temOcorrenciaNoMes('anual', '2026-01-10', '2026-02-01')).toBe(false);
+    expect(temOcorrenciaNoMes('anual', '2026-01-10', '2027-01-01')).toBe(true);
+  });
+
+  it('a mensal cai sempre', () => {
+    expect(temOcorrenciaNoMes('mensal', '2026-01-10', '2026-07-01')).toBe(true);
+  });
+
+  it('a geração pula os onze meses que não são o dela', () => {
+    const datas = vencimentosPendentes(
+      '2026-01-10',
+      '2026-12-31',
+      { dia: 10, regra: 'fixo', terminaEm: null, comecaEm: '2026-01-10' },
+      FERIADOS,
+      'anual',
+    );
+    expect(datas).toEqual(['2026-01-10']);
+  });
+
+  it('a mensal continua gerando todo mês', () => {
+    const datas = vencimentosPendentes(
+      '2026-01-10',
+      '2026-04-30',
+      { dia: 10, regra: 'fixo', terminaEm: null, comecaEm: '2026-01-10' },
+      FERIADOS,
+      'mensal',
+    );
+    expect(datas).toHaveLength(4);
   });
 });

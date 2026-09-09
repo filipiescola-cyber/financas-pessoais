@@ -15,7 +15,11 @@ import {
   terminoEscolhido,
   type ModoDePrazo,
 } from './CampoQuando';
-import { valorDaOcorrencia, type RegraDoDia } from '../dominio/recorrencias';
+import {
+  valorDaOcorrencia,
+  type Frequencia,
+  type RegraDoDia,
+} from '../dominio/recorrencias';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import { Botao, Campo, Cartao, Chip, ENTRADA } from './base';
 import { ChipsDeConta } from './ChipsDeConta';
@@ -53,6 +57,7 @@ export function FormularioRecorrencia({
   const [contaEscolhida, setContaId] = useState<string | null>(contaFixa);
   const contaId = contaFixa ?? contaEscolhida;
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
+  const [frequencia, setFrequencia] = useState<Frequencia>('mensal');
   const [passo, setPasso] = useState<'nao' | 'sobe' | 'desce'>('nao');
   const [valorDoPasso, setValorDoPasso] = useState<Centavos>(0);
 
@@ -90,7 +95,11 @@ export function FormularioRecorrencia({
         categoriaId,
         contaId: contaId!,
         tipo,
-        natureza: 'fixa',
+        frequencia,
+        // Despesa anual é eventual por definição (§2.5): ela não é custo de vida
+        // mínimo, é o que precisa de provisão. Marcá-la como fixa inflaria o piso
+        // do mês e tiraria a serventia do número.
+        natureza: frequencia === 'anual' ? 'eventual' : 'fixa',
         dia: diaNumero,
         regra,
         comecaEm: inicioEscolhido(mesInicial),
@@ -148,6 +157,24 @@ export function FormularioRecorrencia({
         aoMudarPasso={setPasso}
         aoMudarValor={setValorDoPasso}
       />
+
+      <Campo
+        rotulo="Com que frequência"
+        ajuda={
+          frequencia === 'anual'
+            ? 'Cai uma vez por ano, no mês do início. IPVA, IPTU, seguro — o app passa a saber QUANDO o gasto chega, em vez de diluir por doze e te pegar de surpresa.'
+            : 'Cai todo mês. Aluguel, internet, assinatura, salário.'
+        }
+      >
+        <div className="flex flex-wrap gap-2">
+          <Chip ativo={frequencia === 'mensal'} aoClicar={() => setFrequencia('mensal')}>
+            Todo mês
+          </Chip>
+          <Chip ativo={frequencia === 'anual'} aoClicar={() => setFrequencia('anual')}>
+            Uma vez por ano
+          </Chip>
+        </div>
+      </Campo>
 
       <CampoQuando
         rotulo={tipo === 'despesa' ? 'Dia do vencimento' : 'Dia do recebimento'}

@@ -163,6 +163,7 @@ export function Fechamento() {
               comecaEm: r.comecaEm,
               terminaEm: r.terminaEm,
               incremento: r.incremento,
+              frequencia: r.frequencia,
               cartao: cartao
                 ? { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento }
                 : null,

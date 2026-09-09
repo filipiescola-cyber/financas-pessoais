@@ -22,6 +22,29 @@ import { diaUtilDoMes, type Feriados } from './diasUteis';
  */
 export type RegraDoDia = 'fixo' | 'dia_util' | 'dia_util_do_fim';
 
+export type Frequencia = 'mensal' | 'anual';
+
+/**
+ * Este mês tem ocorrência? (§2.5)
+ *
+ * Mensal tem sempre. Anual tem uma vez, no mês do aniversário — e é a diferença
+ * que faltava para o app conseguir registrar IPVA, IPTU e seguro, as despesas
+ * que o §2.5 usa para justificar a provisão inteira. Sem elas cadastradas, a
+ * provisão era um chute em cima do histórico e o app não sabia dizer QUANDO o
+ * gasto chega.
+ *
+ * O mês de referência é o do início. Quem cadastra o IPVA em janeiro está
+ * dizendo que ele vence em janeiro, todo ano.
+ */
+export function temOcorrenciaNoMes(
+  frequencia: Frequencia,
+  comecaEm: DataISO,
+  mes: DataISO,
+): boolean {
+  if (frequencia !== 'anual') return true;
+  return comecaEm.slice(5, 7) === mes.slice(5, 7);
+}
+
 /**
  * O valor daquela ocorrência, quando a recorrência é gradativa (§5.2).
  *
@@ -73,6 +96,8 @@ export type Agenda = {
   regra: RegraDoDia;
   /** Prazo: a data da última ocorrência. `null` quando não tem fim. */
   terminaEm: DataISO | null;
+  /** Primeiro dia em que ela vale. Na anual, define o mês do aniversário. */
+  comecaEm?: DataISO;
 };
 
 /**
@@ -180,6 +205,7 @@ export function vencimentosPendentes(
   ate: DataISO,
   agenda: Agenda,
   feriados: Feriados,
+  frequencia: Frequencia = 'mensal',
 ): DataISO[] {
   const primeiro = primeiroDiaDoMes(desde);
   const datas: DataISO[] = [];
@@ -187,6 +213,8 @@ export function vencimentosPendentes(
   for (let i = 0; i < JANELA_RETROATIVA + 1; i += 1) {
     const mes = somarMeses(primeiro, i);
     if (mes > ate) break;
+
+    if (!temOcorrenciaNoMes(frequencia, agenda.comecaEm ?? desde, mes)) continue;
 
     const vencimento = dataDaOcorrencia(mes, agenda.dia, agenda.regra, feriados);
     // Não gera antes de a recorrência existir, nem no futuro, nem depois do prazo.

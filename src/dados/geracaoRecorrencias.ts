@@ -30,7 +30,9 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
     .from('recorrencias')
     .select('*')
     .eq('ativo', true)
-    .eq('frequencia', 'mensal');
+    // A anual entra: ela era filtrada aqui e nunca virava lançamento, o que
+    // fazia o cadastro existir no banco e não acontecer no mundo (§2.5).
+    .in('frequencia', ['mensal', 'anual']);
   if (error) throw error;
 
   if (!recorrencias || recorrencias.length === 0) return 0;
@@ -82,8 +84,10 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
         dia: recorrencia.dia,
         regra: recorrencia.regra_do_dia as RegraDoDia,
         terminaEm: recorrencia.termina_em,
+        comecaEm: recorrencia.comeca_em,
       },
       feriados,
+      recorrencia.frequencia === 'anual' ? 'anual' : 'mensal',
     );
 
     for (const competencia of vencimentos) {

@@ -20,7 +20,7 @@ export type Recorrencia = {
   contaId: string;
   tipo: 'receita' | 'despesa';
   natureza: Natureza | null;
-  frequencia: 'mensal' | 'semanal' | 'anual';
+  frequencia: 'mensal' | 'anual';
   dia: number;
   /** Com regra de dia útil, `dia` é ordinal e não data. */
   regra: RegraDoDia;
@@ -46,7 +46,7 @@ export type NovaRecorrencia = {
   contaId: string;
   tipo: 'receita' | 'despesa';
   natureza?: Natureza | null;
-  frequencia?: 'mensal' | 'semanal' | 'anual';
+  frequencia?: 'mensal' | 'anual';
   dia: number;
   regra?: RegraDoDia;
   comecaEm?: DataISO;
@@ -70,7 +70,9 @@ export async function listarRecorrencias(): Promise<Recorrencia[]> {
     contaId: linha.conta_id,
     tipo: linha.tipo as 'receita' | 'despesa',
     natureza: linha.natureza as Natureza | null,
-    frequencia: linha.frequencia as Recorrencia['frequencia'],
+    // 'semanal' existe no schema e nunca foi implementada: ler como mensal
+    // evita uma recorrência órfã sumir da tela sem explicação.
+    frequencia: linha.frequencia === 'anual' ? 'anual' : 'mensal',
     dia: linha.dia,
     regra: linha.regra_do_dia as RegraDoDia,
     comecaEm: linha.comeca_em,

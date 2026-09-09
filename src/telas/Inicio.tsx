@@ -409,6 +409,7 @@ function PrevistoDoMes({ mes }: { mes: string }) {
       terminaEm: r.terminaEm,
       incremento: r.incremento,
       cartao: cartaoPorConta.get(r.contaId) ?? null,
+      frequencia: r.frequencia,
     })),
     geradas.data.geradas,
     mes,

@@ -145,6 +145,7 @@ export function Transacoes() {
         terminaEm: r.terminaEm,
       incremento: r.incremento,
       contaId: r.contaId,
+      frequencia: r.frequencia,
         cartao: cartao
           ? { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento }
           : null,

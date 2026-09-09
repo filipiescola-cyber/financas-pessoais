@@ -79,6 +79,7 @@ export function FluxoDeCaixa() {
     medianaDasVariaveis: dados.data.medianaDasVariaveis,
     jaLancadoPorMes: dados.data.jaLancadoPorMes,
     liberacoesPorMes: dados.data.liberacoesPorMes,
+    anuaisPorMes: dados.data.anuaisPorMes,
   };
 
   if (dados.data.renda.origem === 'ausente' && dados.data.fixasMensais === 0) {

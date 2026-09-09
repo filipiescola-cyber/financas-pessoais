@@ -17,7 +17,9 @@ import type { Feriados } from './diasUteis';
 import {
   chaveDaOcorrencia,
   dataDaOcorrencia,
+  temOcorrenciaNoMes,
   valorDaOcorrencia,
+  type Frequencia,
   type RegraDoDia,
 } from './recorrencias';
 
@@ -46,6 +48,14 @@ export type RecorrenciaPrevista = {
    * da projeção do §8 justamente por serem as que mais mexem com ela.
    */
   incremento?: Centavos;
+  /**
+   * Mensal ou anual (§2.5).
+   *
+   * A anual é o IPVA, o IPTU, o seguro — despesa que cai uma vez por ano e que
+   * o app não sabia registrar. Sem ela cadastrada, a provisão do §2.5 era um
+   * chute em cima do histórico e nada sabia dizer QUANDO o gasto chega.
+   */
+  frequencia?: Frequencia;
   /**
    * A configuração do cartão, quando a recorrência é cobrada num (§2.1).
    *
@@ -104,6 +114,10 @@ export function previstoDoMes(
 ): ItemPrevisto[] {
   return recorrencias
     .flatMap((recorrencia) => {
+      if (!temOcorrenciaNoMes(recorrencia.frequencia ?? 'mensal', recorrencia.comecaEm, mes)) {
+        return [];
+      }
+
       const dataPrevista = dataDaOcorrencia(mes, recorrencia.dia, recorrencia.regra, feriados);
       if (dataPrevista < recorrencia.comecaEm) return [];
       if (recorrencia.terminaEm !== null && dataPrevista > recorrencia.terminaEm) return [];

@@ -281,6 +281,7 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
               comecaEm: r.comecaEm,
               terminaEm: r.terminaEm,
               incremento: r.incremento,
+              frequencia: r.frequencia,
               cartao: { diaFechamento: cartao.diaFechamento, diaVencimento: cartao.diaVencimento },
             })),
           geradas.data.geradas,
@@ -1045,6 +1046,7 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
                       <p className="truncate text-sm text-slate-100">{recorrencia.descricao}</p>
                       <p className="truncate text-xs text-slate-500">
                         {rotuloDoDia(recorrencia.dia, recorrencia.regra)}
+                        {recorrencia.frequencia === 'anual' && ' · uma vez por ano'}
                         {/* O que a aba de atalhos nunca dizia: em qual fatura
                             a cobrança cai. É a informação que faz a diferença
                             entre "gasto do dia 10" e "sai no dia 14". */}

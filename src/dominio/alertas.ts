@@ -13,7 +13,7 @@
 // permite num app sem servidor — e evita o "nada diário" do §8.6 pela raiz,
 // porque nada aqui persegue ninguém.
 
-import type { Centavos } from './dinheiro';
+import { formatar, type Centavos } from './dinheiro';
 import { diasCorridosEntre } from './diasUteis';
 import type { DataISO } from './datas';
 
@@ -44,6 +44,15 @@ export type EntradaDosAlertas = {
   contasSemConferencia: { nome: string; ultimaConferencia: DataISO | null }[];
   /** Aplicações com vencimento chegando (§7). */
   investimentosVencendo: { nome: string; vencimento: DataISO; valor: Centavos }[];
+  /**
+   * Despesa anual chegando (§8.6).
+   *
+   * "IPVA em fevereiro: R$ 1.800." É o alerta que o §8.6 pede e que faltava —
+   * e faltava porque nem dava para cadastrar uma despesa anual. Ele existe
+   * para o gasto ser lembrado com semanas de antecedência, que é o tempo que
+   * separa "eu me organizo" de "isso me pegou de surpresa".
+   */
+  anuaisChegando: { descricao: string; data: DataISO; valor: Centavos }[];
 };
 
 const MESES = [
@@ -71,6 +80,9 @@ function nomeDoMes(data: DataISO): string {
  * usar — e pouco o bastante para o aviso não virar paisagem. Vencimento que
  * aparece com dois meses de antecedência é ignorado por dois meses.
  */
+/** O §8.6 pede 45 dias: é o tempo de separar dinheiro sem recorrer a crédito. */
+const DIAS_PARA_EVENTUAL = 45;
+
 const DIAS_PARA_VENCIMENTO = 15;
 
 /** Fatura fechando em 3 dias só vira alerta se estiver acima da média (§8.6). */
@@ -199,6 +211,27 @@ export function gerarAlertas(entrada: EntradaDosAlertas): Alerta[] {
       detalhe:
         'No vencimento o dinheiro volta para a conta. Vale decidir antes se reaplica ou usa — parado ele rende nada.',
       destino: '/investimentos',
+    });
+  }
+
+  /**
+   * Despesa anual chegando (§8.6).
+   *
+   * Quarenta e cinco dias é o prazo do §8.6, e ele não é arbitrário: é tempo
+   * suficiente para separar dinheiro sem precisar de crédito, que é a diferença
+   * entre uma conta cara e uma conta cara PARCELADA no cartão.
+   */
+  for (const anual of entrada.anuaisChegando) {
+    const dias = diasEntre(entrada.hoje, anual.data);
+    if (dias < 0 || dias > DIAS_PARA_EVENTUAL) continue;
+
+    alertas.push({
+      id: `anual-${anual.descricao}-${anual.data}`,
+      gravidade: 'atencao',
+      titulo: `${anual.descricao} chega em ${dias} dia(s): ${formatar(anual.valor)}`,
+      detalhe:
+        'Despesa que cai uma vez por ano. Com semanas de antecedência dá para separar o dinheiro; em cima da hora, ela vira parcelamento no cartão.',
+      destino: '/fluxo',
     });
   }
 

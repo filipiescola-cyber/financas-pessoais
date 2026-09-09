@@ -129,6 +129,14 @@ export type ComponentesDoMes = {
   provisaoEventual: Centavos;
   /** Mediana das variáveis. Confiança baixa. */
   variaveis: Centavos;
+  /**
+   * Eventual com data conhecida: IPVA, IPTU, seguro (§2.5).
+   *
+   * Entra no MÊS em que cai, e não diluído em doze, porque aqui a data é
+   * sabida. A provisão existe para o eventual que ainda não tem data — quando
+   * ela tem, suavizar esconderia justamente o mês em que o dinheiro sai.
+   */
+  eventualDatado: Centavos;
 };
 
 export type MesProjetado = {
@@ -163,6 +171,8 @@ export type EntradaDaProjecao = {
   medianaDasVariaveis: Centavos;
   /** Já gravado no banco, por mês: parcelas e recorrências futuras (§13.2). */
   jaLancadoPorMes: Readonly<Record<DataISO, Centavos>>;
+  /** Recorrência ANUAL cadastrada, no mês em que cai (§2.5). */
+  anuaisPorMes?: Readonly<Record<DataISO, Centavos>>;
   /**
    * Aplicação presa que vence, por mês (§4.6, §7.1).
    *
@@ -197,10 +207,15 @@ export function projetarFluxo(entrada: EntradaDaProjecao, cenario: Cenario): Mes
       jaLancado: entrada.jaLancadoPorMes[mes] ?? 0,
       provisaoEventual: entrada.provisaoEventualMensal,
       variaveis: entrada.medianaDasVariaveis,
+      eventualDatado: entrada.anuaisPorMes?.[mes] ?? 0,
     };
 
     const totalDeSaidas =
-      saidas.fixas + saidas.jaLancado + saidas.provisaoEventual + saidas.variaveis;
+      saidas.fixas +
+      saidas.jaLancado +
+      saidas.provisaoEventual +
+      saidas.variaveis +
+      saidas.eventualDatado;
 
     const liberado = entrada.liberacoesPorMes?.[mes] ?? 0;
 
@@ -247,6 +262,7 @@ const NOME_DA_SAIDA: Record<keyof ComponentesDoMes, string> = {
   jaLancado: 'as parcelas já assumidas',
   provisaoEventual: 'a provisão para despesas eventuais',
   variaveis: 'os gastos variáveis',
+  eventualDatado: 'as despesas anuais',
 };
 
 /**

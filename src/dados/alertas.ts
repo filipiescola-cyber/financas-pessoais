@@ -5,7 +5,14 @@
 // abertura, e alerta que deixa o app lento vira alerta desligado.
 
 import { paraCentavos } from '../dominio/dinheiro';
-import { hoje, primeiroDiaDoMes, somarMeses, ultimoDiaDoMes, type DataISO } from '../dominio/datas';
+import {
+  diaNoMes,
+  hoje,
+  primeiroDiaDoMes,
+  somarMeses,
+  ultimoDiaDoMes,
+  type DataISO,
+} from '../dominio/datas';
 import { gastoPorCategoria, type TransacaoDeRelatorio } from '../dominio/relatorios';
 import { mereceAlerta, progressoDoOrcamento } from '../dominio/orcamento';
 import { primeiroMesNegativo, projetarFluxo } from '../dominio/projecao';
@@ -49,7 +56,7 @@ export async function montarEntradaDosAlertas(
         .eq('status', 'aberta'),
       supabase
         .from('recorrencias')
-        .select('id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, incremento')
+        .select('id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, incremento, frequencia')
         .eq('ativo', true),
       supabase
         .from('contas')
@@ -176,6 +183,7 @@ export async function montarEntradaDosAlertas(
       comecaEm: r.comeca_em,
       terminaEm: r.termina_em,
       incremento: paraCentavos(r.incremento ?? 0),
+      frequencia: r.frequencia === 'anual' ? ('anual' as const) : ('mensal' as const),
     })),
     ocorrencias.geradas,
     mes,
@@ -236,5 +244,24 @@ export async function montarEntradaDosAlertas(
         vencimento: i.vencimento,
         valor: paraCentavos(i.valor_aplicado),
       })),
+    /**
+     * Despesa anual chegando (§8.6).
+     *
+     * A ocorrência do ano vem da própria recorrência: mês do início, dia dela.
+     * Só a PRÓXIMA interessa — avisar sobre o IPVA de 2029 seria ruído.
+     */
+    anuaisChegando: (recorrencias.data ?? [])
+      .filter((r) => r.frequencia === 'anual' && r.tipo === 'despesa' && r.valor_previsto !== null)
+      .map((r) => {
+        const mesDoAniversario = `${referencia.slice(0, 4)}-${r.comeca_em.slice(5, 7)}-01`;
+        const desteAno = diaNoMes(mesDoAniversario, r.dia);
+        const data = desteAno >= referencia ? desteAno : diaNoMes(somarMeses(mesDoAniversario, 12), r.dia);
+
+        return {
+          descricao: r.descricao,
+          data,
+          valor: Math.abs(paraCentavos(r.valor_previsto ?? 0)),
+        };
+      })
   };
 }

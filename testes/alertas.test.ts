@@ -15,6 +15,7 @@ const vazio: EntradaDosAlertas = {
   historicoDaEmpresa: [],
   contasSemConferencia: [],
   investimentosVencendo: [],
+  anuaisChegando: [],
 };
 
 describe('o que NÃO alerta (§8.6)', () => {
@@ -184,5 +185,47 @@ describe('aplicação chegando no vencimento', () => {
 
   it('aplicação sem vencimento não entra na lista e não vira alerta', () => {
     expect(gerarAlertas({ ...vazio, hoje: '2026-08-28' })).toEqual([]);
+  });
+});
+
+describe('despesa anual chegando (§8.6)', () => {
+  it('avisa dentro dos 45 dias', () => {
+    // O prazo não é arbitrário: é tempo de separar dinheiro sem crédito, que
+    // é a diferença entre uma conta cara e uma conta cara parcelada.
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-01-10',
+      anuaisChegando: [{ descricao: 'IPVA', data: '2026-02-10', valor: 180000 }],
+    });
+    expect(alertas.some((a) => a.titulo.includes('IPVA'))).toBe(true);
+  });
+
+  it('cala quando ainda falta muito', () => {
+    // Avisar sobre o IPVA com dez meses de antecedência é ruído, e alerta que
+    // dispara demais é silenciado junto com o que importava.
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-01-10',
+      anuaisChegando: [{ descricao: 'IPVA', data: '2026-11-10', valor: 180000 }],
+    });
+    expect(alertas.some((a) => a.titulo.includes('IPVA'))).toBe(false);
+  });
+
+  it('cala depois que já passou', () => {
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-03-10',
+      anuaisChegando: [{ descricao: 'IPVA', data: '2026-02-10', valor: 180000 }],
+    });
+    expect(alertas.some((a) => a.titulo.includes('IPVA'))).toBe(false);
+  });
+
+  it('diz o valor: é ele que decide se dá para separar', () => {
+    const alertas = gerarAlertas({
+      ...vazio,
+      hoje: '2026-01-10',
+      anuaisChegando: [{ descricao: 'IPVA', data: '2026-02-10', valor: 180000 }],
+    });
+    expect(alertas.find((a) => a.titulo.includes('IPVA'))!.titulo).toContain('1.800,00');
   });
 });

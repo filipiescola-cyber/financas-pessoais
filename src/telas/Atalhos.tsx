@@ -179,7 +179,8 @@ function ListaDeRecorrencias({
                     <p className="truncate text-slate-100">{recorrencia.descricao}</p>
                     <p className="truncate text-xs text-slate-500">
                       {recorrencia.tipo === 'receita' ? 'Entrada' : 'Saída'} ·{' '}
-                      {rotuloDoDia(recorrencia.dia, recorrencia.regra)} ·{' '}
+                      {rotuloDoDia(recorrencia.dia, recorrencia.regra)}
+                      {recorrencia.frequencia === 'anual' && ' · uma vez por ano'} ·{' '}
                       {nomeConta.get(recorrencia.contaId) ?? '—'}
                       {recorrencia.comecaEm > hoje() && (
                         <> · começa em {formatarBR(recorrencia.comecaEm)}</>

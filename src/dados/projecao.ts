@@ -50,6 +50,8 @@ export type DadosDaProjecao = {
   provisaoEventualMensal: Centavos;
   medianaDasVariaveis: Centavos;
   jaLancadoPorMes: Record<DataISO, Centavos>;
+  /** Recorrência anual cadastrada, no mês em que cai (§2.5). */
+  anuaisPorMes: Record<DataISO, Centavos>;
   mesesDeHistorico: number;
   /**
    * O que ainda falta acontecer no mês corrente, líquido: positivo se sobra a
@@ -70,6 +72,7 @@ type LinhaDeTransacao = {
   data_caixa: string;
   categoria_id: string | null;
   natureza: string | null;
+  recorrencia_id: string | null;
 };
 
 export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promise<DadosDaProjecao> {
@@ -80,12 +83,12 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     supabase.from('categorias').select('id, natureza'),
     supabase
       .from('transacoes')
-      .select('valor, tipo, data_competencia, data_caixa, categoria_id, natureza')
+      .select('valor, tipo, data_competencia, data_caixa, categoria_id, natureza, recorrencia_id')
       .gte('data_competencia', inicioDoHistorico),
     supabase
       .from('recorrencias')
       .select(
-        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id, incremento, categoria_id',
+        'id, descricao, dia, regra_do_dia, comeca_em, termina_em, valor_previsto, tipo, natureza, conta_id, incremento, categoria_id, frequencia',
       )
       .eq('ativo', true),
     lerConfig<{ mesTipico: number; mesRuim: number }>('sementes_renda'),
@@ -203,7 +206,17 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   // até o fim do horizonte e o alívio da última parcela — que é o que se quer
   // enxergar num fluxo de caixa — nunca aparece. Cada recorrência está em UMA
   // das duas, nunca nas duas.
-  const despesasFixas = (recorrencias.data ?? []).filter((r) => r.tipo === 'despesa');
+  const todasAsDespesas = (recorrencias.data ?? []).filter((r) => r.tipo === 'despesa');
+
+  /**
+   * A anual sai daqui (§2.5).
+   *
+   * Somada às fixas mensais, um IPVA de R$ 1.800 pesaria R$ 1.800 TODO MÊS na
+   * projeção — vinte e um mil por ano em vez de mil e oitocentos. Ela entra no
+   * mês em que cai, mais abaixo.
+   */
+  const despesasFixas = todasAsDespesas.filter((r) => r.frequencia !== 'anual');
+  const anuais = todasAsDespesas.filter((r) => r.frequencia === 'anual');
 
   const fixasMensais = despesasFixas
     .filter((r) => r.termina_em === null)
@@ -257,16 +270,45 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
 
   // Provisão de eventual: o gasto eventual dos últimos 12 meses dividido por 12
   // (§2.5). Sem isso o IPVA de janeiro sempre parece um desastre.
+  // O que veio de recorrência ANUAL cadastrada já entra pelo mês dela: deixar
+  // no histórico também faria o mesmo IPVA ser contado duas vezes — uma
+  // diluído em doze e outra no mês em que cai.
+  const idsAnuais = new Set(anuais.map((r) => r.id));
+
   const eventualNoPeriodo = linhas
     .filter(
       (linha) =>
         linha.tipo === 'despesa' &&
         linha.data_competencia <= referencia &&
-        naturezaEfetiva(linha) === 'eventual',
+        naturezaEfetiva(linha) === 'eventual' &&
+        !(linha.recorrencia_id !== null && idsAnuais.has(linha.recorrencia_id)),
     )
     .reduce((total, linha) => total + Math.abs(paraCentavos(linha.valor)), 0);
 
   const provisaoEventualMensal = Math.round(eventualNoPeriodo / JANELA_DE_HISTORICO);
+
+  /**
+   * A anual no mês em que ela cai, dentro do horizonte.
+   *
+   * Data sabida não se dilui: a provisão do §2.5 existe para o eventual que
+   * ainda não tem data, e suavizar o que tem esconderia o mês do aperto — que
+   * é exatamente o que um fluxo de caixa serve para mostrar.
+   */
+  const anuaisPorMes: Record<DataISO, Centavos> = {};
+
+  for (const r of anuais) {
+    const valor = Math.abs(paraCentavos(r.valor_previsto ?? 0));
+    if (valor === 0) continue;
+
+    for (let i = 0; i <= 12; i += 1) {
+      const mes = primeiroDiaDoMes(somarMeses(referencia, i));
+      if (r.comeca_em.slice(5, 7) !== mes.slice(5, 7)) continue;
+      if (mes < primeiroDiaDoMes(r.comeca_em)) continue;
+      if (r.termina_em !== null && mes > primeiroDiaDoMes(r.termina_em)) continue;
+
+      anuaisPorMes[mes] = (anuaisPorMes[mes] ?? 0) + valor;
+    }
+  }
 
   // --- já lançado no futuro ---------------------------------------------
   // Parcelas e recorrências com data futura JÁ EXISTEM no banco (§13.2). São a
@@ -371,6 +413,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
         terminaEm: r.termina_em,
         cartao: cartaoPorConta.get(r.conta_id) ?? null,
         incremento: paraCentavos(r.incremento),
+        frequencia: r.frequencia === 'anual' ? ('anual' as const) : ('mensal' as const),
       })),
       ocorrencias.geradas,
       primeiroDiaDesteMes,
@@ -399,6 +442,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
     medianaDasVariaveis: mediana(historicoDeVariaveis) ?? 0,
     aindaNesteMes,
     jaLancadoPorMes,
+    anuaisPorMes,
     mesesDeHistorico: historicoDeRenda.length,
   };
 }

@@ -158,6 +158,7 @@ describe('projeção de fluxo (§8.2)', () => {
       jaLancado: 60000,
       provisaoEventual: 20000,
       variaveis: 100000,
+      eventualDatado: 0,
     });
     expect(mes.totalDeSaidas).toBe(330000);
   });
@@ -319,7 +320,7 @@ describe('as duas projeções do simulador', () => {
 
 describe('diagnóstico do fluxo', () => {
   const mes = (nome: string, receita: number, fixas: number, jaLancado = 0): MesProjetado => {
-    const saidas = { fixas, jaLancado, provisaoEventual: 0, variaveis: 0 };
+    const saidas = { fixas, jaLancado, provisaoEventual: 0, variaveis: 0, eventualDatado: 0 };
     const totalDeSaidas = fixas + jaLancado;
     return {
       mes: nome,
@@ -548,6 +549,48 @@ describe('aplicação que vence volta para a projeção', () => {
 
   it('sem liberação nenhuma, nada muda', () => {
     const com = projetarFluxo({ ...base, liberacoesPorMes: {} }, 'provavel');
+    const sem = projetarFluxo(base, 'provavel');
+    expect(com.map((m) => m.saldoFinal)).toEqual(sem.map((m) => m.saldoFinal));
+  });
+});
+
+describe('despesa anual na projeção (§2.5)', () => {
+  const base = {
+    saldoAtual: 0,
+    aPartirDe: '2026-10-01',
+    horizonteEmMeses: 12,
+    renda: {
+      pessimista: 0,
+      provavel: 0,
+      otimista: 0,
+      origem: 'recorrencia' as const,
+      mesesDeHistorico: 0,
+    },
+    fixasMensais: 0,
+    fixasComPrazo: [] as { nome: string; valor: number; ate: string }[],
+    compromissos: [],
+    provisaoEventualMensal: 0,
+    medianaDasVariaveis: 0,
+    jaLancadoPorMes: {},
+  };
+
+  it('pesa uma vez, no mês dela — não todo mês', () => {
+    // Somada às fixas, um IPVA de R$ 1.800 custaria vinte e um mil por ano.
+    const meses = projetarFluxo({ ...base, anuaisPorMes: { '2027-01-01': 180000 } }, 'provavel');
+
+    const janeiro = meses.find((m) => m.mes === '2027-01-01')!;
+    expect(janeiro.saidas.eventualDatado).toBe(180000);
+    expect(meses.filter((m) => m.saidas.eventualDatado > 0)).toHaveLength(1);
+    expect(meses.at(-1)!.saldoFinal).toBe(-180000);
+  });
+
+  it('entra no total de saídas do mês', () => {
+    const meses = projetarFluxo({ ...base, anuaisPorMes: { '2026-10-01': 180000 } }, 'provavel');
+    expect(meses[0]!.totalDeSaidas).toBe(180000);
+  });
+
+  it('sem anual cadastrada, nada muda', () => {
+    const com = projetarFluxo({ ...base, anuaisPorMes: {} }, 'provavel');
     const sem = projetarFluxo(base, 'provavel');
     expect(com.map((m) => m.saldoFinal)).toEqual(sem.map((m) => m.saldoFinal));
   });

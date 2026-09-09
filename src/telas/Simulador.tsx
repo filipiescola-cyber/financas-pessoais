@@ -117,6 +117,7 @@ export function Simulador() {
     medianaDasVariaveis: dados.data.medianaDasVariaveis,
     jaLancadoPorMes: dados.data.jaLancadoPorMes,
     liberacoesPorMes: dados.data.liberacoesPorMes,
+    anuaisPorMes: dados.data.anuaisPorMes,
   };
 
   const impacto =
