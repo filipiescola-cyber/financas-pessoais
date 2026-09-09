@@ -204,6 +204,7 @@ export function Transacoes() {
         i.investimento.vencimento > hoje(),
     )
     .map((i) => ({
+      nome: i.investimento.nome,
       valor: i.aplicado,
       dataCaixa: i.investimento.vencimento!,
       transacaoPaiId: null,
@@ -248,7 +249,7 @@ export function Transacoes() {
     transacaoPaiId: null,
   }));
 
-  const porDia = agruparPorDiaDeCaixa(lista, previstos, parcelasDaDivida);
+  const porDia = agruparPorDiaDeCaixa(lista, previstos, parcelasDaDivida, liberamNoMes);
 
   // Saldo diário. Vem por CAIXA, não por competência: é o único que bate com o
   // extrato do banco (§13.2). Sem filtro de conta, usa as mesmas contas que
@@ -572,6 +573,12 @@ export function Transacoes() {
                     nomeDaConta={(id) => nomeConta.get(id) ?? '—'}
                     aoEditar={() => setEditando(linha.saida)}
                   />
+                ) : linha.tipo === 'liberacao' ? (
+                  <LiberacaoNaLista
+                    key={`liberacao-${linha.nome}`}
+                    nome={linha.nome}
+                    valor={linha.valor}
+                  />
                 ) : linha.tipo === 'parcela' ? (
                   <ParcelaNaLista
                     key={`${linha.parcela.dividaId}-${linha.parcela.numero}`}
@@ -600,7 +607,8 @@ type LinhaDoDia =
   | { tipo: 'transferencia'; saida: Transacao; entrada: Transacao }
   | { tipo: 'fatura'; bloco: BlocoDeFatura<Transacao> }
   | { tipo: 'previsto'; previsto: ItemPrevisto }
-  | { tipo: 'parcela'; parcela: ParcelaPrevista };
+  | { tipo: 'parcela'; parcela: ParcelaPrevista }
+  | { tipo: 'liberacao'; nome: string; valor: Centavos };
 
 /**
  * O agrupamento da lista (§2.4).
@@ -613,6 +621,7 @@ function agruparPorDiaDeCaixa(
   lista: Transacao[],
   previstos: ItemPrevisto[],
   parcelas: readonly ParcelaPrevista[] = [],
+  liberacoes: readonly { nome: string; valor: Centavos; dataCaixa: DataISO }[] = [],
 ): [DataISO, LinhaDoDia[]][] {
   const mapa = new Map<DataISO, LinhaDoDia[]>();
 
@@ -658,6 +667,20 @@ function agruparPorDiaDeCaixa(
     mapa.set(parcela.vencimento, [
       ...(mapa.get(parcela.vencimento) ?? []),
       { tipo: 'parcela', parcela },
+    ]);
+  }
+
+  /*
+    A aplicação que vence entra no saldo e precisa de LINHA.
+    Sem ela o saldo subia sozinho no dia do vencimento — um dia com uma única
+    despesa fechava mais alto que o anterior, e nada na tela explicava por quê.
+    Movimento sem linha é o mesmo defeito da fatura que não descontava: o número
+    até estava certo, mas quem lia não tinha como conferir.
+  */
+  for (const liberacao of liberacoes) {
+    mapa.set(liberacao.dataCaixa, [
+      ...(mapa.get(liberacao.dataCaixa) ?? []),
+      { tipo: 'liberacao', nome: liberacao.nome, valor: liberacao.valor },
     ]);
   }
 
@@ -1278,6 +1301,41 @@ function ParcelaNaLista({ parcela }: { parcela: ParcelaPrevista }) {
           </div>
         </div>
         <Dinheiro centavos={-parcela.valor} className="shrink-0 text-sm text-slate-400" />
+      </div>
+    </li>
+  );
+}
+
+/**
+ * A aplicação que vence e volta a ser dinheiro disponível (§4.6, §7.1).
+ *
+ * O saldo desta tela não soma o que está preso até o vencimento. No dia em que
+ * o papel vence, ele deixa de estar preso — e o saldo sobe. Essa subida
+ * precisava de linha: sem ela, um dia com uma única despesa fechava mais alto
+ * que o anterior e nada na tela dizia por quê.
+ *
+ * Não é receita, e a linha diz isso: o dinheiro sempre foi seu, só estava
+ * onde não dava para gastar.
+ */
+function LiberacaoNaLista({ nome, valor }: { nome: string; valor: Centavos }) {
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 gap-2.5">
+          <span
+            title="Aplicação vencendo: o dinheiro volta a ficar disponível"
+            className="mt-0.5 text-emerald-400/60"
+          >
+            <IconeRelogio className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-slate-400">{nome}</p>
+            <p className="truncate text-xs text-slate-600">
+              Vence hoje · volta a ficar disponível. Não é receita: o dinheiro sempre foi seu.
+            </p>
+          </div>
+        </div>
+        <Dinheiro centavos={valor} className="shrink-0 text-sm text-slate-400" />
       </div>
     </li>
   );
