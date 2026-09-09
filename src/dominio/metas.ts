@@ -8,8 +8,10 @@
 //
 //   DINHEIRO GUARDADO PRECISA ESTAR EM ALGUM LUGAR. Uma meta com R$ 1.200
 //   "guardados" que não correspondem a saldo nenhum é um número que o usuário
-//   digitou e acredita. Por isso a meta pode apontar para uma conta, e aí o
-//   valor deixa de ser declarado e passa a ser observado.
+//   digitou e acredita. As duas fontes honestas são as do §8.8: a soma dos
+//   APORTES registrados, ou o saldo das APLICAÇÕES reservadas — nunca o saldo
+//   de uma conta corrente, que faria o salário recém-caído virar progresso da
+//   viagem.
 
 import type { Centavos } from './dinheiro';
 import { primeiroDiaDoMes, type DataISO } from './datas';
@@ -88,18 +90,4 @@ export function mesesParaAlcancar(falta: Centavos, aporteMensal: Centavos): numb
   if (aporteMensal <= 0) return null;
   const meses = Math.ceil(falta / aporteMensal);
   return meses > HORIZONTE_MAXIMO_MESES ? null : meses;
-}
-
-export type OrigemDoValor = 'conta' | 'declarado';
-
-/**
- * De onde vem o "quanto já tem" (§13.2 aplicado a metas).
- *
- * `conta` — o saldo real da conta vinculada. Não pode divergir da realidade
- *           porque não é digitado.
- * `declarado` — um número que o usuário informou. Pode estar certo, mas o app
- *           não tem como confirmar, e a tela precisa dizer isso.
- */
-export function origemDoValor(contaVinculadaId: string | null): OrigemDoValor {
-  return contaVinculadaId === null ? 'declarado' : 'conta';
 }

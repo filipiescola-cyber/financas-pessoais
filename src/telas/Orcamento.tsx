@@ -51,6 +51,20 @@ export function Orcamento() {
     },
   });
 
+  /*
+    Quem tem filha cede o lugar a elas no relatório por categoria (§5.5).
+
+    Era `false` fixo aqui, e isso funcionava por acidente: a divisão de
+    transação ainda não existe, então nenhuma linha tem filha. No dia em que
+    existir, o pai contaria com o valor cheio na categoria dele E cada filha na
+    sua — a compra dividida entraria dobrada no teto e no fechamento. Derivar
+    da própria lista, como Relatórios já faz, custa três linhas e tira a mina
+    do caminho.
+  */
+  const paisComFilhas = new Set(
+    (transacoes.data ?? []).map((t) => t.transacaoPaiId).filter((id): id is string => id !== null),
+  );
+
   const paraRelatorio: TransacaoDeRelatorio[] = (transacoes.data ?? []).map((t) => ({
     valor: t.valor,
     tipo: t.tipo,
@@ -58,7 +72,7 @@ export function Orcamento() {
     categoriaId: t.categoriaId,
     natureza: null,
     transacaoPaiId: t.transacaoPaiId,
-    temFilhas: false,
+    temFilhas: paisComFilhas.has(t.id),
   }));
 
   const realizadoPorCategoria = new Map(

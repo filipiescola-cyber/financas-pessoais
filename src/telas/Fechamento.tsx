@@ -101,6 +101,20 @@ export function Fechamento() {
 
   const naturezaDaCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.natureza]));
 
+  /*
+    Quem tem filha cede o lugar a elas no relatório por categoria (§5.5).
+
+    Era `false` fixo aqui, e isso funcionava por acidente: a divisão de
+    transação ainda não existe, então nenhuma linha tem filha. No dia em que
+    existir, o pai contaria com o valor cheio na categoria dele E cada filha na
+    sua — a compra dividida entraria dobrada no teto e no fechamento. Derivar
+    da própria lista, como Relatórios já faz, custa três linhas e tira a mina
+    do caminho.
+  */
+  const paisComFilhas = new Set(
+    (doMes.data ?? []).map((t) => t.transacaoPaiId).filter((id): id is string => id !== null),
+  );
+
   const paraRelatorio: TransacaoDeRelatorio[] = (doMes.data ?? []).map((t) => ({
     valor: t.valor,
     tipo: t.tipo,
@@ -110,7 +124,7 @@ export function Fechamento() {
       natureza: t.categoriaId ? (naturezaDaCategoria.get(t.categoriaId) ?? null) : null,
     }),
     transacaoPaiId: t.transacaoPaiId,
-    temFilhas: false,
+    temFilhas: paisComFilhas.has(t.id),
   }));
 
   const receitas = totalDeReceitas(paraRelatorio);

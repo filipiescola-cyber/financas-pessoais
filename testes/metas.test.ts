@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   HORIZONTE_MAXIMO_MESES,
   mesesParaAlcancar,
-  origemDoValor,
   projetarMeta,
 } from '../src/dominio/metas';
 
@@ -83,17 +82,5 @@ describe('pergunta inversa: quando eu chego lá', () => {
   it('responde no limite do horizonte, não um mês antes', () => {
     expect(mesesParaAlcancar(600, 1)).toBe(HORIZONTE_MAXIMO_MESES);
     expect(mesesParaAlcancar(601, 1)).toBeNull();
-  });
-});
-
-describe('de onde vem o quanto já tem', () => {
-  it('vinculada a uma conta, o valor é observado', () => {
-    expect(origemDoValor('conta-1')).toBe('conta');
-  });
-
-  it('sem vínculo, é um número declarado — e a tela precisa dizer', () => {
-    // Meta com R$ 1.200 guardados que não correspondem a saldo nenhum é um
-    // número em que o usuário acredita, não um fato.
-    expect(origemDoValor(null)).toBe('declarado');
   });
 });

@@ -47,7 +47,7 @@ export async function montarEntradaDosAlertas(
       supabase.from('categorias').select('id, nome'),
       supabase
         .from('transacoes')
-        .select('valor, tipo, data_competencia, categoria_id, transacao_pai_id')
+        .select('id, valor, tipo, data_competencia, categoria_id, transacao_pai_id')
         .gte('data_competencia', mes)
         .lte('data_competencia', ultimoDiaDoMes(mes)),
       supabase
@@ -94,6 +94,16 @@ export async function montarEntradaDosAlertas(
   // --- orçamentos estourando --------------------------------------------
   const nomeCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.nome]));
 
+  // Quem tem filha cede o lugar a elas por categoria (§5.5). Derivado da
+  // própria lista, e não fixo em `false`: com a divisão implementada, o pai
+  // contaria cheio na categoria dele e cada filha na sua, disparando alerta de
+  // teto estourado que não estourou.
+  const paisComFilhas = new Set(
+    (transacoesDoMes.data ?? [])
+      .map((t) => t.transacao_pai_id)
+      .filter((id): id is string => id !== null),
+  );
+
   const paraRelatorio: TransacaoDeRelatorio[] = (transacoesDoMes.data ?? []).map((t) => ({
     valor: paraCentavos(t.valor),
     tipo: t.tipo as TransacaoDeRelatorio['tipo'],
@@ -101,7 +111,7 @@ export async function montarEntradaDosAlertas(
     categoriaId: t.categoria_id,
     natureza: null,
     transacaoPaiId: t.transacao_pai_id,
-    temFilhas: false,
+    temFilhas: paisComFilhas.has(t.id),
   }));
 
   const realizado = new Map(
@@ -251,7 +261,15 @@ export async function montarEntradaDosAlertas(
      * Só a PRÓXIMA interessa — avisar sobre o IPVA de 2029 seria ruído.
      */
     anuaisChegando: (recorrencias.data ?? [])
-      .filter((r) => r.frequencia === 'anual' && r.tipo === 'despesa' && r.valor_previsto !== null)
+      // `termina_em` conta: uma anual encerrada continuava avisando todo ano,
+      // e alerta que dispara sem motivo é o que ensina a ignorar os outros.
+      .filter(
+        (r) =>
+          r.frequencia === 'anual' &&
+          r.tipo === 'despesa' &&
+          r.valor_previsto !== null &&
+          (r.termina_em === null || r.termina_em >= referencia),
+      )
       .map((r) => {
         const mesDoAniversario = `${referencia.slice(0, 4)}-${r.comeca_em.slice(5, 7)}-01`;
         const desteAno = diaNoMes(mesDoAniversario, r.dia);
