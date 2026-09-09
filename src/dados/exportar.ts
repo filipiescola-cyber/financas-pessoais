@@ -20,6 +20,15 @@ export type Exportacao = {
   versao_schema: string;
   tabelas: Record<string, unknown[]>;
   contagem: Record<string, number>;
+  /**
+   * Tabelas da lista que ainda não existem no banco.
+   *
+   * Acontece entre um deploy e o `db push` que o acompanha: o código já conhece
+   * a tabela nova e o banco ainda não. Fica registrado NO ARQUIVO, e não só na
+   * tela, porque quem for restaurar precisa saber que a ausência foi conhecida
+   * e não um pedaço perdido.
+   */
+  ausentes: string[];
 };
 
 /**
@@ -48,7 +57,7 @@ const POR_PAGINA = 500;
  * ordem natural mesmo: o backup é disparado por quem está na frente do app,
  * não concorre com ninguém.
  */
-async function baixarTabela(tabela: Tabela): Promise<unknown[]> {
+async function baixarTabela(tabela: Tabela): Promise<unknown[] | null> {
   const linhas: unknown[] = [];
 
   for (let pagina = 0; ; pagina += 1) {
@@ -58,6 +67,20 @@ async function baixarTabela(tabela: Tabela): Promise<unknown[]> {
       .select('*')
       .range(de, de + POR_PAGINA - 1);
 
+    /*
+      Tabela que ainda não existe não derruba o backup inteiro.
+
+      A lista de tabelas vive no código e o schema vive no banco, e entre um
+      deploy e o `db push` que o acompanha os dois ficam um passo fora de fase.
+      Abortar aí transforma "falta uma tabela vazia" em "você não tem backup" —
+      e logo na hora em que o backup mais importa, que é justamente antes de
+      rodar a migration (§13.6).
+
+      Só a ausência é tolerada. Erro de permissão, de rede ou de RLS continua
+      subindo: esses significam que a tabela EXISTE e não veio, o que é um
+      backup furado se passar batido.
+    */
+    if (error && naoExiste(error)) return null;
     if (error) throw new Error(`Falha ao exportar ${tabela}: ${error.message}`);
 
     const lote = data ?? [];
@@ -72,14 +95,30 @@ async function baixarTabela(tabela: Tabela): Promise<unknown[]> {
   return linhas;
 }
 
+/** O PostgREST responde PGRST205 quando a tabela não está no schema. */
+function naoExiste(erro: { code?: string; message?: string }): boolean {
+  return (
+    erro.code === 'PGRST205' ||
+    erro.code === '42P01' ||
+    /could not find the table|does not exist/i.test(erro.message ?? '')
+  );
+}
+
 export async function exportarTudo(): Promise<Exportacao> {
   const tabelas: Record<string, unknown[]> = {};
   const contagem: Record<string, number> = {};
+  const ausentes: string[] = [];
 
   // Sequencial de propósito: são poucas tabelas e um lote paralelo grande no
   // plano gratuito só aumenta a chance de estourar limite no meio do backup.
   for (const tabela of TABELAS) {
     const linhas = await baixarTabela(tabela);
+
+    if (linhas === null) {
+      ausentes.push(tabela);
+      continue;
+    }
+
     tabelas[tabela] = linhas;
     contagem[tabela] = linhas.length;
   }
@@ -89,6 +128,7 @@ export async function exportarTudo(): Promise<Exportacao> {
     versao_schema: VERSAO_DO_SCHEMA,
     tabelas,
     contagem,
+    ausentes,
   };
 }
 

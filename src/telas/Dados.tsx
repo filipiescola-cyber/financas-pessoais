@@ -128,6 +128,17 @@ export function Dados() {
                 </li>
               ))}
           </ul>
+
+          {/* Ausência conhecida não é falha, mas também não passa calada: quem
+              for restaurar precisa saber que o backup foi tirado antes desta
+              migration, e não que a tabela se perdeu. */}
+          {ultimo.ausentes.length > 0 && (
+            <p className="mt-3 border-t border-borda pt-3 text-xs text-slate-500">
+              {ultimo.ausentes.join(', ')} ainda não existe(m) no banco — falta rodar a migration
+              que cria. O backup está completo para tudo que existe hoje, e a ausência ficou
+              registrada dentro do arquivo.
+            </p>
+          )}
         </section>
       )}
 
