@@ -467,12 +467,24 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
         </p>
       )}
 
+      {/*
+        Uma diferença que não diz o que fazer com ela vira ruído, e o usuário
+        aprende a ignorar a conferência inteira. A causa quase sempre é uma das
+        duas, e as duas têm conserto na própria tela.
+      */}
       {item.divergencia !== null && item.divergencia !== 0 && (
-        <p className="mt-2 text-xs text-amber-400/80">
-          Diferença de {formatar(Math.abs(item.divergencia))} em relação ao último saldo conferido
-          {inv.dataConferencia && ` em ${formatarBR(inv.dataConferencia)}`}. O número certo é o do
-          banco.
-        </p>
+        <div className="mt-2 space-y-1 text-xs text-amber-400/80">
+          <p>
+            Em {inv.dataConferencia && formatarBR(inv.dataConferencia)} o app calculava{' '}
+            {formatar(Math.abs(item.divergencia))} {item.divergencia > 0 ? 'a mais' : 'a menos'} que
+            o banco. O número certo é o do banco.
+          </p>
+          <p className="text-slate-500">
+            {Math.abs(item.divergencia) > Math.abs(item.aplicado) / 20
+              ? 'Uma diferença desse tamanho quase sempre é aporte ou resgate que não foi registrado — use "Aplicar mais" ou "Resgatar" com a data certa. Se os movimentos estão todos lá, então a taxa cadastrada não é a que o banco paga: corrija em Editar.'
+              : 'Diferença pequena é arredondamento do banco, e não vale caçar. O cálculo é estimativa até ser conferido (§7.3).'}
+          </p>
+        </div>
       )}
 
       <div className="mt-3 flex flex-wrap gap-4">

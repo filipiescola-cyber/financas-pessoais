@@ -80,8 +80,20 @@ export function parcelasVivas(
   taxaDoIndexador: number | null,
   feriados: Feriados,
   tabelaDeIR: readonly FaixaDeIR[],
+  /**
+   * Até quando olhar. Movimento posterior fica de fora (§13.2).
+   *
+   * Sem este corte, "a posição em 30 de junho" incluía um resgate de agosto —
+   * e a conferência, que compara o saldo do banco numa data com o cálculo
+   * daquela data, acusava como erro cada resgate feito depois dela. A diferença
+   * só crescia a cada movimento, e conferência que só piora ensina a ignorar a
+   * conferência.
+   */
+  ate?: DataISO,
 ): Parcela[] {
-  const ordenados = [...movimentos].sort((a, b) =>
+  const ordenados = [...movimentos]
+    .filter((m) => ate === undefined || m.data <= ate)
+    .sort((a, b) =>
     a.data === b.data
       ? Number(a.tipo === 'resgate') - Number(b.tipo === 'resgate')
       : a.data.localeCompare(b.data),
@@ -166,7 +178,7 @@ export function calcularPosicao(
   feriados: Feriados,
   tabelaDeIR: readonly FaixaDeIR[],
 ): Resultado {
-  const parcelas = parcelasVivas(papel, movimentos, taxaDoIndexador, feriados, tabelaDeIR);
+  const parcelas = parcelasVivas(papel, movimentos, taxaDoIndexador, feriados, tabelaDeIR, ate);
   if (parcelas.length === 0) return ZERADO;
 
   const somados = parcelas.reduce(

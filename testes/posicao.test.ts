@@ -227,3 +227,63 @@ describe('aporte com taxa própria', () => {
     expect(Math.abs(posicao.saldoBruto - uma.saldoBruto)).toBeLessThanOrEqual(1);
   });
 });
+
+describe('conferência: comparar o mesmo dia (§7.3)', () => {
+  const CONFERIDO_EM = '2026-06-30';
+
+  const aporte: Movimento[] = [{ tipo: 'aporte', valor: 300000, data: '2026-01-05' }];
+
+  it('resgate feito DEPOIS da conferência não mexe no que ela comparava', () => {
+    // O defeito: a divergência comparava o saldo do banco numa data com o
+    // saldo calculado de HOJE. Quem resgatasse mil reais depois de conferir
+    // via mil reais de "diferença", como se o cálculo tivesse errado — e o
+    // número só crescia a cada movimento, o que ensina a ignorar a conferência.
+    const comResgate: Movimento[] = [
+      ...aporte,
+      { tipo: 'resgate', valor: 100000, data: '2026-08-10' },
+    ];
+
+    const semMexer = calcularPosicao(PAPEL, aporte, CDI, CONFERIDO_EM, FERIADOS, TABELA_IR);
+    const depoisDeResgatar = calcularPosicao(
+      PAPEL,
+      comResgate,
+      CDI,
+      CONFERIDO_EM,
+      FERIADOS,
+      TABELA_IR,
+    );
+
+    expect(depoisDeResgatar.saldoBruto).toBe(semMexer.saldoBruto);
+  });
+
+  it('e o saldo de hoje muda mesmo, como tem que mudar', () => {
+    const comResgate: Movimento[] = [
+      ...aporte,
+      { tipo: 'resgate', valor: 100000, data: '2026-08-10' },
+    ];
+
+    const hoje = calcularPosicao(PAPEL, comResgate, CDI, '2026-09-08', FERIADOS, TABELA_IR);
+    const naConferencia = calcularPosicao(
+      PAPEL,
+      comResgate,
+      CDI,
+      CONFERIDO_EM,
+      FERIADOS,
+      TABELA_IR,
+    );
+
+    expect(hoje.saldoBruto).toBeLessThan(naConferencia.saldoBruto);
+  });
+
+  it('aporte posterior também não conta como divergência', () => {
+    const comAporte: Movimento[] = [
+      ...aporte,
+      { tipo: 'aporte', valor: 500000, data: '2026-08-10' },
+    ];
+
+    const semMexer = calcularPosicao(PAPEL, aporte, CDI, CONFERIDO_EM, FERIADOS, TABELA_IR);
+    const depois = calcularPosicao(PAPEL, comAporte, CDI, CONFERIDO_EM, FERIADOS, TABELA_IR);
+
+    expect(depois.saldoBruto).toBe(semMexer.saldoBruto);
+  });
+});

@@ -565,15 +565,42 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
       tabela,
     );
 
+    /**
+     * A conferência compara duas coisas do MESMO DIA (§7.3).
+     *
+     * Comparava o saldo que o banco informou numa data com o saldo calculado
+     * de HOJE, e por isso todo resgate feito depois da conferência aparecia
+     * como divergência: você tirava mil reais e o app anunciava mil reais de
+     * diferença, como se o cálculo tivesse errado.
+     *
+     * Pior: a diferença nunca fechava. Quanto mais a pessoa mexesse na
+     * aplicação, maior o número — e uma conferência que só piora ensina a
+     * ignorar a conferência.
+     *
+     * Agora o cálculo é refeito ATÉ a data da conferência. O que se moveu
+     * depois é movimento, não erro, e some da conta.
+     */
+    const naConferencia =
+      investimento.saldoConferido === null || investimento.dataConferencia === null
+        ? null
+        : calcularPosicao(
+            papel,
+            doInvestimento,
+            taxaDoIndexador,
+            investimento.dataConferencia,
+            feriados,
+            tabela,
+          );
+
     return {
       investimento,
       aplicado,
       resultado,
       saldoExibido: resultado.saldoBruto,
       divergencia:
-        investimento.saldoConferido === null
+        naConferencia === null || investimento.saldoConferido === null
           ? null
-          : resultado.saldoBruto - investimento.saldoConferido,
+          : naConferencia.saldoBruto - investimento.saldoConferido,
     };
   });
 }
