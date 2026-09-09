@@ -160,6 +160,11 @@ export async function listarFaturas(cartaoId: string): Promise<Fatura[]> {
  * conhecida, e exigir quitá-la deixaria o cartão morto na lista por um ano.
  *
  * Valores vêm negativos, como as próprias transações de despesa.
+ *
+ * E o que conta é o que FALTA: pagamento parcial abate sem quitar, e mostrar o
+ * bruto aqui faria a tela de encerramento cobrar R$ 2.000 de quem já pagou
+ * R$ 1.500 — um número errado exatamente onde ele decide se dá para fechar o
+ * cartão. `dividasDosCartoes` já descontava; esta não.
  */
 export async function dividaDoCartao(
   cartaoId: string,
@@ -172,27 +177,49 @@ export async function dividaDoCartao(
   if (error) throw error;
   if (!faturas || faturas.length === 0) return { cobravel: 0, futura: 0 };
 
-  const { data: linhas, error: erroLinhas } = await supabase
-    .from('transacoes')
-    .select('valor, fatura_id')
-    .in(
-      'fatura_id',
-      faturas.map((f) => f.id),
-    )
-    // Filha de divisão não soma: o pai já está na fatura (§5.5).
-    .is('transacao_pai_id', null);
-  if (erroLinhas) throw erroLinhas;
+  const ids = faturas.map((f) => f.id);
 
-  const vencimento = new Map(faturas.map((f) => [f.id, f.data_vencimento]));
+  const [compras, pagamentos] = await Promise.all([
+    supabase
+      .from('transacoes')
+      .select('valor, fatura_id')
+      // Filha de divisão não soma: o pai já está na fatura (§5.5).
+      .is('transacao_pai_id', null)
+      .in('fatura_id', ids),
+    supabase.from('transacoes').select('valor, fatura_paga_id').in('fatura_paga_id', ids),
+  ]);
+  if (compras.error) throw compras.error;
+  if (pagamentos.error) throw pagamentos.error;
+
+  const totalPorFatura = new Map<string, Centavos>();
+  for (const linha of compras.data ?? []) {
+    if (linha.fatura_id === null) continue;
+    totalPorFatura.set(
+      linha.fatura_id,
+      (totalPorFatura.get(linha.fatura_id) ?? 0) + paraCentavos(linha.valor),
+    );
+  }
+
+  const pagoPorFatura = new Map<string, Centavos>();
+  for (const linha of pagamentos.data ?? []) {
+    if (linha.fatura_paga_id === null) continue;
+    pagoPorFatura.set(
+      linha.fatura_paga_id,
+      (pagoPorFatura.get(linha.fatura_paga_id) ?? 0) + Math.abs(paraCentavos(linha.valor)),
+    );
+  }
+
   const referencia = hoje();
 
   let cobravel = 0;
   let futura = 0;
-  for (const linha of linhas ?? []) {
-    const venc = linha.fatura_id === null ? undefined : vencimento.get(linha.fatura_id);
-    if (venc === undefined) continue;
-    if (venc <= referencia) cobravel += paraCentavos(linha.valor);
-    else futura += paraCentavos(linha.valor);
+  for (const fatura of faturas) {
+    const saldo = saldoDaFatura(totalPorFatura.get(fatura.id) ?? 0, pagoPorFatura.get(fatura.id) ?? 0);
+    if (saldo.falta === 0) continue;
+
+    // Negativo, como as próprias despesas: quem chama soma isto ao saldo.
+    if (fatura.data_vencimento <= referencia) cobravel -= saldo.falta;
+    else futura -= saldo.falta;
   }
 
   return { cobravel, futura };

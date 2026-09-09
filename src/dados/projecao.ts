@@ -475,7 +475,11 @@ export async function proximosVencimentos(referencia: DataISO = hoje()) {
   const { data, error } = await supabase
     .from('faturas')
     .select('id, cartao_id, data_vencimento, status')
-    .neq('status', 'paga')
+    // Sem filtrar por `status`: quem decide se a fatura ainda pesa é o que
+    // FALTA, calculado dos pagamentos lá embaixo (§13.2). O status é acertado
+    // quando um pagamento acontece — uma compra lançada depois de a fatura ter
+    // sido quitada não passa por lá, e a fatura ficava marcada como paga
+    // devendo dinheiro, sumindo desta lista sem nunca mais voltar.
     .gte('data_vencimento', somarDias(referencia, -30))
     .lte('data_vencimento', ultimoDiaDoMes(referencia))
     .order('data_vencimento');
@@ -524,7 +528,7 @@ export async function proximosVencimentos(referencia: DataISO = hoje()) {
         /** O que a fatura cobrou ao todo. A tela precisa poder explicar o resto. */
         cobrado: saldo.total,
         pago: saldo.pago,
-        status: fatura.status as 'aberta' | 'fechada',
+        status: (fatura.status === 'paga' ? 'fechada' : fatura.status) as 'aberta' | 'fechada',
         vencida: fatura.data_vencimento < referencia,
       };
     })
