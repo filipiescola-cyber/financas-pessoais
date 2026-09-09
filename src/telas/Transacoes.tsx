@@ -72,7 +72,8 @@ import {
   faturasQueAindaVaoSair,
   type BlocoDeFatura,
 } from '../dominio/agrupamento';
-import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
+import { gerarUmaOcorrencia } from '../dados/geracaoRecorrencias';
+import { usarOcorrencias } from '../dados/usarOcorrencias';
 import { faturasAVencerEntre, situacaoDasFaturas } from '../dados/faturas';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
@@ -213,12 +214,9 @@ export function Transacoes() {
     (v) => v.dataCaixa >= mes && v.dataCaixa <= ultimoDiaDoMes(mes),
   );
 
-  const geradas = useQuery({
-    queryKey: ['ocorrencias-geradas', mes],
-    // Dois meses para trás: a compra de setembro no cartão cai na fatura de
-    // outubro, e é a competência dela que diz se já foi gerada.
-    queryFn: () => ocorrenciasDoPeriodo(somarMeses(mes, -2), ultimoDiaDoMes(mes)),
-  });
+  // Dois meses para trás: a compra de setembro no cartão cai na fatura de
+  // outubro, e é a competência dela que diz se já foi gerada.
+  const geradas = usarOcorrencias(somarMeses(mes, -2), ultimoDiaDoMes(mes));
 
   const previstos =
     recorrencias.data && geradas.data && cartoes.data
@@ -288,11 +286,7 @@ export function Transacoes() {
     enabled: (faturasDaPonte.data ?? []).length > 0,
   });
 
-  const geradasDaPonte = useQuery({
-    queryKey: ['ocorrencias-geradas', 'ponte', mesCorrente, mes, contaId],
-    queryFn: () => ocorrenciasDoPeriodo(mesCorrente, somarDias(mes, -1)),
-    enabled: precisaDePonte,
-  });
+  const geradasDaPonte = usarOcorrencias(mesCorrente, somarDias(mes, -1), precisaDePonte);
 
   // `null` enquanto carrega: melhor a linha aparecer um instante depois do que
   // aparecer com um número que muda sozinho na frente do usuário.

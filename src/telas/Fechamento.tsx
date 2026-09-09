@@ -26,7 +26,7 @@ import {
 import { previstoDoMes } from '../dominio/previsto';
 import { copiarOrcamentoDoMesAnterior } from '../dados/orcamentos';
 import { listarFechamentos, salvarFechamento } from '../dados/fechamentos';
-import { ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
+import { usarOcorrencias } from '../dados/usarOcorrencias';
 import { baixarArquivo, exportarTudo, nomeDoArquivo } from '../dados/exportar';
 import { usarContasComSaldo } from '../dados/usarContas';
 import { usarCartoes } from '../dados/usarCartoes';
@@ -97,10 +97,7 @@ export function Fechamento() {
   const feriados = usarFeriados();
   const doMes = usarTransacoes({ de: mes, ate: fimDoMes });
 
-  const geradas = useQuery({
-    queryKey: ['ocorrencias-geradas', 'fechamento', mes],
-    queryFn: () => ocorrenciasDoPeriodo(mes, fimDoMes),
-  });
+  const geradas = usarOcorrencias(mes, fimDoMes);
 
   const naturezaDaCategoria = new Map((categorias.data ?? []).map((c) => [c.id, c.natureza]));
 

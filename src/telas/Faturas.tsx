@@ -58,7 +58,7 @@ import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
 import { ExclusaoDeRecorrencia } from '../ui/ExclusaoDeRecorrencia';
 import { IconeRelogio } from '../ui/icones';
 import { previstoDaFatura } from '../dominio/previsto';
-import { ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
+import { usarOcorrencias } from '../dados/usarOcorrencias';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarFeriados } from '../dados/usarFeriados';
 import { arquivarRecorrencia } from '../dados/recorrencias';
@@ -256,14 +256,10 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
   const recorrencias = usarRecorrencias();
   const feriados = usarFeriados();
 
-  const geradas = useQuery({
-    queryKey: ['ocorrencias-geradas', 'fatura', fatura.mesReferencia],
-    queryFn: () =>
-      ocorrenciasDoPeriodo(
-        somarMeses(fatura.mesReferencia, -1),
-        ultimoDiaDoMes(somarMeses(fatura.mesReferencia, 1)),
-      ),
-  });
+  const geradas = usarOcorrencias(
+    somarMeses(fatura.mesReferencia, -1),
+    ultimoDiaDoMes(somarMeses(fatura.mesReferencia, 1)),
+  );
 
   const previstas =
     recorrencias.data && geradas.data

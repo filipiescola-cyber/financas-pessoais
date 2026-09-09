@@ -19,7 +19,8 @@ import { lembreteDeFechamento } from '../dominio/fechamento';
 import { listarFechamentos } from '../dados/fechamentos';
 import { calcularTodos } from '../dados/investimentos';
 import { travadoEmAplicacao } from '../dominio/saldo';
-import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
+import { gerarUmaOcorrencia } from '../dados/geracaoRecorrencias';
+import { usarOcorrencias } from '../dados/usarOcorrencias';
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { usarRecorrencias } from '../dados/usarModelos';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
@@ -367,10 +368,7 @@ function PrevistoDoMes({ mes }: { mes: string }) {
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
 
-  const geradas = useQuery({
-    queryKey: ['ocorrencias-geradas', mes],
-    queryFn: () => ocorrenciasDoPeriodo(mes, ultimoDiaDoMes(mes)),
-  });
+  const geradas = usarOcorrencias(mes, ultimoDiaDoMes(mes));
 
   const lancar = useMutation({
     mutationFn: ({ id, data, valor }: { id: string; data: string; valor: Centavos }) =>
