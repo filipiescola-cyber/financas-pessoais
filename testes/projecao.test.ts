@@ -325,6 +325,7 @@ describe('diagnóstico do fluxo', () => {
       mes: nome,
       saldoInicial: 0,
       receita,
+      liberado: 0,
       saidas,
       totalDeSaidas,
       saldoFinal: receita - totalDeSaidas,
@@ -509,5 +510,45 @@ describe('em que mês comprar', () => {
 
   it('sem opções não inventa mês', () => {
     expect(melhorMesParaComprar([])).toBeNull();
+  });
+});
+
+describe('aplicação que vence volta para a projeção', () => {
+  const base = {
+    saldoAtual: 100000,
+    aPartirDe: '2026-10-01',
+    horizonteEmMeses: 4,
+    renda: {
+      pessimista: 300000,
+      provavel: 300000,
+      otimista: 300000,
+      origem: 'recorrencia' as const,
+      mesesDeHistorico: 0,
+    },
+    fixasMensais: 300000,
+    fixasComPrazo: [] as { nome: string; valor: number; ate: string }[],
+    compromissos: [],
+    provisaoEventualMensal: 0,
+    medianaDasVariaveis: 0,
+    jaLancadoPorMes: {},
+  };
+
+  it('o dinheiro do vencimento entra no mês certo', () => {
+    // Sem isto a projeção desceria pelo travado e nunca subiria: o mês do
+    // vencimento apareceria apertado por causa do dinheiro que chega nele.
+    const meses = projetarFluxo(
+      { ...base, liberacoesPorMes: { '2026-12-01': 500000 } },
+      'provavel',
+    );
+
+    expect(meses[0]!.liberado).toBe(0);
+    expect(meses[2]!.liberado).toBe(500000);
+    expect(meses[2]!.saldoFinal).toBe(meses[1]!.saldoFinal + 500000);
+  });
+
+  it('sem liberação nenhuma, nada muda', () => {
+    const com = projetarFluxo({ ...base, liberacoesPorMes: {} }, 'provavel');
+    const sem = projetarFluxo(base, 'provavel');
+    expect(com.map((m) => m.saldoFinal)).toEqual(sem.map((m) => m.saldoFinal));
   });
 });

@@ -135,6 +135,8 @@ export type MesProjetado = {
   mes: DataISO;
   saldoInicial: Centavos;
   receita: Centavos;
+  /** Aplicação que vence neste mês e volta a ser dinheiro disponível. */
+  liberado: Centavos;
   saidas: ComponentesDoMes;
   totalDeSaidas: Centavos;
   saldoFinal: Centavos;
@@ -161,6 +163,15 @@ export type EntradaDaProjecao = {
   medianaDasVariaveis: Centavos;
   /** Já gravado no banco, por mês: parcelas e recorrências futuras (§13.2). */
   jaLancadoPorMes: Readonly<Record<DataISO, Centavos>>;
+  /**
+   * Aplicação presa que vence, por mês (§4.6, §7.1).
+   *
+   * O saldo de partida já vem sem o que está travado — um CDB de 2028 não é
+   * dinheiro para gastar. Mas ele volta a ser no dia do vencimento, e sem esta
+   * entrada a projeção desceria pelo travado e nunca subiria: o mês em que o
+   * papel vence apareceria apertado por causa do dinheiro que chega nele.
+   */
+  liberacoesPorMes?: Readonly<Record<DataISO, Centavos>>;
 };
 
 /**
@@ -191,10 +202,20 @@ export function projetarFluxo(entrada: EntradaDaProjecao, cenario: Cenario): Mes
     const totalDeSaidas =
       saidas.fixas + saidas.jaLancado + saidas.provisaoEventual + saidas.variaveis;
 
-    const saldoInicial = saldo;
-    saldo = saldoInicial + receita - totalDeSaidas;
+    const liberado = entrada.liberacoesPorMes?.[mes] ?? 0;
 
-    meses.push({ mes, saldoInicial, receita, saidas, totalDeSaidas, saldoFinal: saldo });
+    const saldoInicial = saldo;
+    saldo = saldoInicial + receita + liberado - totalDeSaidas;
+
+    meses.push({
+      mes,
+      saldoInicial,
+      receita,
+      liberado,
+      saidas,
+      totalDeSaidas,
+      saldoFinal: saldo,
+    });
   }
 
   return meses;

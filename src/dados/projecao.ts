@@ -27,13 +27,20 @@ import type { Compromisso } from '../dominio/projecao';
 import { ocorrenciasDoPeriodo } from './geracaoRecorrencias';
 import { listarFeriados } from './indicadores';
 import { listarDividas } from './dividas';
+import { calcularTodos } from './investimentos';
+import { travadoEmAplicacao } from '../dominio/saldo';
 import type { RegraDoDia } from '../dominio/recorrencias';
 import { supabase } from './supabase';
 
 const JANELA_DE_HISTORICO = 12;
 
 export type DadosDaProjecao = {
+  /** Já sem o que está preso em aplicação: é o que dá para gastar (§4.6). */
   saldoAtual: Centavos;
+  /** Quanto foi descontado. A tela precisa poder explicar o número. */
+  travadoEmAplicacao: Centavos;
+  /** O travado voltando, no mês em que cada papel vence. */
+  liberacoesPorMes: Record<DataISO, Centavos>;
   renda: RendaProjetada;
   fixasMensais: Centavos;
   /** As fixas com prazo, que param de pesar depois da última parcela. */
@@ -99,9 +106,49 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
       .filter((id): id is string => id !== null),
   );
 
-  const saldoAtual = ((saldos.data ?? []) as { conta_id: string | null; saldo_atual: number | null }[])
+  const consolidado = ((saldos.data ?? []) as { conta_id: string | null; saldo_atual: number | null }[])
     .filter((linha) => linha.conta_id !== null && contasElegiveis.has(linha.conta_id))
     .reduce((total, linha) => total + paraCentavos(linha.saldo_atual ?? 0), 0);
+
+  /**
+   * O que está preso em aplicação sai do saldo de partida (§4.6, §7.1).
+   *
+   * Mesmo critério da aba de Contas e da linha de Lançamentos — as três precisam
+   * do MESMO número, senão o app diz três coisas diferentes sobre quanto se
+   * tem, e quem lê não sabe em qual acreditar.
+   *
+   * Volta no vencimento: sem isso a projeção desceria pelo travado e nunca
+   * subiria, e o mês em que o papel vence apareceria apertado justamente por
+   * causa do dinheiro que chega nele.
+   */
+  const aplicacoes = await calcularTodos();
+
+  const saldoEmInvestimento = (
+    (saldos.data ?? []) as { conta_id: string | null; conta_tipo: string | null; saldo_atual: number | null }[]
+  )
+    .filter((linha) => linha.conta_tipo === 'investimento')
+    .reduce((total, linha) => total + paraCentavos(linha.saldo_atual ?? 0), 0);
+
+  const travado = travadoEmAplicacao(
+    aplicacoes.map((i) => ({
+      liquidezDiaria: i.investimento.liquidezDiaria,
+      vencimento: i.investimento.vencimento,
+      aplicado: i.aplicado,
+    })),
+    saldoEmInvestimento,
+    referencia,
+  );
+
+  const liberacoesPorMes: Record<DataISO, Centavos> = {};
+  for (const item of aplicacoes) {
+    const { liquidezDiaria, vencimento } = item.investimento;
+    if (liquidezDiaria || vencimento === null || vencimento <= referencia) continue;
+
+    const mes = primeiroDiaDoMes(vencimento);
+    liberacoesPorMes[mes] = (liberacoesPorMes[mes] ?? 0) + item.aplicado;
+  }
+
+  const saldoAtual = consolidado - travado;
 
   const naturezaDaCategoria = new Map(
     (categorias.data ?? []).map((c) => [c.id, c.natureza as Natureza | null]),
@@ -338,6 +385,8 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
 
   return {
     saldoAtual,
+    travadoEmAplicacao: travado,
+    liberacoesPorMes,
     renda: projetarRenda(
       historicoDeRenda,
       sementes ? { mesTipico: sementes.mesTipico, mesRuim: sementes.mesRuim } : null,

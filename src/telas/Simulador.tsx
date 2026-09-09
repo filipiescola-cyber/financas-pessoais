@@ -116,6 +116,7 @@ export function Simulador() {
     provisaoEventualMensal: dados.data.provisaoEventualMensal,
     medianaDasVariaveis: dados.data.medianaDasVariaveis,
     jaLancadoPorMes: dados.data.jaLancadoPorMes,
+    liberacoesPorMes: dados.data.liberacoesPorMes,
   };
 
   const impacto =

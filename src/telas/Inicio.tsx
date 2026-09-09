@@ -17,6 +17,8 @@ import { useMutation } from '@tanstack/react-query';
 import { previstoDoMes, resumirPrevisto, type ItemPrevisto } from '../dominio/previsto';
 import { lembreteDeFechamento } from '../dominio/fechamento';
 import { listarFechamentos } from '../dados/fechamentos';
+import { calcularTodos } from '../dados/investimentos';
+import { travadoEmAplicacao } from '../dominio/saldo';
 import { gerarUmaOcorrencia, ocorrenciasDoPeriodo } from '../dados/geracaoRecorrencias';
 import { RevisarELancar } from '../ui/RevisarELancar';
 import { usarRecorrencias } from '../dados/usarModelos';
@@ -70,6 +72,27 @@ export function Inicio() {
   const disponiveis = lista.filter(entraNoConsolidado);
   const consolidado = disponiveis.reduce((total, c) => total + c.saldoAtual, 0);
   const empresa = lista.find((c) => c.tipo === 'empresa');
+
+  /**
+   * O que está preso em aplicação (§4.6, §7.1).
+   *
+   * Mesmo critério de Contas e da linha de Lançamentos. Sem ele esta tela dizia
+   * um número e as outras duas diziam outro — e quem lê não tem como saber em
+   * qual acreditar.
+   */
+  const investimentos = useQuery({ queryKey: ['investimentos'], queryFn: () => calcularTodos() });
+
+  const travado = travadoEmAplicacao(
+    (investimentos.data ?? []).map((i) => ({
+      liquidezDiaria: i.investimento.liquidezDiaria,
+      vencimento: i.investimento.vencimento,
+      aplicado: i.aplicado,
+    })),
+    disponiveis
+      .filter((c) => c.tipo === 'investimento')
+      .reduce((total, c) => total + c.saldoAtual, 0),
+    hoje(),
+  );
 
   const doMes = transacoes.data ?? [];
   const receitas = doMes.filter((t) => t.tipo === 'receita').reduce((s, t) => s + t.valor, 0);
@@ -181,10 +204,14 @@ export function Inicio() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <CartaoIndicador
-            rotulo="Saldo"
+            rotulo={travado > 0 ? 'Disponível hoje' : 'Saldo'}
             sotaque="verde"
-            valor={formatar(consolidado)}
-            detalhe="Não inclui a conta Empresa, dívidas nem faturas de cartão."
+            valor={formatar(consolidado - travado)}
+            detalhe={
+              travado > 0
+                ? `Não inclui ${formatar(travado)} presos em aplicação até o vencimento, nem a conta Empresa, dívidas ou faturas.`
+                : 'Não inclui a conta Empresa, dívidas nem faturas de cartão.'
+            }
           />
           <CartaoIndicador
             rotulo={`Entrou em ${nomeDoMes}`}

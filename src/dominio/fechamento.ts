@@ -45,7 +45,7 @@ export type PendenciasDoMes = {
   recorrenciasQueFaltaram: number;
 };
 
-export function passoResolvidoPelosDados(
+function passoResolvidoPelosDados(
   passo: IdDoPasso,
   pendencias: PendenciasDoMes,
 ): boolean {

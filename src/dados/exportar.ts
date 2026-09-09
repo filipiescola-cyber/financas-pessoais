@@ -9,35 +9,11 @@
 
 import { supabase } from './supabase';
 import { hoje } from '../dominio/datas';
+import { TABELAS, VERSAO_DO_SCHEMA } from './tabelas';
 
-/**
- * Todas as tabelas do schema, inclusive as dormentes. Uma tabela esquecida aqui
- * é uma tabela que não volta no restore — por isso a lista é explícita e não
- * derivada de nada que possa mudar em silêncio.
- */
-export const TABELAS = [
-  'contas',
-  'cartoes',
-  'categorias',
-  'transacoes',
-  'faturas',
-  'recorrencias',
-  'modelos',
-  'memoria_descricao',
-  'config',
-  'orcamentos',
-  'metas',
-  'importacoes',
-  'perfis_importacao',
-  'investimentos',
-  'movimentacoes_investimento',
-  'indexadores',
-  'rendimentos',
-  'aliquotas_ir',
-  'feriados',
-] as const;
+export { TABELAS, type Tabela } from './tabelas';
 
-export type Tabela = (typeof TABELAS)[number];
+
 
 export type Exportacao = {
   gerado_em: string;
@@ -61,7 +37,7 @@ export async function exportarTudo(): Promise<Exportacao> {
 
   return {
     gerado_em: new Date().toISOString(),
-    versao_schema: '20260827120013',
+    versao_schema: VERSAO_DO_SCHEMA,
     tabelas,
     contagem,
   };

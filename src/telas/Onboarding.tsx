@@ -1399,15 +1399,18 @@ function TourFinal({ aoConcluir }: { aoConcluir: () => void }) {
   const telas: { nome: string; responde: string }[] = [
     { nome: 'Início', responde: 'O que exige atenção hoje, e como está o mês.' },
     { nome: 'Lançamentos', responde: 'O que entrou e saiu de cada conta, dia a dia.' },
+    { nome: 'Contas', responde: 'Onde o dinheiro está, e quanto dele dá para gastar hoje.' },
     { nome: 'Em lote', responde: 'Ficou dias sem lançar? Dez de uma vez, numa tabela.' },
     { nome: 'Faturas', responde: 'A fatura do mês inteira, com as compras que a formam.' },
     { nome: 'Investimentos', responde: 'Quanto rende por dia — bruto e líquido, já com IR.' },
     { nome: 'Dívidas', responde: 'Quanto ainda se deve e em que mês acaba. Com juros de verdade.' },
     {
       nome: 'Fluxo de caixa',
-      responde: 'Como fica o saldo nos próximos 12 meses, em três cenários.',
+      responde:
+        'Quanto falta ou sobra num mês típico, para onde o dinheiro vai por categoria, e como fica o saldo nos próximos 12 meses.',
     },
     { nome: 'Simulador', responde: 'O que ESTA compra faz com o seu pior mês. Use dentro da loja.' },
+    { nome: 'Orçamento', responde: 'O teto de cada categoria, e o quanto dele já foi.' },
     { nome: 'Metas', responde: 'Quantos meses de custo fixo a sua reserva cobre.' },
     { nome: 'Conferência', responde: 'O saldo do app bate com o do banco? Onde o erro entrou.' },
     { nome: 'Fechamento', responde: 'O ritual de 10 minutos que mantém tudo confiável.' },
