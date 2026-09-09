@@ -957,6 +957,30 @@ export type Database = {
           },
         ]
       }
+      transacoes_removidas_por_duplicidade: {
+        Row: {
+          id: string
+          linha: Json
+          motivo: string
+          removida_em: string
+          usuario_id: string
+        }
+        Insert: {
+          id: string
+          linha: Json
+          motivo: string
+          removida_em?: string
+          usuario_id?: string
+        }
+        Update: {
+          id?: string
+          linha?: Json
+          motivo?: string
+          removida_em?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       orcamentos: {
         Row: {
           categoria_id: string

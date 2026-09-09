@@ -44,6 +44,10 @@ export const TABELAS = [
   'amortizacoes_divida',
   'ocorrencias_puladas',
   'fechamentos',
+  // O que a migration da idempotência removeu, guardado inteiro (§4.8). Entra
+  // no backup como qualquer outra: é justamente a tabela cuja perda deixaria a
+  // limpeza irreversível.
+  'transacoes_removidas_por_duplicidade',
 ] as const;
 
 export type Tabela = (typeof TABELAS)[number];
