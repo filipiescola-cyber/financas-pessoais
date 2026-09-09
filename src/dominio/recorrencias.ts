@@ -189,6 +189,15 @@ export function repeticoesRestantes(
  *
  * Existe para o caso da recorrência antiga e abandonada: sem limite, reativar
  * uma de dois anos atrás despejaria dois anos de lançamentos de uma vez.
+ *
+ * Doze meses CONTADOS DE HOJE, e não da data de início da recorrência — a
+ * distinção parece detalhe e é a diferença entre o limite funcionar e a
+ * recorrência PARAR. Ancorada no início, a janela andava com ele: um aluguel
+ * cadastrado em janeiro de 2025 gerava até janeiro de 2026 e nunca mais nada,
+ * porque o décimo terceiro mês ficava fora do laço. O lançamento simplesmente
+ * deixava de aparecer, sem erro e sem aviso, e o mês passava a parecer barato
+ * — que é o defeito mais caro que este app pode ter, porque contamina a
+ * mediana que projeta os próximos (§8.3).
  */
 export const JANELA_RETROATIVA = 12;
 
@@ -207,7 +216,12 @@ export function vencimentosPendentes(
   feriados: Feriados,
   frequencia: Frequencia = 'mensal',
 ): DataISO[] {
-  const primeiro = primeiroDiaDoMes(desde);
+  // O mais recente entre "quando a recorrência começou" e "doze meses atrás".
+  // Datas são AAAA-MM-DD, então comparar é comparar string.
+  const inicioDaJanela = primeiroDiaDoMes(somarMeses(ate, -JANELA_RETROATIVA));
+  const doComeco = primeiroDiaDoMes(desde);
+  const primeiro = doComeco > inicioDaJanela ? doComeco : inicioDaJanela;
+
   const datas: DataISO[] = [];
 
   for (let i = 0; i < JANELA_RETROATIVA + 1; i += 1) {

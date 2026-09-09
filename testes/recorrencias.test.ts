@@ -65,6 +65,38 @@ describe('vencimentos pendentes de uma recorrência (§5.2, §13.3)', () => {
     const datas = vencimentosPendentes('2020-01-01', '2026-08-28', { dia: 10, regra: 'fixo', terminaEm: null }, FERIADOS);
     expect(datas.length).toBeLessThanOrEqual(13);
   });
+
+  it('a janela são os doze meses ANTES DE HOJE, não os doze primeiros da recorrência', () => {
+    /*
+      O teste acima conferia o teto e não a âncora, e foi por aí que o defeito
+      passou: a janela andava com a data de início, então uma recorrência com
+      mais de treze meses parava de gerar. O aluguel de 2024 rendia lançamentos
+      até 2025 e depois nada — sem erro, sem aviso, e com o mês parecendo mais
+      barato do que foi.
+    */
+    const datas = vencimentosPendentes(
+      '2024-01-05',
+      '2026-09-09',
+      { dia: 5, regra: 'fixo', terminaEm: null, comecaEm: '2024-01-05' },
+      FERIADOS,
+    );
+
+    expect(datas.at(-1)).toBe('2026-09-05');
+    expect(datas[0]).toBe('2025-09-05');
+  });
+
+  it('recorrência nova continua começando no próprio início', () => {
+    // A âncora é a MAIS RECENTE das duas: quem começou mês passado não ganha
+    // onze meses de lançamentos anteriores ao próprio cadastro.
+    const datas = vencimentosPendentes(
+      '2026-08-05',
+      '2026-09-09',
+      { dia: 5, regra: 'fixo', terminaEm: null, comecaEm: '2026-08-05' },
+      FERIADOS,
+    );
+
+    expect(datas).toEqual(['2026-08-05', '2026-09-05']);
+  });
 });
 
 describe('regra do dia', () => {
