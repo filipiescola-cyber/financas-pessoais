@@ -572,8 +572,11 @@ export async function calcularTodos(ate: DataISO = hoje()): Promise<Investimento
 
     // Principal de hoje: a soma dos aportes menos o que já saiu (§13.2). Nunca
     // `valor_aplicado`, que é só o registro da primeira aplicação.
+    // O `ate` entra aqui também: sem ele o "aplicado" contava movimento
+    // posterior à data pedida enquanto o `resultado` logo abaixo não contava,
+    // e os dois números da mesma posição discordavam entre si.
     const aplicado = principalVivo(
-      parcelasVivas(papel, doInvestimento, taxaDoIndexador, feriados, tabela),
+      parcelasVivas(papel, doInvestimento, taxaDoIndexador, feriados, tabela, ate),
     );
 
     // Por cotação o valor não é um saldo digitado: sai de quantidade × preço ×

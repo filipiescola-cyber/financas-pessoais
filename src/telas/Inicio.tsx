@@ -307,6 +307,8 @@ export function Inicio() {
                     cartoes.data?.find((c) => c.contaId === fatura.cartaoId)?.conta.nome ?? 'Cartão'
                   }
                   total={fatura.total}
+                  cobrado={fatura.cobrado}
+                  pago={fatura.pago}
                   vencimento={fatura.vencimento}
                   vencida={fatura.vencida}
                 />
@@ -325,15 +327,23 @@ export function Inicio() {
  * O total chega pronto: era uma consulta por fatura aqui dentro, e agora sai
  * somado junto com a lista, numa ida só. De quebra é o mesmo número que decide
  * se a fatura aparece — vazia não entra.
+ *
+ * O valor em destaque é o que FALTA, o mesmo que a aba Faturas mostra. Quando
+ * parte já foi paga, a linha de baixo diz de onde veio o desconto: um número
+ * menor que a fatura, sem explicação, pareceria erro.
  */
 function LinhaDeFatura({
   nome,
   total,
+  cobrado,
+  pago,
   vencimento,
   vencida,
 }: {
   nome: string;
   total: Centavos;
+  cobrado: Centavos;
+  pago: Centavos;
   vencimento: string;
   vencida: boolean;
 }) {
@@ -344,6 +354,11 @@ function LinhaDeFatura({
         <p className={`text-xs ${vencida ? 'text-amber-400' : 'text-slate-500'}`}>
           {vencida ? 'Venceu' : 'Vence'} em {formatarBR(vencimento)}
         </p>
+        {pago > 0 && (
+          <p className="text-xs text-slate-600">
+            Já pagou {formatar(pago)} de {formatar(cobrado)}
+          </p>
+        )}
       </div>
       <Dinheiro centavos={Math.abs(total)} className="shrink-0 text-sm text-slate-200" />
     </li>

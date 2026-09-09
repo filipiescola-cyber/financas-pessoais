@@ -49,4 +49,4 @@ export const TABELAS = [
 export type Tabela = (typeof TABELAS)[number];
 
 /** A migration mais nova que o export conhece. Vira ruído se ficar para trás. */
-export const VERSAO_DO_SCHEMA = '20260901120001';
+export const VERSAO_DO_SCHEMA = '20260902120000';

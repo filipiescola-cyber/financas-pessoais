@@ -251,9 +251,13 @@ export function contasDoResgate(
   const bruto = Math.max(0, Math.round(valorResgatado));
   const principalVivo = Math.max(0, aplicado);
 
-  // Sem posição conhecida — ou sem taxa, quando o líquido é o próprio
-  // principal — o resgate é todo principal. É a degradação honesta: sem base
-  // para separar, não se inventa rendimento (§13.5).
+  // Sem principal vivo, o resgate é todo rendimento — e não o contrário.
+  //
+  // Chamar de principal o que o app sabe que não está mais aplicado tiraria
+  // dinheiro da conta de investimentos por uma transferência sem lastro, que é
+  // exatamente como ela ficou negativa antes. Rendimento é a leitura honesta:
+  // a posição rendeu além do que o cálculo enxergava, e o §7.4 diz que
+  // rendimento resgatado é receita.
   const referencia = liquidoDaPosicao > 0 ? liquidoDaPosicao : principalVivo;
   if (referencia <= 0) return { bruto, principal: 0, rendimento: bruto };
 

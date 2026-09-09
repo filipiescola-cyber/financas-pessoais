@@ -66,4 +66,34 @@ export const DERIVADO_DE_TRANSACAO: readonly (readonly string[])[] = [
   ['importacoes'],
   ['recorrencias'],
   ['investimentos'],
+  /*
+    Abaixo, tudo que também nasce de transação e estava faltando.
+
+    O comentário no topo desta lista já previa o defeito — "cada consulta nova
+    precisava ser lembrada" — e ele aconteceu do mesmo jeito. O caso mais caro
+    era a conferência (§5.3): registrar o ajuste criava o lançamento e a tela
+    continuava mostrando a MESMA diferença, porque o saldo dela vinha de
+    `saldo-ate`, que ninguém invalidava. Quem confia no que está na tela
+    registra o ajuste de novo, e aí a diferença passa a existir de verdade,
+    dobrada e ao contrário.
+  */
+  // Saldo de uma conta numa data — é o número que a conferência compara.
+  ['saldo-ate'],
+  // Quanto já foi pago de uma fatura, e o que sobra dela (§2.1).
+  ['fatura-pago'],
+  ['rotativo'],
+  // A ponte entre o mês de hoje e um mês futuro, na lista de lançamentos.
+  ['faturas-ponte'],
+  ['pagamentos-ponte'],
+  // Histórico de aportes e resgates de uma aplicação (§7.4).
+  ['movimentos-investimento'],
+  // Quantos lançamentos uma recorrência já gerou — a tela de exclusão mostra
+  // esse número antes de perguntar o que fazer com eles.
+  ['recorrencia-gerados'],
+  // Parcela de dívida grava transação e mexe no contador de pagas (§4.7).
+  ['dividas'],
+  ['amortizacoes'],
+  // Quantas transações uma categoria tem, na prévia de exclusão (§4.8).
+  ['categoria-previa-exclusao'],
+  ['investimento-previa-exclusao'],
 ];

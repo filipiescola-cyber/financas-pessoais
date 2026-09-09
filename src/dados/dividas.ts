@@ -288,7 +288,9 @@ async function lancarParcela(
   }
 
   const { error } = await supabase.from('transacoes').insert(linhas);
-  if (error) throw new Error(error.message);
+  // 23505: outra execução já lançou esta parcela. O índice único é a rede da
+  // idempotência do §13.3, e ele ter pegado significa que está tudo certo.
+  if (error && error.code !== '23505') throw new Error(error.message);
 }
 
 /**

@@ -26,13 +26,20 @@ export function usarRotinasDeAbertura() {
         if (
           resultado.faturasFechadas > 0 ||
           resultado.transacoesVinculadas > 0 ||
-          resultado.recorrenciasGeradas > 0
+          resultado.recorrenciasGeradas > 0 ||
+          // Faltava: parcela de dívida gerada sozinha (§4.7) mexia no saldo e
+          // no contador de pagas sem nada na tela mudar até recarregar a
+          // página — e como ninguém recarrega um PWA, o débito parecia não ter
+          // acontecido justamente no dia em que aconteceu.
+          resultado.parcelasGeradas > 0
         ) {
           await invalidar();
         }
 
         if (resultado.recorrenciasGeradas > 0) {
           mostrar(`${resultado.recorrenciasGeradas} lançamento(s) recorrente(s) gerado(s).`);
+        } else if (resultado.parcelasGeradas > 0) {
+          mostrar(`${resultado.parcelasGeradas} parcela(s) de dívida lançada(s).`);
         } else if (resultado.transacoesVinculadas > 0) {
           mostrar(
             `${resultado.transacoesVinculadas} lançamento(s) de cartão agrupado(s) em fatura.`,

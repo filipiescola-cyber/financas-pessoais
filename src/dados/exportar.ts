@@ -9,7 +9,7 @@
 
 import { supabase } from './supabase';
 import { hoje } from '../dominio/datas';
-import { TABELAS, VERSAO_DO_SCHEMA } from './tabelas';
+import { TABELAS, VERSAO_DO_SCHEMA, type Tabela } from './tabelas';
 
 export { TABELAS, type Tabela } from './tabelas';
 
@@ -22,6 +22,56 @@ export type Exportacao = {
   contagem: Record<string, number>;
 };
 
+/**
+ * Quantas linhas por ida ao banco.
+ *
+ * O PostgREST tem um teto de linhas por resposta (`db.max_rows`, mil por
+ * padrão no Supabase) e ele não dá erro: devolve as primeiras mil e cala.
+ * Um `select('*')` sem página, portanto, gera um backup TRUNCADO que parece
+ * completo — o arquivo baixa, o JSON abre, a contagem mostra um número
+ * plausível, e a falta só aparece no restore, que é quando não dá mais para
+ * consertar. É o pior modo de falha possível para a rede de segurança do
+ * §10.2, e o §14 já avisa: não confiar em backup que você nunca restaurou.
+ *
+ * Quinhentas por página fica abaixo de qualquer teto praticado e mantém a
+ * resposta pequena o bastante para o plano gratuito.
+ */
+const POR_PAGINA = 500;
+
+/**
+ * Uma tabela inteira, página a página.
+ *
+ * A ordem por `ctid` não existe no PostgREST, então a paginação usa `range`
+ * puro. Sem ordenação estável duas páginas poderiam repetir ou pular linha se
+ * alguém escrevesse no meio do backup — por isso ordena por uma coluna que
+ * toda tabela tem. Nem todas têm `id` (as de chave composta), e aí sobra a
+ * ordem natural mesmo: o backup é disparado por quem está na frente do app,
+ * não concorre com ninguém.
+ */
+async function baixarTabela(tabela: Tabela): Promise<unknown[]> {
+  const linhas: unknown[] = [];
+
+  for (let pagina = 0; ; pagina += 1) {
+    const de = pagina * POR_PAGINA;
+    const { data, error } = await supabase
+      .from(tabela)
+      .select('*')
+      .range(de, de + POR_PAGINA - 1);
+
+    if (error) throw new Error(`Falha ao exportar ${tabela}: ${error.message}`);
+
+    const lote = data ?? [];
+    linhas.push(...lote);
+
+    // Lote incompleto significa fim da tabela. Lote cheio pode ser o fim exato,
+    // e aí a próxima volta vem vazia e encerra — uma ida a mais custa menos que
+    // um backup faltando linha.
+    if (lote.length < POR_PAGINA) break;
+  }
+
+  return linhas;
+}
+
 export async function exportarTudo(): Promise<Exportacao> {
   const tabelas: Record<string, unknown[]> = {};
   const contagem: Record<string, number> = {};
@@ -29,10 +79,9 @@ export async function exportarTudo(): Promise<Exportacao> {
   // Sequencial de propósito: são poucas tabelas e um lote paralelo grande no
   // plano gratuito só aumenta a chance de estourar limite no meio do backup.
   for (const tabela of TABELAS) {
-    const { data, error } = await supabase.from(tabela).select('*');
-    if (error) throw new Error(`Falha ao exportar ${tabela}: ${error.message}`);
-    tabelas[tabela] = data ?? [];
-    contagem[tabela] = (data ?? []).length;
+    const linhas = await baixarTabela(tabela);
+    tabelas[tabela] = linhas;
+    contagem[tabela] = linhas.length;
   }
 
   return {
@@ -69,8 +118,21 @@ export function baixarArquivo(nome: string, conteudo: string, tipo: string): voi
   const ancora = document.createElement('a');
   ancora.href = url;
   ancora.download = nome;
+
+  /*
+    A âncora precisa estar NO documento e a URL precisa sobreviver ao clique.
+
+    Fora do DOM, o clique não dispara download em parte dos navegadores; e
+    revogar a URL na linha seguinte cancela o download que acabou de começar,
+    porque o navegador ainda não leu o blob. Nos dois casos o botão de backup
+    não faz nada e não explica — o pior jeito de falhar para a função que
+    existe justamente para o dia em que tudo der errado (§10.2).
+  */
+  ancora.style.display = 'none';
+  document.body.appendChild(ancora);
   ancora.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(ancora);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export function nomeDoArquivo(extensao: string, sufixo = ''): string {

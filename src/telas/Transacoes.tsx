@@ -354,7 +354,12 @@ export function Transacoes() {
   });
 
   const movimentos = useQuery({
-    queryKey: ['movimentos-caixa', inicio, fim, contaId, elegiveis.length],
+    // As CONTAS entram na chave, não a contagem delas. Arquivar uma conta e
+    // criar outra no mesmo dia mantém o número e troca o conjunto: a consulta
+    // devolveria os movimentos das contas velhas, com a chave dizendo que são
+    // das novas. É o mesmo defeito da cobrança duplicada no cartão, onde a
+    // chave também descrevia mal o que a consulta ia buscar.
+    queryKey: ['movimentos-caixa', inicio, fim, contaId, [...elegiveis].sort().join(',')],
     queryFn: () => movimentosDeCaixa({ de: inicio, ate: fim, contaId, contasElegiveis: elegiveis }),
     enabled: contaId !== null || elegiveis.length > 0,
   });

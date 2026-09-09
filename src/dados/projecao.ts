@@ -21,6 +21,7 @@ import {
 import { mediana, projetarRenda, type RendaProjetada } from '../dominio/projecao';
 import { entraNaProjecaoDeRenda, type Natureza } from '../dominio/natureza';
 import { TIPOS_FORA_DO_CONSOLIDADO } from '../dominio/saldo';
+import { saldoDaFatura } from '../dominio/fatura';
 import { lerConfig } from './config';
 import { previstoNoCaixaDoMes, resumirPrevisto } from '../dominio/previsto';
 import type { Compromisso } from '../dominio/projecao';
@@ -462,6 +463,13 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
  * está aberta a coluna vale zero, e a tela mostrava R$ 0,00 para fatura com
  * compra dentro (§13.2). Fatura sem nada dentro não volta daqui — nada a pagar
  * não é vencimento, é ruído.
+ *
+ * E o que volta é o que FALTA, não o que foi comprado. O status sozinho só
+ * sabe dizer "quitada ou não": uma fatura de R$ 2.000 com R$ 1.500 já pagos
+ * não está quitada, e esta tela anunciava os R$ 2.000 inteiros enquanto a aba
+ * Faturas, ao lado, dizia R$ 500. Dois números para a mesma pergunta, e quem
+ * lê sem saber em qual acreditar — o mesmo defeito que o §13.2 descreve, aqui
+ * na sua forma mais visível.
  */
 export async function proximosVencimentos(referencia: DataISO = hoje()) {
   const { data, error } = await supabase
@@ -475,31 +483,52 @@ export async function proximosVencimentos(referencia: DataISO = hoje()) {
   if (error) throw error;
   if (!data || data.length === 0) return [];
 
-  const { data: linhas, error: erroLinhas } = await supabase
-    .from('transacoes')
-    .select('valor, fatura_id')
-    .in(
-      'fatura_id',
-      data.map((f) => f.id),
-    )
-    // Filha de divisão não soma: o pai já está na fatura (§5.5).
-    .is('transacao_pai_id', null);
-  if (erroLinhas) throw erroLinhas;
+  const ids = data.map((f) => f.id);
+
+  const [linhas, pagamentos] = await Promise.all([
+    supabase
+      .from('transacoes')
+      .select('valor, fatura_id')
+      .in('fatura_id', ids)
+      // Filha de divisão não soma: o pai já está na fatura (§5.5).
+      .is('transacao_pai_id', null),
+    supabase.from('transacoes').select('valor, fatura_paga_id').in('fatura_paga_id', ids),
+  ]);
+  if (linhas.error) throw linhas.error;
+  if (pagamentos.error) throw pagamentos.error;
 
   const total = new Map<string, number>();
-  for (const linha of linhas ?? []) {
+  for (const linha of linhas.data ?? []) {
     if (linha.fatura_id === null) continue;
     total.set(linha.fatura_id, (total.get(linha.fatura_id) ?? 0) + paraCentavos(linha.valor));
   }
 
+  const pago = new Map<string, number>();
+  for (const linha of pagamentos.data ?? []) {
+    if (linha.fatura_paga_id === null) continue;
+    pago.set(
+      linha.fatura_paga_id,
+      (pago.get(linha.fatura_paga_id) ?? 0) + Math.abs(paraCentavos(linha.valor)),
+    );
+  }
+
   return data
-    .map((fatura) => ({
-      id: fatura.id,
-      cartaoId: fatura.cartao_id,
-      vencimento: fatura.data_vencimento,
-      total: total.get(fatura.id) ?? 0,
-      status: fatura.status as 'aberta' | 'fechada',
-      vencida: fatura.data_vencimento < referencia,
-    }))
+    .map((fatura) => {
+      const saldo = saldoDaFatura(total.get(fatura.id) ?? 0, pago.get(fatura.id) ?? 0);
+
+      return {
+        id: fatura.id,
+        cartaoId: fatura.cartao_id,
+        vencimento: fatura.data_vencimento,
+        total: saldo.falta,
+        /** O que a fatura cobrou ao todo. A tela precisa poder explicar o resto. */
+        cobrado: saldo.total,
+        pago: saldo.pago,
+        status: fatura.status as 'aberta' | 'fechada',
+        vencida: fatura.data_vencimento < referencia,
+      };
+    })
+    // Quitada por pagamento parcial que fechou a conta some daqui: não falta
+    // mais nada, e listar zero seria pedir atenção para o que já foi resolvido.
     .filter((fatura) => fatura.total !== 0);
 }

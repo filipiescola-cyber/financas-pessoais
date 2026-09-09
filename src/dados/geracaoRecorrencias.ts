@@ -12,7 +12,7 @@
 // `data_competencia`. O par é a chave natural — não precisa de controle
 // paralelo que possa dessincronizar.
 
-import { hoje, type DataISO } from '../dominio/datas';
+import { hoje, somarMeses, type DataISO } from '../dominio/datas';
 import { paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { vencimentosPendentes } from '../dominio/recorrencias';
 import type { RegraDoDia } from '../dominio/recorrencias';
@@ -50,10 +50,17 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
   // ano de janela davam mais de cem idas ao banco na primeira abertura. O par
   // (recorrencia_id, data_competencia) continua sendo a chave da idempotência —
   // só a leitura ficou barata.
+  //
+  // A JANELA importa: sem ela a consulta cresce para sempre e, passado o teto
+  // de linhas do PostgREST (mil por padrão), ela volta CORTADA — sem erro. O
+  // que fica de fora parece nunca ter sido gerado, e a rotina gera de novo.
+  // Um ano para trás cobre qualquer ausência plausível e continua muito abaixo
+  // do teto.
   const { data: jaExistentes, error: erroExistentes } = await supabase
     .from('transacoes')
     .select('recorrencia_id, data_competencia')
-    .not('recorrencia_id', 'is', null);
+    .not('recorrencia_id', 'is', null)
+    .gte('data_competencia', somarMeses(referencia, -13));
   if (erroExistentes) throw erroExistentes;
 
   const jaGeradas = new Set(
@@ -135,7 +142,21 @@ export async function gerarRecorrenciasPendentes(referencia: DataISO = hoje()): 
       };
 
       const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);
-      if (erroInsercao) throw new Error(erroInsercao.message);
+
+      /*
+        23505 é o índice único dizendo que outra execução chegou primeiro.
+
+        Não é erro: é a idempotência do §13.3 funcionando na última linha de
+        defesa. Deixar isso subir como exceção abortaria o laço e as recorrências
+        seguintes não seriam geradas — trocando uma duplicata por uma AUSÊNCIA,
+        que é pior: a duplicada dá na vista, a que faltou não.
+      */
+      if (erroInsercao) {
+        if (erroInsercao.code !== '23505') throw new Error(erroInsercao.message);
+        jaGeradas.add(`${recorrencia.id}|${competencia}`);
+        continue;
+      }
+
       jaGeradas.add(`${recorrencia.id}|${competencia}`);
       geradas += 1;
     }
@@ -228,7 +249,11 @@ export async function gerarUmaOcorrencia(
   };
 
   const { error: erroInsercao } = await supabase.from('transacoes').insert(linha);
-  if (erroInsercao) throw new Error(erroInsercao.message);
+  // A rotina de abertura pode ter criado esta mesma ocorrência no instante
+  // entre a checagem lá em cima e este insert. Quem clicou queria a ocorrência
+  // lançada, e ela está lançada — avisar de erro seria mentir sobre o estado.
+  if (erroInsercao && erroInsercao.code !== '23505') throw new Error(erroInsercao.message);
+  if (erroInsercao) return 'ja-existia';
 
   // Lançar de novo desfaz a dispensa: quem pede a ocorrência explicitamente não
   // quer que ela continue marcada como apagada de propósito.
