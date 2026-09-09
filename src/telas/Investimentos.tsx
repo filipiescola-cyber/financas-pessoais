@@ -35,6 +35,7 @@ import {
   taxasVigentes,
 } from '../dados/indicadores';
 import { CampoValor } from '../ui/CampoValor';
+import { contasDoResgate } from '../dominio/posicao';
 import { ChipsDeConta } from '../ui/ChipsDeConta';
 import { usarInvalidarTransacoes } from '../dados/usarInvalidacao';
 import {
@@ -607,6 +608,8 @@ function LinhaDeInvestimento({ item }: { item: InvestimentoCalculado }) {
           investimentoId={inv.id}
           nome={inv.nome}
           saldoEstimado={item.saldoExibido}
+          aplicado={item.aplicado}
+          liquido={item.resultado?.saldoLiquido ?? item.saldoExibido}
           aoTerminar={() => setResgatando(false)}
         />
       )}
@@ -1014,11 +1017,17 @@ function ResgateDoInvestimento({
   investimentoId,
   nome,
   saldoEstimado,
+  aplicado,
+  liquido,
   aoTerminar,
 }: {
   investimentoId: string;
   nome: string;
   saldoEstimado: Centavos;
+  /** Principal ainda aplicado: é ele que volta para a conta de investimentos. */
+  aplicado: Centavos;
+  /** O que a posição vale hoje. Separa o que volta do que rendeu (§7.4). */
+  liquido: Centavos;
   aoTerminar: () => void;
 }) {
   const cliente = useQueryClient();
@@ -1037,6 +1046,8 @@ function ResgateDoInvestimento({
         data,
         contaDestinoId: contaDestinoId!,
         encerrar,
+        aplicado,
+        liquido,
       }),
     onSuccess: async () => {
       await cliente.invalidateQueries();
@@ -1045,6 +1056,7 @@ function ResgateDoInvestimento({
   });
 
   const destinos = (contas.data ?? []).filter(podePagarFatura);
+  const divisao = contasDoResgate(aplicado, liquido, valor);
 
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
@@ -1061,6 +1073,29 @@ function ResgateDoInvestimento({
           </>
         )}
       </p>
+
+      {/*
+        A divisão precisa aparecer ANTES de confirmar. Sem ela, quem resgatava
+        R$ 234 via a conta de investimentos ficar negativa e não entendia por
+        quê — o rendimento nunca tinha entrado lá para poder sair.
+      */}
+      {divisao.rendimento > 0 && (
+        <div className="space-y-1 rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-sm">
+          <p className="text-slate-200">
+            Entram <strong>{formatar(divisao.bruto)}</strong> na conta, em duas linhas:
+          </p>
+          <ul className="space-y-0.5 text-xs text-slate-400">
+            <li>
+              {formatar(divisao.principal)} voltando da aplicação — transferência, não receita: o
+              dinheiro só volta de onde saiu
+            </li>
+            <li>
+              {formatar(divisao.rendimento)} de rendimento — é agora que ele vira receita (§7.4),
+              como eventual, para não inflar a projeção de renda
+            </li>
+          </ul>
+        </div>
+      )}
 
       <Campo rotulo="Para qual conta">
         <div className="flex flex-wrap gap-2">

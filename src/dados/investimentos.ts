@@ -5,7 +5,13 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, type DataISO } from '../dominio/datas';
-import { calcularPosicao, parcelasVivas, principalVivo, type Movimento } from '../dominio/posicao';
+import {
+  calcularPosicao,
+  contasDoResgate,
+  parcelasVivas,
+  principalVivo,
+  type Movimento,
+} from '../dominio/posicao';
 import {
   contasDaVenda,
   posicaoPorCotacao,
@@ -281,6 +287,10 @@ export async function resgatarInvestimento(dados: {
   data: DataISO;
   contaDestinoId: string;
   encerrar: boolean;
+  /** Principal ainda aplicado e valor líquido da posição, para separar o
+   *  que volta do que rendeu (§7.4). */
+  aplicado: Centavos;
+  liquido: Centavos;
 }): Promise<void> {
   const { data: aplicacao } = await supabase
     .from('investimentos')
@@ -288,15 +298,54 @@ export async function resgatarInvestimento(dados: {
     .eq('id', dados.investimentoId)
     .maybeSingle();
 
+  const contas = contasDoResgate(dados.aplicado, dados.liquido, dados.valor);
+
+  /*
+    Só o PRINCIPAL sai da conta de investimentos, porque só ele entrou lá: o
+    rendimento nunca foi lançado, e não devia ser mesmo enquanto não realizado
+    (§7.4). Tirar principal mais rendimento de uma conta que só tem principal
+    deixava a conta negativa em exatamente o valor do rendimento.
+  */
   await registrarMovimento({
     investimentoId: dados.investimentoId,
     tipo: 'resgate',
-    valor: dados.valor,
+    valor: contas.principal,
     data: dados.data,
-    contaDoCaixa: dados.contaDestinoId,
+    contaDoCaixa: contas.principal > 0 ? dados.contaDestinoId : null,
     contaDaAplicacao: aplicacao?.conta_id ?? null,
     descricao: `Resgate de ${dados.nome.trim()}`,
   });
+
+  /*
+    E agora o rendimento vira receita, que é a outra metade do §7.4: "só vira
+    receita quando resgatado". O app nunca chegava a lançar essa entrada — o
+    dinheiro que a aplicação rendeu aparecia no saldo sem nunca aparecer como
+    receita, e a conta de investimentos pagava a diferença ficando negativa.
+  */
+  if (contas.rendimento > 0) {
+    const { data: categoria } = await supabase
+      .from('categorias')
+      .select('id')
+      .eq('nome', 'Rendimentos')
+      .eq('tipo', 'receita')
+      .maybeSingle();
+
+    const { error } = await supabase.from('transacoes').insert({
+      conta_id: dados.contaDestinoId,
+      categoria_id: categoria?.id ?? null,
+      valor: paraNumerico(contas.rendimento),
+      tipo: 'receita',
+      // Eventual: rendimento não é renda recorrente e não pode entrar na
+      // mediana que projeta os próximos meses (§2.7, §8.3).
+      natureza: 'eventual',
+      data_competencia: dados.data,
+      data_caixa: dados.data,
+      descricao: `${dados.nome.trim()} — rendimento resgatado`,
+      origem: 'manual',
+      revisado: true,
+    });
+    if (error) throw new Error(error.message);
+  }
 
   if (dados.encerrar) await arquivarInvestimento(dados.investimentoId);
 }

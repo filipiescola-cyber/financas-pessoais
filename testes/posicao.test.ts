@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { calcularPosicao, parcelasVivas, principalVivo, type Movimento } from '../src/dominio/posicao';
+import {
+  calcularPosicao,
+  contasDoResgate,
+  parcelasVivas,
+  principalVivo,
+  type Movimento,
+} from '../src/dominio/posicao';
 import { calcular } from '../src/dominio/rendimento';
 
 const FERIADOS = new Set(['2026-01-01', '2026-04-21', '2026-09-07', '2026-12-25']);
@@ -285,5 +291,43 @@ describe('conferência: comparar o mesmo dia (§7.3)', () => {
     const depois = calcularPosicao(PAPEL, comAporte, CDI, CONFERIDO_EM, FERIADOS, TABELA_IR);
 
     expect(depois.saldoBruto).toBe(semMexer.saldoBruto);
+  });
+});
+
+describe('resgate em duas partes (§7.4)', () => {
+  it('separa o que volta do que rendeu', () => {
+    // O defeito: o resgate saía como UMA transferência do valor inteiro, e a
+    // conta de investimentos — que só recebeu o principal — ficava negativa
+    // em exatamente o valor do rendimento.
+    const c = contasDoResgate(20800, 23400, 23400);
+    expect(c.principal).toBe(20800);
+    expect(c.rendimento).toBe(2600);
+    expect(c.principal + c.rendimento).toBe(c.bruto);
+  });
+
+  it('resgate parcial leva a mesma fração dos dois', () => {
+    const c = contasDoResgate(20000, 25000, 12500);
+    expect(c.principal).toBe(10000);
+    expect(c.rendimento).toBe(2500);
+  });
+
+  it('o principal nunca passa do que existe', () => {
+    // Resgatar mais do que o app calculava não pode virar principal
+    // inventado: o excedente é rendimento que o cálculo não tinha visto.
+    const c = contasDoResgate(20000, 21000, 30000);
+    expect(c.principal).toBe(20000);
+    expect(c.rendimento).toBe(10000);
+  });
+
+  it('sem rendimento, tudo é principal', () => {
+    const c = contasDoResgate(20000, 20000, 20000);
+    expect(c.principal).toBe(20000);
+    expect(c.rendimento).toBe(0);
+  });
+
+  it('posição sem base não inventa principal', () => {
+    const c = contasDoResgate(0, 0, 5000);
+    expect(c.principal).toBe(0);
+    expect(c.rendimento).toBe(5000);
   });
 });

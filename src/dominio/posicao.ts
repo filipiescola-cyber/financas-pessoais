@@ -217,3 +217,48 @@ export function calcularPosicao(
 export function principalVivo(parcelas: readonly Parcela[]): Centavos {
   return parcelas.reduce((total, parcela) => total + parcela.valor, 0);
 }
+
+export type ContasDoResgate = {
+  bruto: Centavos;
+  /** O que volta de onde saiu: transferência, não receita (§7.4). */
+  principal: Centavos;
+  /** O que a aplicação rendeu. É AGORA que ele vira receita (§7.4). */
+  rendimento: Centavos;
+};
+
+/**
+ * O resgate em duas partes (§7.4).
+ *
+ * O resgate saía como uma transferência só, do valor inteiro, da conta de
+ * investimentos para a corrente. Mas naquela conta só entrou o PRINCIPAL — o
+ * rendimento nunca foi lançado, porque rendimento não realizado não é
+ * lançamento (§7.4). Tirar principal mais rendimento de uma conta que só tem
+ * principal deixa a conta NEGATIVA, em exatamente o valor do rendimento.
+ *
+ * E havia a outra metade da mesma regra: "só vira receita quando resgatado".
+ * O app nunca chegava a lançar essa receita. Então o dinheiro que a aplicação
+ * rendeu aparecia no saldo sem nunca aparecer como entrada — e a conta de
+ * investimentos pagava a conta com um saldo negativo.
+ *
+ * A divisão é proporcional ao que se resgata: quem tira um terço da posição
+ * tira um terço do principal e um terço do rendimento acumulado.
+ */
+export function contasDoResgate(
+  aplicado: Centavos,
+  liquidoDaPosicao: Centavos,
+  valorResgatado: Centavos,
+): ContasDoResgate {
+  const bruto = Math.max(0, Math.round(valorResgatado));
+  const principalVivo = Math.max(0, aplicado);
+
+  // Sem posição conhecida — ou sem taxa, quando o líquido é o próprio
+  // principal — o resgate é todo principal. É a degradação honesta: sem base
+  // para separar, não se inventa rendimento (§13.5).
+  const referencia = liquidoDaPosicao > 0 ? liquidoDaPosicao : principalVivo;
+  if (referencia <= 0) return { bruto, principal: 0, rendimento: bruto };
+
+  const fracao = Math.min(1, bruto / referencia);
+  const principal = Math.min(principalVivo, Math.round(principalVivo * fracao));
+
+  return { bruto, principal, rendimento: bruto - principal };
+}
