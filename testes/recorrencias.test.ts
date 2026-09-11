@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   dataDaOcorrencia,
+  proximasOcorrencias,
   repeticoesRestantes,
   rotuloDoDia,
   temOcorrenciaNoMes,
   terminoParaRepeticoes,
+  ultimaOcorrenciaAte,
   valorDaOcorrencia,
   vencimentosPendentes,
 } from '../src/dominio/recorrencias';
@@ -244,5 +246,81 @@ describe('recorrência anual', () => {
       'mensal',
     );
     expect(datas).toHaveLength(4);
+  });
+});
+
+describe('encerrar a partir de uma cobrança (§5.2)', () => {
+  const mensal = {
+    dia: 10,
+    regra: 'fixo' as const,
+    comecaEm: '2026-01-10',
+    frequencia: 'mensal' as const,
+  };
+
+  it('no dia da cobrança, a de hoje ainda é uma das próximas', () => {
+    expect(proximasOcorrencias(mensal, '2026-09-10', 3, FERIADOS)).toEqual([
+      '2026-09-10',
+      '2026-10-10',
+      '2026-11-10',
+    ]);
+  });
+
+  it('passado o dia, a próxima é a do mês seguinte', () => {
+    expect(proximasOcorrencias(mensal, '2026-09-11', 3, FERIADOS)).toEqual([
+      '2026-10-10',
+      '2026-11-10',
+      '2026-12-10',
+    ]);
+  });
+
+  it('recorrência que ainda não começou só oferece datas a partir do início', () => {
+    const futura = { ...mensal, comecaEm: '2026-11-01' };
+    expect(proximasOcorrencias(futura, '2026-09-11', 2, FERIADOS)).toEqual([
+      '2026-11-10',
+      '2026-12-10',
+    ]);
+  });
+
+  it('anual oferece uma data por ano, no mês do aniversário', () => {
+    const anual = { dia: 15, regra: 'fixo' as const, comecaEm: '2026-01-15', frequencia: 'anual' as const };
+    expect(proximasOcorrencias(anual, '2026-09-11', 2, FERIADOS)).toEqual([
+      '2027-01-15',
+      '2028-01-15',
+    ]);
+  });
+
+  it('a última que já veio é a mais recente até hoje', () => {
+    expect(ultimaOcorrenciaAte(mensal, '2026-09-11', FERIADOS)).toBe('2026-09-10');
+    expect(ultimaOcorrenciaAte(mensal, '2026-09-09', FERIADOS)).toBe('2026-08-10');
+  });
+
+  it('sem nenhuma cobrança ainda, não há última', () => {
+    expect(ultimaOcorrenciaAte({ ...mensal, comecaEm: '2026-11-01' }, '2026-09-11', FERIADOS)).toBeNull();
+    // Começa no mês, mas depois do dia da cobrança: a de setembro não existe.
+    expect(ultimaOcorrenciaAte({ ...mensal, comecaEm: '2026-09-15' }, '2026-09-11', FERIADOS)).toBeNull();
+  });
+
+  it('anual: a última é a do aniversário mais recente', () => {
+    const anual = { dia: 15, regra: 'fixo' as const, comecaEm: '2026-01-15', frequencia: 'anual' as const };
+    expect(ultimaOcorrenciaAte(anual, '2026-09-11', FERIADOS)).toBe('2026-01-15');
+  });
+
+  it('a cobrança escolhida como última é gerada, e nenhuma depois dela', () => {
+    /*
+      O encerramento só grava a data; quem para de gerar é a rotina, que corta
+      em `termina_em`. Se as duas lessem a data de jeitos diferentes, "mais uma,
+      em 10/11" poderia gerar a de dezembro também — ou perder a de novembro.
+    */
+    const escolhida = proximasOcorrencias(mensal, '2026-09-11', 2, FERIADOS)[1]!;
+    expect(escolhida).toBe('2026-11-10');
+
+    const geradas = vencimentosPendentes(
+      mensal.comecaEm,
+      '2027-06-30',
+      { dia: 10, regra: 'fixo', terminaEm: escolhida, comecaEm: mensal.comecaEm },
+      FERIADOS,
+    );
+
+    expect(geradas.at(-1)).toBe(escolhida);
   });
 });

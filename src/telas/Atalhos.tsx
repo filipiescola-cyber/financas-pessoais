@@ -13,6 +13,7 @@ import { formatarBR, hoje } from '../dominio/datas';
 import { repeticoesRestantes, rotuloDoDia, valorDaOcorrencia } from '../dominio/recorrencias';
 import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
 import { ExclusaoDeRecorrencia } from '../ui/ExclusaoDeRecorrencia';
+import { EncerramentoDeRecorrencia } from '../ui/EncerramentoDeRecorrencia';
 import { ALVO_DE_TOQUE, Botao, Campo, Cartao, Chip, Dinheiro, ENTRADA, Nota, Pagina, Secao, Vazio } from '../ui/base';
 import { ChipsDeConta } from '../ui/ChipsDeConta';
 
@@ -122,6 +123,7 @@ function ListaDeRecorrencias({
   const { mostrar } = usarAviso();
 
   const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [encerrando, setEncerrando] = useState<string | null>(null);
 
   const arquivar = useMutation({
     mutationFn: arquivarRecorrencia,
@@ -194,20 +196,24 @@ function ListaDeRecorrencias({
                           {formatar(Math.abs(recorrencia.incremento))}/mês
                         </>
                       )}
-                      {recorrencia.terminaEm !== null && (
-                        <>
-                          {' '}
-                          · faltam{' '}
-                          {repeticoesRestantes(
-                            hoje(),
-                            recorrencia.terminaEm,
-                            recorrencia.dia,
-                            recorrencia.regra,
-                            feriadosDaLista,
-                          )}
-                          x
-                        </>
-                      )}
+                      {/* Encerrada, "faltam 0x" não diz nada: diz quando acabou. */}
+                      {recorrencia.terminaEm !== null &&
+                        (recorrencia.terminaEm < hoje() ? (
+                          <> · encerrou em {formatarBR(recorrencia.terminaEm)}</>
+                        ) : (
+                          <>
+                            {' '}
+                            · faltam{' '}
+                            {repeticoesRestantes(
+                              hoje(),
+                              recorrencia.terminaEm,
+                              recorrencia.dia,
+                              recorrencia.regra,
+                              feriadosDaLista,
+                            )}
+                            x · última em {formatarBR(recorrencia.terminaEm)}
+                          </>
+                        ))}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-4">
@@ -227,6 +233,15 @@ function ListaDeRecorrencias({
                       <span className="text-xs text-amber-400/80">Valor varia</span>
                     )}
                     <button
+                      onClick={() =>
+                        setEncerrando(encerrando === recorrencia.id ? null : recorrencia.id)
+                      }
+                      title="Escolhe a última cobrança: até ela continua, depois para sozinha."
+                      className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+                    >
+                      {encerrando === recorrencia.id ? 'Cancelar' : 'Encerrar'}
+                    </button>
+                    <button
                       onClick={() => arquivar.mutate(recorrencia.id)}
                       className={`text-xs text-slate-600 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
                     >
@@ -242,6 +257,14 @@ function ListaDeRecorrencias({
                       {excluindo === recorrencia.id ? 'Cancelar' : 'Excluir'}
                     </button>
                   </div>
+
+                  {encerrando === recorrencia.id && (
+                    <EncerramentoDeRecorrencia
+                      recorrencia={recorrencia}
+                      feriados={feriadosDaLista}
+                      aoTerminar={() => setEncerrando(null)}
+                    />
+                  )}
 
                   {excluindo === recorrencia.id && (
                     <ExclusaoDeRecorrencia

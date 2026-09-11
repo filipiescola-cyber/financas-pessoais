@@ -58,6 +58,7 @@ import {
 } from '../ui/base';
 import { FormularioRecorrencia } from '../ui/FormularioDeRecorrencia';
 import { ExclusaoDeRecorrencia } from '../ui/ExclusaoDeRecorrencia';
+import { EncerramentoDeRecorrencia } from '../ui/EncerramentoDeRecorrencia';
 import { IconeRelogio } from '../ui/icones';
 import { previstoDaFatura } from '../dominio/previsto';
 import { usarOcorrencias } from '../dados/usarOcorrencias';
@@ -1049,6 +1050,7 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
 
   const [criando, setCriando] = useState(false);
   const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [encerrando, setEncerrando] = useState<string | null>(null);
 
   const arquivar = useMutation({
     mutationFn: arquivarRecorrencia,
@@ -1113,20 +1115,24 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
                             {formatar(Math.abs(recorrencia.incremento))}/mês
                           </>
                         )}
-                        {recorrencia.terminaEm !== null && (
-                          <>
-                            {' '}
-                            · faltam{' '}
-                            {repeticoesRestantes(
-                              hoje(),
-                              recorrencia.terminaEm,
-                              recorrencia.dia,
-                              recorrencia.regra,
-                              feriados,
-                            )}
-                            x
-                          </>
-                        )}
+                        {/* Encerrada, "faltam 0x" não diz nada: diz quando acabou. */}
+                        {recorrencia.terminaEm !== null &&
+                          (recorrencia.terminaEm < hoje() ? (
+                            <> · encerrou em {formatarBR(recorrencia.terminaEm)}</>
+                          ) : (
+                            <>
+                              {' '}
+                              · faltam{' '}
+                              {repeticoesRestantes(
+                                hoje(),
+                                recorrencia.terminaEm,
+                                recorrencia.dia,
+                                recorrencia.regra,
+                                feriados,
+                              )}
+                              x · última em {formatarBR(recorrencia.terminaEm)}
+                            </>
+                          ))}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-4">
@@ -1145,6 +1151,17 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
                       ) : (
                         <span className="text-xs text-amber-400/80">Valor varia</span>
                       )}
+                      {/* Encerrar vem antes de arquivar porque é o que serve para
+                          assinatura cancelada: ela costuma cobrar até o fim do
+                          período pago, e arquivar hoje apagaria essa última. */}
+                      <button
+                        onClick={() =>
+                          setEncerrando(encerrando === recorrencia.id ? null : recorrencia.id)
+                        }
+                        className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+                      >
+                        {encerrando === recorrencia.id ? 'Cancelar' : 'Encerrar'}
+                      </button>
                       <button
                         onClick={() => arquivar.mutate(recorrencia.id)}
                         className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
@@ -1165,6 +1182,15 @@ function AssinaturasDoCartao({ cartao }: { cartao: CartaoComConta }) {
                       </button>
                     </div>
                     </div>
+
+                    {encerrando === recorrencia.id && (
+                      <EncerramentoDeRecorrencia
+                        recorrencia={recorrencia}
+                        feriados={feriados}
+                        cartao={cartao}
+                        aoTerminar={() => setEncerrando(null)}
+                      />
+                    )}
 
                     {excluindo === recorrencia.id && (
                       <ExclusaoDeRecorrencia

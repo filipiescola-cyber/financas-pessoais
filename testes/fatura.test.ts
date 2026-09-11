@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   descreverFatura,
+  dividaEmAbertoPorCartao,
   faturaDeReferencia,
   faturaDoMes,
   faturaEscolhida,
@@ -295,5 +296,78 @@ describe('parcelamento da fatura (§2.1, §4.7)', () => {
 
   it('recusa quantidade de parcelas inválida', () => {
     expect(() => planoDoParcelamento({ mesReferencia: '2026-09-01' }, 0, true, PADRAO)).toThrow();
+  });
+});
+
+describe('limite usado do cartão (§2.1, §4.2)', () => {
+  const faturas = [
+    { id: 'out', cartaoId: 'nubank', vencimento: '2026-10-12' },
+    { id: 'nov', cartaoId: 'nubank', vencimento: '2026-11-12' },
+  ];
+
+  it('estorno diminui o que se deve, não aumenta', () => {
+    // Com o valor absoluto, R$ 100 de compra e R$ 30 de estorno davam R$ 130.
+    const divida = dividaEmAbertoPorCartao(
+      faturas,
+      [
+        { faturaId: 'out', valor: -10000 },
+        { faturaId: 'out', valor: 3000 },
+      ],
+      [],
+    );
+    expect(divida.get('nubank')?.total).toBe(7000);
+  });
+
+  it('as parcelas futuras de uma compra ocupam o limite, como no banco', () => {
+    const divida = dividaEmAbertoPorCartao(
+      faturas,
+      [
+        { faturaId: 'out', valor: -5000 },
+        { faturaId: 'nov', valor: -5000 },
+      ],
+      [],
+    );
+    expect(divida.get('nubank')?.total).toBe(10000);
+  });
+
+  it('pagamento parcial abate só da própria fatura', () => {
+    const divida = dividaEmAbertoPorCartao(
+      faturas,
+      [
+        { faturaId: 'out', valor: -10000 },
+        { faturaId: 'nov', valor: -5000 },
+      ],
+      [{ faturaId: 'out', valor: -4000 }],
+    );
+    expect(divida.get('nubank')?.total).toBe(11000);
+  });
+
+  it('pagar a mais uma fatura não vira crédito para a seguinte', () => {
+    const divida = dividaEmAbertoPorCartao(
+      faturas,
+      [
+        { faturaId: 'out', valor: -3000 },
+        { faturaId: 'nov', valor: -5000 },
+      ],
+      [{ faturaId: 'out', valor: -5000 }],
+    );
+    expect(divida.get('nubank')?.total).toBe(5000);
+  });
+
+  it('o próximo vencimento é o da fatura mais próxima que ainda deve', () => {
+    const divida = dividaEmAbertoPorCartao(
+      faturas,
+      [
+        { faturaId: 'out', valor: -3000 },
+        { faturaId: 'nov', valor: -5000 },
+      ],
+      [{ faturaId: 'out', valor: -3000 }],
+    );
+    expect(divida.get('nubank')?.proximoVencimento).toBe('2026-11-12');
+  });
+
+  it('cartão sem nada a dever não aparece', () => {
+    const divida = dividaEmAbertoPorCartao(faturas, [{ faturaId: 'out', valor: 2000 }], []);
+    expect(divida.has('nubank')).toBe(false);
   });
 });

@@ -241,3 +241,71 @@ export function vencimentosPendentes(
 
   return datas;
 }
+
+/** O que é preciso para achar as datas de uma recorrência. */
+export type AgendaDeOcorrencias = {
+  dia: number;
+  regra: RegraDoDia;
+  comecaEm: DataISO;
+  frequencia: Frequencia;
+};
+
+/**
+ * As próximas cobranças a partir de uma data, inclusive (§5.2).
+ *
+ * É o que a tela de encerrar oferece: "mais uma, em 10/10", "até 10/11". Datas
+ * de verdade, com a regra do dia aplicada — o 5º dia útil de outubro, e não o
+ * dia 5 —, porque é esse o dia que aparece na fatura e no e-mail do serviço.
+ *
+ * Nunca antes do início: a recorrência que começa em novembro não tem cobrança
+ * em outubro para oferecer.
+ */
+export function proximasOcorrencias(
+  agenda: AgendaDeOcorrencias,
+  aPartirDe: DataISO,
+  quantas: number,
+  feriados: Feriados,
+): DataISO[] {
+  const inicio = aPartirDe > agenda.comecaEm ? aPartirDe : agenda.comecaEm;
+  const datas: DataISO[] = [];
+
+  // A anual precisa de até doze meses para achar cada ocorrência; o teto só
+  // existe para um laço sem saída não travar a tela.
+  for (let i = 0; datas.length < quantas && i < quantas * 12 + 13; i += 1) {
+    const mes = somarMeses(primeiroDiaDoMes(inicio), i);
+    if (!temOcorrenciaNoMes(agenda.frequencia, agenda.comecaEm, mes)) continue;
+
+    const data = dataDaOcorrencia(mes, agenda.dia, agenda.regra, feriados);
+    if (data < inicio) continue;
+
+    datas.push(data);
+  }
+
+  return datas;
+}
+
+/**
+ * A cobrança mais recente até a data, inclusive (§5.2).
+ *
+ * É o limite de baixo do encerramento: a última cobrança não pode ser anterior
+ * à que já aconteceu. `null` quando ainda não houve nenhuma — recorrência que
+ * nem começou.
+ */
+export function ultimaOcorrenciaAte(
+  agenda: AgendaDeOcorrencias,
+  ate: DataISO,
+  feriados: Feriados,
+): DataISO | null {
+  for (let i = 0; i <= 12; i += 1) {
+    const mes = somarMeses(primeiroDiaDoMes(ate), -i);
+    if (mes < primeiroDiaDoMes(agenda.comecaEm)) return null;
+    if (!temOcorrenciaNoMes(agenda.frequencia, agenda.comecaEm, mes)) continue;
+
+    const data = dataDaOcorrencia(mes, agenda.dia, agenda.regra, feriados);
+    if (data > ate || data < agenda.comecaEm) continue;
+
+    return data;
+  }
+
+  return null;
+}

@@ -238,3 +238,66 @@ export function planoDoParcelamento(
 
   return { primeiraParcela: primeira.dataVencimento, faturas };
 }
+
+/** O que um cartão ainda deve, somado das faturas em aberto. */
+export type DividaEmAberto = {
+  total: Centavos;
+  /** O vencimento mais próximo entre as faturas que ainda devem. */
+  proximoVencimento: DataISO | null;
+};
+
+/**
+ * Quanto do limite está ocupado, cartão a cartão (§2.1, §4.2).
+ *
+ * Soma o que falta de cada fatura ainda não quitada — a atual e as futuras.
+ * As futuras entram porque é assim que o banco faz: a compra em 10x ocupa o
+ * limite inteiro no dia da compra, e cada parcela paga devolve um pedaço dele.
+ * Cobrança recorrente que ainda não aconteceu NÃO entra, e também é assim no
+ * banco: assinatura do mês que vem não reserva limite hoje.
+ *
+ * O SINAL conta. Compra entra negativa e aumenta a dívida; estorno entra
+ * positivo e diminui. A versão anterior somava o valor absoluto de cada linha,
+ * e um estorno de R$ 30 AUMENTAVA o limite usado em R$ 30 em vez de devolvê-lo
+ * — o limite disponível ficava R$ 60 abaixo do que o banco mostra.
+ *
+ * E fatura a fatura, não o cartão inteiro de uma vez: pagar a mais uma fatura
+ * não abate a seguinte. Pagamento a mais não vira crédito (§2.1).
+ */
+export function dividaEmAbertoPorCartao(
+  faturas: readonly { id: string; cartaoId: string; vencimento: DataISO }[],
+  lancamentos: readonly { faturaId: string; valor: Centavos }[],
+  pagamentos: readonly { faturaId: string; valor: Centavos }[],
+): Map<string, DividaEmAberto> {
+  const somaDaFatura = new Map<string, Centavos>();
+  for (const lancamento of lancamentos) {
+    somaDaFatura.set(lancamento.faturaId, (somaDaFatura.get(lancamento.faturaId) ?? 0) + lancamento.valor);
+  }
+
+  const pagoDaFatura = new Map<string, Centavos>();
+  for (const pagamento of pagamentos) {
+    pagoDaFatura.set(
+      pagamento.faturaId,
+      (pagoDaFatura.get(pagamento.faturaId) ?? 0) + Math.abs(pagamento.valor),
+    );
+  }
+
+  const porCartao = new Map<string, DividaEmAberto>();
+
+  for (const fatura of faturas) {
+    // Fatura só com estorno não vira crédito: deve zero, não menos que zero.
+    const devido = Math.max(0, -(somaDaFatura.get(fatura.id) ?? 0));
+    const falta = Math.max(0, devido - (pagoDaFatura.get(fatura.id) ?? 0));
+    if (falta === 0) continue;
+
+    const atual = porCartao.get(fatura.cartaoId) ?? { total: 0, proximoVencimento: null };
+    porCartao.set(fatura.cartaoId, {
+      total: atual.total + falta,
+      proximoVencimento:
+        atual.proximoVencimento === null || fatura.vencimento < atual.proximoVencimento
+          ? fatura.vencimento
+          : atual.proximoVencimento,
+    });
+  }
+
+  return porCartao;
+}

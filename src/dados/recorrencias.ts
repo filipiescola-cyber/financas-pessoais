@@ -154,3 +154,21 @@ export async function arquivarRecorrencia(id: string): Promise<void> {
   const { error } = await supabase.from('recorrencias').update({ ativo: false }).eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+/**
+ * Encerra depois de uma cobrança escolhida, ou tira a data de fim (§5.2).
+ *
+ * Diferente de arquivar, que para tudo hoje: aqui a recorrência continua valendo
+ * até a última cobrança — que, para serviço cancelado, costuma ser a do fim do
+ * período já pago. Quem para de gerar é a própria rotina, que já corta em
+ * `termina_em`, do mesmo jeito que o financiamento de 36x para na 36ª.
+ *
+ * O que já foi gerado não muda. `null` volta a repetir sem data para acabar.
+ */
+export async function encerrarRecorrencia(id: string, terminaEm: DataISO | null): Promise<void> {
+  const { error } = await supabase
+    .from('recorrencias')
+    .update({ termina_em: terminaEm })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}

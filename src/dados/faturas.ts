@@ -17,7 +17,7 @@ import {
 } from '../dominio/fatura';
 import { criarDivida, lancarParcelasDoCartao } from './dividas';
 import { idDaFatura } from './idDaFatura';
-import { planoDoParcelamento } from '../dominio/fatura';
+import { dividaEmAbertoPorCartao, planoDoParcelamento } from '../dominio/fatura';
 import { supabase } from './supabase';
 
 export { idDaFatura };
@@ -363,36 +363,21 @@ export async function dividasDosCartoes(): Promise<Map<string, DividaDoCartao>> 
   if (compras.error) throw compras.error;
   if (pagamentos.error) throw pagamentos.error;
 
-  const linhas = compras.data;
-
-  const daFatura = new Map(faturas.map((f) => [f.id, f]));
-  const porCartao = new Map<string, { total: Centavos; vencimentos: DataISO[] }>();
-
-  for (const linha of linhas ?? []) {
-    const fatura = linha.fatura_id === null ? undefined : daFatura.get(linha.fatura_id);
-    if (fatura === undefined) continue;
-    const atual = porCartao.get(fatura.cartao_id) ?? { total: 0, vencimentos: [] };
-    atual.total += Math.abs(paraCentavos(linha.valor));
-    atual.vencimentos.push(fatura.data_vencimento);
-    porCartao.set(fatura.cartao_id, atual);
-  }
-
-  for (const linha of pagamentos.data ?? []) {
-    const fatura = linha.fatura_paga_id === null ? undefined : daFatura.get(linha.fatura_paga_id);
-    if (fatura === undefined) continue;
-    const atual = porCartao.get(fatura.cartao_id);
-    if (!atual) continue;
-    // Nunca abaixo de zero: pagar a mais não vira crédito (§2.1).
-    atual.total = Math.max(0, atual.total - Math.abs(paraCentavos(linha.valor)));
-  }
-
-  return new Map(
-    [...porCartao.entries()]
-      .filter(([, v]) => v.total !== 0)
-      .map(([cartaoId, v]) => [
-        cartaoId,
-        { total: v.total, proximoVencimento: v.vencimentos.sort()[0] ?? null },
-      ]),
+  // A conta mora no domínio, testada (§13.4): o sinal de cada linha e o
+  // pagamento fatura a fatura são exatamente o tipo de erro que não aparece na
+  // tela — só deixa o limite disponível diferente do que o banco mostra.
+  return dividaEmAbertoPorCartao(
+    faturas.map((f) => ({ id: f.id, cartaoId: f.cartao_id, vencimento: f.data_vencimento })),
+    (compras.data ?? []).flatMap((linha) =>
+      linha.fatura_id === null
+        ? []
+        : [{ faturaId: linha.fatura_id, valor: paraCentavos(linha.valor) }],
+    ),
+    (pagamentos.data ?? []).flatMap((linha) =>
+      linha.fatura_paga_id === null
+        ? []
+        : [{ faturaId: linha.fatura_paga_id, valor: paraCentavos(linha.valor) }],
+    ),
   );
 }
 
