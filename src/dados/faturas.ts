@@ -17,7 +17,12 @@ import {
 } from '../dominio/fatura';
 import { criarDivida, lancarParcelasDoCartao } from './dividas';
 import { idDaFatura } from './idDaFatura';
-import { dividaEmAbertoPorCartao, planoDoParcelamento } from '../dominio/fatura';
+import {
+  dividaEmAbertoPorCartao,
+  leituraDaFatura,
+  planoDoParcelamento,
+  type PagamentoDeFatura,
+} from '../dominio/fatura';
 import { supabase } from './supabase';
 
 export { idDaFatura };
@@ -214,10 +219,40 @@ export type DividaDoCartao = {
  */
 export type SituacaoDaFatura = {
   status: StatusFatura;
+  /** Tudo que abateu a fatura: dinheiro E dívida trocada. É o que zera o saldo. */
   pago: Centavos;
-  /** Quando o dinheiro saiu de verdade. É outra data que o vencimento. */
+  /** Quando o DINHEIRO saiu. É outra data que o vencimento. */
   pagaEm: DataISO | null;
+  /** Só o que saiu de uma conta. */
+  pagoEmDinheiro: Centavos;
+  /** O que virou parcelamento ou rotativo, sem dinheiro saindo (§4.7). */
+  trocadoPorDivida: Centavos;
+  comoDivida: 'parcelamento' | 'rotativo' | null;
 };
+
+/**
+ * Um pagamento de fatura, classificado (§2.1, §4.7).
+ *
+ * O pagamento comum grava DUAS linhas ligadas — a saída na conta e a entrada no
+ * cartão —, e é o par que prova que saiu dinheiro. Parcelamento e rotativo
+ * gravam só a entrada no cartão, sem par: a dívida trocou de lugar e nada saiu
+ * do bolso.
+ *
+ * O parcelamento novo carrega a própria dívida em `divida_id`. O feito antes
+ * disso se reconhece pela descrição, que é gravada pelo app e não digitada.
+ */
+function paraPagamento(linha: {
+  valor: number;
+  transferencia_par_id: string | null;
+  divida_id: string | null;
+  descricao: string | null;
+}): PagamentoDeFatura {
+  return {
+    valor: paraCentavos(linha.valor),
+    emDinheiro: linha.transferencia_par_id !== null,
+    parcelamento: linha.divida_id !== null || linha.descricao === 'Parcelamento da fatura',
+  };
+}
 
 /**
  * Status e quanto já foi pago, por fatura.
@@ -236,35 +271,48 @@ export async function situacaoDasFaturas(
     supabase.from('faturas').select('id, status').in('id', [...ids]),
     supabase
       .from('transacoes')
-      .select('valor, data_caixa, fatura_paga_id')
+      .select('valor, data_caixa, fatura_paga_id, transferencia_par_id, divida_id, descricao')
       .in('fatura_paga_id', [...ids]),
   ]);
   if (faturas.error) throw faturas.error;
   if (pagamentos.error) throw pagamentos.error;
 
-  const pagoPorFatura = new Map<string, Centavos>();
+  const porFatura = new Map<string, PagamentoDeFatura[]>();
   const pagaEm = new Map<string, DataISO>();
 
   for (const linha of pagamentos.data ?? []) {
     if (linha.fatura_paga_id === null) continue;
-    pagoPorFatura.set(
-      linha.fatura_paga_id,
-      (pagoPorFatura.get(linha.fatura_paga_id) ?? 0) + Math.abs(paraCentavos(linha.valor)),
-    );
-    // Com pagamento parcial há vários: vale o último, que é quando ela fechou.
+
+    const pagamento = paraPagamento(linha);
+    porFatura.set(linha.fatura_paga_id, [...(porFatura.get(linha.fatura_paga_id) ?? []), pagamento]);
+
+    // "Paga em" é quando o DINHEIRO saiu. A data em que a fatura foi parcelada
+    // não é pagamento, e usá-la faria "paga em" apontar para um dia em que
+    // nenhum real saiu de conta nenhuma. Com vários pagamentos, vale o último.
+    if (!pagamento.emDinheiro) continue;
     const atual = pagaEm.get(linha.fatura_paga_id);
     if (!atual || linha.data_caixa > atual) pagaEm.set(linha.fatura_paga_id, linha.data_caixa);
   }
 
   return new Map(
-    (faturas.data ?? []).map((f) => [
-      f.id,
-      {
-        status: f.status as StatusFatura,
-        pago: pagoPorFatura.get(f.id) ?? 0,
-        pagaEm: pagaEm.get(f.id) ?? null,
-      },
-    ]),
+    (faturas.data ?? []).map((f): [string, SituacaoDaFatura] => {
+      const lista = porFatura.get(f.id) ?? [];
+      // O total da fatura não entra nestes três números: eles só separam os
+      // pagamentos entre dinheiro e dívida.
+      const leitura = leituraDaFatura(0, lista);
+
+      return [
+        f.id,
+        {
+          status: f.status as StatusFatura,
+          pago: lista.reduce((soma, p) => soma + Math.abs(p.valor), 0),
+          pagaEm: pagaEm.get(f.id) ?? null,
+          pagoEmDinheiro: leitura.pagoEmDinheiro,
+          trocadoPorDivida: leitura.trocadoPorDivida,
+          comoDivida: leitura.comoDivida,
+        },
+      ];
+    }),
   );
 }
 
@@ -572,6 +620,9 @@ export async function parcelarFatura(dados: {
     origem: 'manual',
     revisado: true,
     fatura_paga_id: dados.faturaId,
+    // A dívida em que a fatura se transformou. É o que diz à tela que esta
+    // "entrada" não foi pagamento em dinheiro.
+    divida_id: dividaId,
   });
   if (error) throw new Error(error.message);
 

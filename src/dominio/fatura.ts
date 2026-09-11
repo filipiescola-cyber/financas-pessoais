@@ -349,3 +349,68 @@ export function limiteComACompra(
     cabe: passa === 0,
   };
 }
+
+/** Um pagamento de fatura, do jeito que a leitura dela precisa. */
+export type PagamentoDeFatura = {
+  valor: Centavos;
+  /** Saiu dinheiro de uma conta: o pagamento comum, com a perna na conta corrente. */
+  emDinheiro: boolean;
+  /** A parte que virou parcelamento (§4.7). Sem dinheiro nenhum saindo. */
+  parcelamento: boolean;
+};
+
+export type LeituraDaFatura = {
+  /** O que a fatura cobra em DINHEIRO: tudo, menos o que virou dívida. */
+  cobradoEmDinheiro: Centavos;
+  pagoEmDinheiro: Centavos;
+  falta: Centavos;
+  quitada: boolean;
+  /** Parcelado ou rolado no rotativo: saiu da fatura sem sair do bolso. */
+  trocadoPorDivida: Centavos;
+  comoDivida: 'parcelamento' | 'rotativo' | null;
+};
+
+/**
+ * O que a fatura cobra, separando dinheiro de dívida trocada de lugar (§2.1, §4.7).
+ *
+ * Parcelar uma fatura zera o saldo dela sem que dinheiro nenhum saia: a dívida
+ * só mudou de forma, de fatura para empréstimo. Somando essa troca como se
+ * fosse pagamento, a tela dizia "Você pagou R$ 1.491,96" de uma fatura em que
+ * saíram do bolso R$ 229,35 — a entrada. O resto está numa dívida a 12% ao mês,
+ * e é justamente o número que não pode parecer pago.
+ *
+ * O que FALTA não muda com isto, e o teste garante: é o mesmo `saldoDaFatura`
+ * de antes. Muda o que se diz sobre o que foi pago.
+ */
+export function leituraDaFatura(
+  total: Centavos,
+  pagamentos: readonly PagamentoDeFatura[],
+): LeituraDaFatura {
+  const cobrado = Math.abs(total);
+
+  const pagoEmDinheiro = pagamentos
+    .filter((p) => p.emDinheiro)
+    .reduce((soma, p) => soma + Math.abs(p.valor), 0);
+
+  const trocados = pagamentos.filter((p) => !p.emDinheiro && p.valor !== 0);
+  const trocadoPorDivida = trocados.reduce((soma, p) => soma + Math.abs(p.valor), 0);
+
+  const cobradoEmDinheiro = Math.max(0, cobrado - trocadoPorDivida);
+  const falta = Math.max(0, cobradoEmDinheiro - pagoEmDinheiro);
+
+  return {
+    cobradoEmDinheiro,
+    pagoEmDinheiro,
+    falta,
+    // Fatura zerada não está "quitada": não havia o que quitar (mesma regra
+    // de `saldoDaFatura`).
+    quitada: cobrado > 0 && falta === 0,
+    trocadoPorDivida,
+    comoDivida:
+      trocados.length === 0
+        ? null
+        : trocados.some((p) => p.parcelamento)
+          ? 'parcelamento'
+          : 'rotativo',
+  };
+}

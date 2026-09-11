@@ -46,6 +46,9 @@ export type Transacao = {
   transferenciaParId: string | null;
   transacaoPaiId: string | null;
   faturaId: string | null;
+  /** A dívida cuja parcela esta linha é, e qual parcela (§4.7). */
+  dividaId: string | null;
+  dividaParcela: number | null;
   /** De qual recorrência este lançamento veio, quando veio de uma. */
   recorrenciaId: string | null;
   motivoEmpresa: MotivoEmpresa | null;
@@ -71,6 +74,8 @@ function daLinha(linha: LinhaTransacao): Transacao {
     transferenciaParId: linha.transferencia_par_id,
     transacaoPaiId: linha.transacao_pai_id,
     faturaId: linha.fatura_id,
+    dividaId: linha.divida_id,
+    dividaParcela: linha.divida_parcela,
     motivoEmpresa: linha.motivo_empresa as MotivoEmpresa | null,
     natureza: linha.natureza as Natureza | null,
     revisado: linha.revisado,

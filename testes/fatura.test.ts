@@ -6,6 +6,7 @@ import {
   faturaDoMes,
   faturaEscolhida,
   faturaQueVenceNoMes,
+  leituraDaFatura,
   limiteComACompra,
   planoDoParcelamento,
   proximasFaturas,
@@ -402,5 +403,77 @@ describe('a compra cabe no limite (§2.1, §8.4)', () => {
   it('sem limite cadastrado não afirma nada (§13.5)', () => {
     expect(limiteComACompra(null, 0, 100000)).toBeNull();
     expect(limiteComACompra(0, 0, 100000)).toBeNull();
+  });
+});
+
+describe('leitura da fatura: dinheiro x dívida trocada (§2.1, §4.7)', () => {
+  const dinheiro = (valor: number) => ({ valor, emDinheiro: true, parcelamento: false });
+  const parcelado = (valor: number) => ({ valor, emDinheiro: false, parcelamento: true });
+  const rotativo = (valor: number) => ({ valor, emDinheiro: false, parcelamento: false });
+
+  it('fatura comum paga: pagou o que ela cobrou', () => {
+    expect(leituraDaFatura(-100000, [dinheiro(100000)])).toMatchObject({
+      cobradoEmDinheiro: 100000,
+      pagoEmDinheiro: 100000,
+      falta: 0,
+      quitada: true,
+      trocadoPorDivida: 0,
+      comoDivida: null,
+    });
+  });
+
+  it('parcelada com entrada paga: pagou só a entrada', () => {
+    // O caso real: R$ 1.262,61 de compras parcelados em 10x, entrada de
+    // R$ 229,35 na própria fatura. A tela dizia "Você pagou R$ 1.491,96".
+    expect(leituraDaFatura(-149196, [parcelado(126261), dinheiro(22935)])).toMatchObject({
+      cobradoEmDinheiro: 22935,
+      pagoEmDinheiro: 22935,
+      falta: 0,
+      quitada: true,
+      trocadoPorDivida: 126261,
+      comoDivida: 'parcelamento',
+    });
+  });
+
+  it('parcelada com entrada, antes de pagar: falta exatamente a entrada', () => {
+    expect(leituraDaFatura(-149196, [parcelado(126261)])).toMatchObject({
+      cobradoEmDinheiro: 22935,
+      pagoEmDinheiro: 0,
+      falta: 22935,
+      quitada: false,
+    });
+  });
+
+  it('parcelada sem entrada: nada a pagar em dinheiro nesta fatura', () => {
+    expect(leituraDaFatura(-126261, [parcelado(126261)])).toMatchObject({
+      cobradoEmDinheiro: 0,
+      pagoEmDinheiro: 0,
+      falta: 0,
+      quitada: true,
+    });
+  });
+
+  it('rotativo: a parte rolada não conta como paga em dinheiro', () => {
+    expect(leituraDaFatura(-100000, [dinheiro(60000), rotativo(40000)])).toMatchObject({
+      cobradoEmDinheiro: 60000,
+      pagoEmDinheiro: 60000,
+      quitada: true,
+      comoDivida: 'rotativo',
+    });
+  });
+
+  it('o que falta é o mesmo de antes, com ou sem dívida trocada', () => {
+    // Separar dinheiro de dívida muda o que se DIZ sobre o pago, e não pode
+    // mudar o que falta nem se a fatura está quitada.
+    for (const total of [0, -5000, -149196]) {
+      for (const pago of [0, 1000, 22935, 200000]) {
+        for (const trocado of [0, 126261, 300000]) {
+          const leitura = leituraDaFatura(total, [dinheiro(pago), parcelado(trocado)]);
+          const saldo = saldoDaFatura(total, pago + trocado);
+          expect(leitura.falta).toBe(saldo.falta);
+          expect(leitura.quitada).toBe(saldo.quitada);
+        }
+      }
+    }
   });
 });

@@ -79,6 +79,37 @@ export function Dividas() {
   const jurosAPagar = lista.reduce((soma, d) => soma + d.resumo.jurosAindaAPagar, 0);
   const mensal = lista.reduce((soma, d) => soma + (d.resumo.proxima?.valor ?? 0), 0);
 
+  /*
+    Duas seções, porque são dois comportamentos (§4.7).
+
+    O parcelamento de fatura continua aqui: é dívida com juros — no caso real,
+    a mais cara de todas —, e o §4.7 manda ordenar pela taxa justamente para a
+    mais cara não ficar escondida. Mas no cartão ninguém registra parcela: ela
+    chega sozinha na fatura, e "paga" é a fatura dela ter sido paga.
+
+    A seção que tem a dívida mais cara vem primeiro: separar não pode esconder
+    a mais cara atrás das outras.
+  */
+  const noCartao = lista.filter((item) => item.cartao !== null);
+  const emConta = lista.filter((item) => item.cartao === null);
+  const grupos = [
+    {
+      chave: 'cartao',
+      titulo: 'No cartão',
+      explicacao:
+        'Parcelamento de fatura. As parcelas entram sozinhas nas faturas, e cada uma conta como paga quando a fatura dela é paga — não há nada para registrar aqui.',
+      itens: noCartao,
+    },
+    {
+      chave: 'conta',
+      titulo: noCartao.length > 0 ? 'Empréstimos e financiamentos' : 'Da mais cara para a mais barata',
+      explicacao: null,
+      itens: emConta,
+    },
+  ]
+    .filter((grupo) => grupo.itens.length > 0)
+    .sort((a, b) => (b.itens[0]?.divida.taxaMensal ?? 0) - (a.itens[0]?.divida.taxaMensal ?? 0));
+
   return (
     <Pagina
       titulo="Dívidas"
@@ -126,17 +157,23 @@ export function Dividas() {
             />
           </div>
 
-          <Secao titulo="Da mais cara para a mais barata">
-            <div className="space-y-2">
-              {lista.map((item) => (
-                <LinhaDeDivida key={item.divida.id} item={item} />
-              ))}
-            </div>
-            <p className="text-xs leading-relaxed text-slate-600">
-              A ordem é por taxa, nunca por valor: quitar antes a dívida maior em vez da mais cara é
-              a decisão errada que parece certa.
-            </p>
-          </Secao>
+          {grupos.map((grupo) => (
+            <Secao key={grupo.chave} titulo={grupo.titulo}>
+              {grupo.explicacao && (
+                <p className="text-xs leading-relaxed text-slate-500">{grupo.explicacao}</p>
+              )}
+              <div className="space-y-2">
+                {grupo.itens.map((item) => (
+                  <LinhaDeDivida key={item.divida.id} item={item} />
+                ))}
+              </div>
+            </Secao>
+          ))}
+
+          <p className="text-xs leading-relaxed text-slate-600">
+            A ordem é por taxa, nunca por valor: quitar antes a dívida maior em vez da mais cara é a
+            decisão errada que parece certa.
+          </p>
         </>
       )}
     </Pagina>
@@ -151,6 +188,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
   const [excluindo, setExcluindo] = useState(false);
 
   const { divida, resumo, tabela, quitacao } = item;
+  const noCartao = item.cartao !== null;
   const progresso = divida.parcelas === 0 ? 0 : resumo.parcelasPagas / divida.parcelas;
 
   const invalidar = () => cliente.invalidateQueries();
@@ -196,6 +234,11 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
             />
             {divida.nome}
           </p>
+          {item.cartao && (
+            <p className="truncate text-xs text-sky-400/70">
+              Cobrada nas faturas do {item.cartao.nome}
+            </p>
+          )}
           <p className="truncate text-xs text-slate-500">
             {divida.instituicao && `${divida.instituicao} · `}
             {divida.sistema === 'price' ? 'Price' : 'SAC'} · {porcentagem(divida.taxaMensal)} a.m. (
@@ -209,7 +252,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
             {resumo.proxima !== null && (
               <>
                 {' '}
-                · próxima em{' '}
+                · {noCartao ? 'próxima na fatura de' : 'próxima em'}{' '}
                 {formatarBR(vencimentoDaParcela(divida.primeiraParcela, resumo.proxima.numero))}
               </>
             )}
@@ -231,7 +274,9 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-4">
-        {resumo.parcelasRestantes > 0 && (
+        {/* No cartão estes três não existem: a parcela é paga pela fatura, e
+            registrar ou desfazer aqui criaria uma segunda versão do mesmo fato. */}
+        {!noCartao && resumo.parcelasRestantes > 0 && (
           <button
             onClick={() => pagar.mutate()}
             disabled={pagar.isPending}
@@ -240,7 +285,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
             Paguei mais uma
           </button>
         )}
-        {resumo.parcelasPagas > 0 && (
+        {!noCartao && resumo.parcelasPagas > 0 && (
           <button
             onClick={() => desfazer.mutate()}
             disabled={desfazer.isPending}
@@ -249,7 +294,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
             Desfazer
           </button>
         )}
-        {resumo.parcelasRestantes > 0 && (
+        {!noCartao && resumo.parcelasRestantes > 0 && (
           <button
             onClick={() => setAmortizando((v) => !v)}
             className={`text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
@@ -263,13 +308,17 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
         >
           {aberto ? 'Fechar tabela' : 'Ver tabela'}
         </button>
-        <button
-          onClick={() => quitar.mutate()}
-          title="Sai da lista sem apagar nada. Use quando a dívida acabou."
-          className={`text-xs text-slate-600 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
-        >
-          Quitar
-        </button>
+        {/* No cartão, quitar antes da última deixaria as parcelas futuras nas
+            faturas, cobrando uma dívida que saiu da lista. Aparece quando acabou. */}
+        {(!noCartao || resumo.parcelasRestantes === 0) && (
+          <button
+            onClick={() => quitar.mutate()}
+            title="Sai da lista sem apagar nada. Use quando a dívida acabou."
+            className={`text-xs text-slate-600 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+          >
+            Quitar
+          </button>
+        )}
         <button
           onClick={() => setExcluindo((v) => !v)}
           title="Para a dívida cadastrada por engano."

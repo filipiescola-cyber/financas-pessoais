@@ -15,8 +15,10 @@ import {
   descreverFatura,
   faturaDeReferencia,
   faturaDoMes,
-  saldoDaFatura,
+  leituraDaFatura,
 } from '../dominio/fatura';
+import { linhasDaFatura } from '../dominio/agrupamento';
+import { listarDividas } from '../dados/dividas';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
 import { usarCartoes } from '../dados/usarCartoes';
@@ -39,7 +41,7 @@ import {
   rolarNoRotativo,
   desfazerRotativo,
   rotativoDaFatura,
-  totalPagoDaFatura,
+  situacaoDasFaturas,
   type Fatura,
 } from '../dados/faturas';
 import { listarTransacoesDaFatura, type Transacao } from '../dados/transacoes';
@@ -308,6 +310,9 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
   const { mostrar } = usarAviso();
   const buscarCategoria = usarBuscaDeCategoria();
   const [editando, setEditando] = useState<Transacao | null>(null);
+  // O nome e o número de parcelas de cada dívida, para a parcela na fatura
+  // dizer "2/10" e de qual dívida ela é.
+  const dividas = useQuery({ queryKey: ['dividas'], queryFn: () => listarDividas() });
 
 
   const desfazer = useMutation({
@@ -320,13 +325,28 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
 
   const pagamentos = useQuery({
     queryKey: ['fatura-pago', fatura.id],
-    queryFn: () => totalPagoDaFatura(fatura.id),
+    queryFn: () => situacaoDasFaturas([fatura.id]).then((mapa) => mapa.get(fatura.id) ?? null),
   });
 
-  // O que falta é calculado, nunca lido do status: pagamento parcial marcava a
-  // fatura inteira como paga e o resto sumia de "o que você deve" (§13.2).
-  const saldo = saldoDaFatura(total, pagamentos.data ?? 0);
-  const parcial = saldo.pago > 0 && !saldo.quitada;
+  /*
+    O que falta é calculado, nunca lido do status (§13.2) — e separando o que
+    saiu em DINHEIRO do que virou dívida.
+
+    Parcelar zera a fatura sem que um real saia do bolso. Somando essa troca
+    como pagamento, a fatura parcelada dizia "Você pagou R$ 1.491,96" quando
+    tinham saído R$ 229,35, a entrada; o resto é uma dívida a 12% ao mês, e é
+    o último número que pode parecer pago.
+  */
+  const situacao = pagamentos.data ?? null;
+  const saldo = leituraDaFatura(total, [
+    { valor: situacao?.pagoEmDinheiro ?? 0, emDinheiro: true, parcelamento: false },
+    {
+      valor: situacao?.trocadoPorDivida ?? 0,
+      emDinheiro: false,
+      parcelamento: situacao?.comoDivida === 'parcelamento',
+    },
+  ]);
+  const parcial = saldo.pagoEmDinheiro > 0 && !saldo.quitada;
   const vencida = !saldo.quitada && fatura.dataVencimento < hoje();
 
   return (
@@ -337,7 +357,13 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wider text-slate-500">
-            {saldo.quitada ? 'Você pagou' : parcial ? 'Ainda falta' : 'Você deve'}
+            {saldo.quitada
+              ? saldo.cobradoEmDinheiro === 0
+                ? 'Nada a pagar em dinheiro'
+                : 'Você pagou'
+              : parcial
+                ? 'Ainda falta'
+                : 'Você deve'}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
             {vencida ? 'Venceu' : 'Vence'} em {formatarBR(fatura.dataVencimento)}
@@ -345,7 +371,17 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
           </p>
           {parcial && (
             <p className="mt-0.5 text-xs text-slate-500">
-              Já pagos {formatar(saldo.pago)} de {formatar(saldo.total)}.
+              Já pagos {formatar(saldo.pagoEmDinheiro)} de {formatar(saldo.cobradoEmDinheiro)}.
+            </p>
+          )}
+          {/* A dívida trocada de lugar dita em palavras, logo abaixo do valor:
+              sem isso, um número menor que a soma das compras parece erro. */}
+          {saldo.trocadoPorDivida > 0 && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              {formatar(saldo.trocadoPorDivida)}{' '}
+              {saldo.comoDivida === 'parcelamento'
+                ? 'desta fatura foram parcelados: não saíram do bolso agora, e a dívida está em Dívidas.'
+                : 'rolaram para a fatura seguinte, no rotativo.'}
             </p>
           )}
           {/* Separado do valor de cima de propósito: o que ainda não foi
@@ -363,7 +399,7 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
             vencida ? 'text-amber-400' : 'text-slate-100'
           }`}
         >
-          {formatar(saldo.quitada ? saldo.total : saldo.falta)}
+          {formatar(saldo.quitada ? saldo.cobradoEmDinheiro : saldo.falta)}
         </span>
       </div>
 
@@ -386,8 +422,50 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
           {/* A compra abre para edição daqui também: era preciso sair para
               Lançamentos e procurar de novo o que já estava na tela. */}
           <ul className="space-y-1">
-            {(transacoes.data ?? []).map((transacao) => {
+            {linhasDaFatura(transacoes.data ?? []).map((linha) => {
+              /*
+                A parcela de dívida numa linha só (§4.7). Gravada em duas —
+                amortização e juros —, ela aparecia como duas cobranças soltas
+                no meio das compras. Não abre para edição: mudar o valor de uma
+                das duas desencontraria a parcela da tabela da dívida.
+              */
+              if (linha.tipo === 'parcela-de-divida') {
+                const divida = dividas.data?.find((d) => d.divida.id === linha.dividaId)?.divida;
+                const ehEntrada = linha.numero === 1 && saldo.comoDivida === 'parcelamento';
+
+                return (
+                  <li
+                    key={`${linha.dividaId}-${linha.numero}`}
+                    className="flex items-start justify-between gap-3 px-1 py-1 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-slate-300">
+                        {divida?.nome ?? 'Parcela de dívida'}
+                        <span className="text-slate-500">
+                          {' — '}
+                          {divida
+                            ? ehEntrada
+                              ? `entrada, 1ª de ${divida.parcelas}`
+                              : `parcela ${linha.numero}/${divida.parcelas}`
+                            : `parcela ${linha.numero}`}
+                        </span>
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        {formatar(linha.principal)} de principal · {formatar(linha.juros)} de juros
+                      </span>
+                    </span>
+                    <span className="dinheiro shrink-0 text-slate-400">
+                      {formatar(Math.abs(linha.total))}
+                    </span>
+                  </li>
+                );
+              }
+
+              const transacao = linha.transacao;
               const categoria = buscarCategoria(transacao.categoriaId);
+              // Estorno é crédito: mostrado igual a uma cobrança, o reembolso
+              // de R$ 79 parecia mais R$ 79 cobrados.
+              const credito = transacao.valor > 0;
 
               return (
               <li key={transacao.id}>
@@ -413,7 +491,10 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
                     )}
                     </span>
                   </span>
-                  <span className="dinheiro shrink-0 text-slate-400">
+                  <span
+                    className={`dinheiro shrink-0 ${credito ? 'text-emerald-400' : 'text-slate-400'}`}
+                  >
+                    {credito && '−'}
                     {formatar(Math.abs(transacao.valor))}
                   </span>
                 </button>

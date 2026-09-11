@@ -71,6 +71,7 @@ import {
   juntarPrevistasNaFatura,
   type CobrancaPrevista,
   faturasQueAindaVaoSair,
+  linhasDaFatura,
   type BlocoDeFatura,
 } from '../dominio/agrupamento';
 import { gerarUmaOcorrencia } from '../dados/geracaoRecorrencias';
@@ -588,6 +589,11 @@ export function Transacoes() {
                     bloco={linha.bloco}
                     paga={statusDeFatura.data?.get(linha.bloco.faturaId)?.status === 'paga'}
                     pagaEm={statusDeFatura.data?.get(linha.bloco.faturaId)?.pagaEm ?? null}
+                    trocadoPorDivida={
+                      statusDeFatura.data?.get(linha.bloco.faturaId)?.trocadoPorDivida ?? 0
+                    }
+                    comoDivida={statusDeFatura.data?.get(linha.bloco.faturaId)?.comoDivida ?? null}
+                    dividas={dividas.data ?? []}
                     nomeCartao={nomeConta.get(linha.bloco.contaId) ?? 'Cartão'}
                     buscarCategoria={buscarCategoria}
                     aoEditar={setEditando}
@@ -1099,6 +1105,9 @@ function ItemPrevistoNaLista({ previsto }: { previsto: ItemPrevisto }) {
 function BlocoDaFatura({
   bloco,
   paga,
+  trocadoPorDivida,
+  comoDivida,
+  dividas,
   pagaEm,
   nomeCartao,
   buscarCategoria,
@@ -1106,6 +1115,11 @@ function BlocoDaFatura({
 }: {
   bloco: BlocoDeFatura<Transacao>;
   paga: boolean;
+  /** O que virou parcelamento ou rotativo: sai da fatura sem sair do bolso. */
+  trocadoPorDivida: Centavos;
+  comoDivida: 'parcelamento' | 'rotativo' | null;
+  /** Para a parcela de dívida dizer de qual dívida é, e "2/10". */
+  dividas: readonly { divida: { id: string; nome: string; parcelas: number } }[];
   /**
    * Quando o dinheiro saiu. Não é o vencimento, e a diferença confundia: a
    * fatura já paga aparecia no dia do vencimento com o valor cheio, do lado da
@@ -1120,6 +1134,18 @@ function BlocoDaFatura({
 }) {
   const [aberto, setAberto] = useState(true);
 
+  // Cada parcela de dívida numa linha só (§4.7); a contagem segue as linhas.
+  const linhas = linhasDaFatura(bloco.compras);
+
+  /*
+    O que esta fatura custa em DINHEIRO.
+
+    A parte parcelada saiu da fatura sem sair do bolso. Mostrando o total cheio,
+    a fatura parcelada aparecia no dia do vencimento com R$ 1.491,96 — quando o
+    que saiu da conta foi a entrada.
+  */
+  const emDinheiro = bloco.total + trocadoPorDivida;
+
   return (
     <li className="px-4 py-3">
       <button
@@ -1133,7 +1159,7 @@ function BlocoDaFatura({
           <span className="min-w-0">
             <span className="block truncate text-slate-100">Fatura · {nomeCartao}</span>
             <span className="block truncate text-xs text-slate-500">
-              {bloco.compras.length + bloco.previstas.length} lançamento(s)
+              {linhas.length + bloco.previstas.length} lançamento(s)
               {bloco.previstas.length > 0 && ` · ${bloco.previstas.length} por vir`} ·{' '}
               {paga
                 ? pagaEm
@@ -1148,17 +1174,55 @@ function BlocoDaFatura({
                 O dinheiro saiu em {formatarBR(pagaEm)}, pela transferência daquele dia
               </span>
             )}
+            {trocadoPorDivida > 0 && (
+              <span className="block truncate text-xs text-slate-600">
+                {formatar(trocadoPorDivida)}{' '}
+                {comoDivida === 'parcelamento'
+                  ? 'parcelados · o valor ao lado é o que sai em dinheiro'
+                  : 'rolados para a fatura seguinte'}
+              </span>
+            )}
           </span>
         </span>
         <Dinheiro
-          centavos={bloco.total}
+          centavos={emDinheiro}
           className={`shrink-0 ${paga ? 'text-slate-500' : 'text-slate-200'}`}
         />
       </button>
 
       {aberto && (
         <ul className="mt-2.5 space-y-1.5 border-l border-borda pl-3">
-          {bloco.compras.map((compra) => {
+          {linhas.map((linha) => {
+            // A parcela de dívida numa linha só, com principal e juros embaixo.
+            // "à vista" não cabia a ela: não é compra, é a parcela de uma dívida.
+            if (linha.tipo === 'parcela-de-divida') {
+              const divida = dividas.find((d) => d.divida.id === linha.dividaId)?.divida;
+              const ehEntrada = linha.numero === 1 && comoDivida === 'parcelamento';
+
+              return (
+                <li
+                  key={`${linha.dividaId}-${linha.numero}`}
+                  className="flex items-baseline justify-between gap-3"
+                >
+                  <span className="min-w-0 text-xs text-slate-300">
+                    <span className="block truncate">{divida?.nome ?? 'Parcela de dívida'}</span>
+                    <span className="block text-[11px] text-slate-500">
+                      {formatar(linha.principal)} de principal · {formatar(linha.juros)} de juros
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-slate-500">
+                    {divida
+                      ? ehEntrada
+                        ? `entrada, 1ª de ${divida.parcelas}`
+                        : `parcela ${linha.numero}/${divida.parcelas}`
+                      : `parcela ${linha.numero}`}
+                  </span>
+                  <Dinheiro centavos={linha.total} className="shrink-0 text-xs text-slate-400" />
+                </li>
+              );
+            }
+
+            const compra = linha.transacao;
             const categoria = buscarCategoria(compra.categoriaId);
 
             return (

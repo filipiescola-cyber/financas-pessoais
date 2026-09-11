@@ -22,6 +22,7 @@ import {
   type SistemaDeAmortizacao,
 } from '../dominio/divida';
 import { faturaQueVenceNoMes } from '../dominio/fatura';
+import { parcelasPagasPelaFatura } from '../dominio/divida';
 import { idDaFatura } from './idDaFatura';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
@@ -50,6 +51,11 @@ export type DividaCalculada = {
   resumo: ResumoDaDivida;
   /** Mês da última parcela. É a informação que ninguém sabe de cabeça (§4.7). */
   quitacao: DataISO;
+  /**
+   * Cobrada num cartão (§4.7, §2.1). As parcelas vêm nas faturas, e "paga"
+   * deixa de ser um contador: é a fatura da parcela ter sido paga.
+   */
+  cartao: { nome: string } | null;
 };
 
 function daLinha(linha: {
@@ -95,14 +101,16 @@ export async function listarDividas(incluirQuitadas = false): Promise<DividaCalc
   let consulta = supabase.from('dividas').select('*');
   if (!incluirQuitadas) consulta = consulta.eq('ativo', true);
 
-  const [{ data, error }, extras] = await Promise.all([
+  const [{ data, error }, extras, cartoes] = await Promise.all([
     consulta,
     supabase
       .from('amortizacoes_divida')
       .select('divida_id, valor, apos_parcela, modo, parcelas_reduzidas'),
+    supabase.from('contas').select('id, nome').eq('tipo', 'cartao_credito'),
   ]);
   if (error) throw error;
   if (extras.error) throw extras.error;
+  if (cartoes.error) throw cartoes.error;
 
   const porDivida = new Map<string, AmortizacaoExtra[]>();
   for (const linha of extras.data ?? []) {
@@ -117,9 +125,24 @@ export async function listarDividas(incluirQuitadas = false): Promise<DividaCalc
     ]);
   }
 
-  return (data ?? [])
-    .map(daLinha)
-    .map((divida) => {
+  const nomeDoCartao = new Map((cartoes.data ?? []).map((c) => [c.id, c.nome]));
+  const dividas = (data ?? []).map(daLinha);
+  const pagasNoCartao = await parcelasPagasNosCartoes(
+    dividas.filter((d) => d.contaId !== null && nomeDoCartao.has(d.contaId)),
+  );
+
+  return dividas
+    .map((original) => {
+      const nome = original.contaId === null ? undefined : nomeDoCartao.get(original.contaId);
+
+      // No cartão, as pagas são CALCULADAS das faturas (§13.2): o contador
+      // gravado só andava na data do vencimento, e a entrada paga no dia 11
+      // continuava "0 de 10 pagas" até o dia 14.
+      const divida =
+        nome === undefined
+          ? original
+          : { ...original, parcelasPagas: pagasNoCartao.get(original.id) ?? 0 };
+
       const tabela = tabelaComAmortizacoes(
         divida.valorFinanciado,
         divida.taxaMensal,
@@ -138,9 +161,59 @@ export async function listarDividas(incluirQuitadas = false): Promise<DividaCalc
           primeiroDiaDoMes(divida.primeiraParcela),
           Math.max(0, tabela.length - 1),
         ),
+        cartao: nome === undefined ? null : { nome },
       };
     })
     .sort((a, b) => b.divida.taxaMensal - a.divida.taxaMensal);
+}
+
+/**
+ * As pagas de cada dívida cobrada no cartão, pelas faturas (§4.7).
+ *
+ * Uma parcela está paga quando a fatura em que ela caiu está paga. O `status`
+ * da fatura é acertado a cada pagamento, desfazer e parcelamento
+ * (`acertarStatusDaFatura`), então é a mesma resposta que a tela da fatura dá.
+ */
+async function parcelasPagasNosCartoes(dividas: readonly Divida[]): Promise<Map<string, number>> {
+  const resultado = new Map<string, number>();
+  if (dividas.length === 0) return resultado;
+
+  const { data: linhas, error } = await supabase
+    .from('transacoes')
+    .select('divida_id, divida_parcela, fatura_id')
+    .in(
+      'divida_id',
+      dividas.map((d) => d.id),
+    )
+    .not('divida_parcela', 'is', null)
+    .not('fatura_id', 'is', null);
+  if (error) throw error;
+
+  const idsDeFatura = [
+    ...new Set((linhas ?? []).map((l) => l.fatura_id).filter((id): id is string => id !== null)),
+  ];
+
+  let pagas = new Set<string>();
+  if (idsDeFatura.length > 0) {
+    const { data: faturas, error: erroFaturas } = await supabase
+      .from('faturas')
+      .select('id, status')
+      .in('id', idsDeFatura);
+    if (erroFaturas) throw erroFaturas;
+    pagas = new Set((faturas ?? []).filter((f) => f.status === 'paga').map((f) => f.id));
+  }
+
+  for (const divida of dividas) {
+    const daDivida = (linhas ?? [])
+      .filter((l) => l.divida_id === divida.id && l.divida_parcela !== null)
+      .map((l) => ({
+        numero: l.divida_parcela!,
+        faturaPaga: l.fatura_id !== null && pagas.has(l.fatura_id),
+      }));
+    resultado.set(divida.id, parcelasPagasPelaFatura(daDivida, divida.parcelas));
+  }
+
+  return resultado;
 }
 
 export type NovaDivida = {
@@ -398,13 +471,24 @@ export async function lancarParcelasDoCartao(dividaId: string): Promise<void> {
  * venceu, não que você a pagou. Se não saiu, é desfazer.
  */
 export async function gerarParcelasPendentes(referencia: DataISO = hoje()): Promise<number> {
-  const { data, error } = await supabase.from('dividas').select('*').eq('ativo', true);
+  const [{ data, error }, cartoes] = await Promise.all([
+    supabase.from('dividas').select('*').eq('ativo', true),
+    supabase.from('contas').select('id').eq('tipo', 'cartao_credito'),
+  ]);
   if (error) throw error;
+  if (cartoes.error) throw cartoes.error;
+
+  // Dívida no cartão fica de fora. As parcelas dela já nasceram dentro das
+  // faturas, e "paga" é calculado das próprias faturas: avançar o contador pela
+  // data mentiria nos dois sentidos — contaria paga a parcela de uma fatura em
+  // aberto, e só contaria no vencimento a entrada paga dias antes.
+  const contasDeCartao = new Set((cartoes.data ?? []).map((c) => c.id));
 
   let geradas = 0;
 
   for (const linha of data ?? []) {
     const divida = daLinha(linha);
+    if (divida.contaId !== null && contasDeCartao.has(divida.contaId)) continue;
     const pendentes = parcelasVencidas(
       divida.primeiraParcela,
       divida.parcelas,

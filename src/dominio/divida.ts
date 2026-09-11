@@ -366,3 +366,31 @@ export function parcelasPrevistas(
 
   return previstas;
 }
+
+/**
+ * Quantas parcelas de uma dívida cobrada no cartão estão pagas (§4.7, §2.1).
+ *
+ * No cartão ninguém paga a parcela: paga-se a FATURA, e a parcela está dentro
+ * dela. Então "paga" deixa de ser um contador que alguém precisa avançar e passa
+ * a ser uma consequência — a fatura em que a parcela caiu foi paga. É o que faz
+ * a entrada contar no dia em que a fatura foi paga, e não dias depois, no
+ * vencimento, que era quando o contador andava sozinho.
+ *
+ * Conta só as CONSECUTIVAS desde a primeira, porque o saldo devedor sai da
+ * tabela assumindo que as N primeiras foram pagas (§4.7). Uma parcela precisa de
+ * todas as suas linhas em fatura paga, e parcela sem lançamento interrompe a
+ * contagem — sem prova de pagamento, ela não conta.
+ */
+export function parcelasPagasPelaFatura(
+  linhas: readonly { numero: number; faturaPaga: boolean }[],
+  totalDeParcelas: number,
+): number {
+  const situacao = new Map<number, boolean>();
+  for (const linha of linhas) {
+    situacao.set(linha.numero, (situacao.get(linha.numero) ?? true) && linha.faturaPaga);
+  }
+
+  let pagas = 0;
+  while (pagas < totalDeParcelas && situacao.get(pagas + 1) === true) pagas += 1;
+  return pagas;
+}

@@ -3,6 +3,7 @@ import {
   agruparPorCaixa,
   faturasQueAindaVaoSair,
   juntarPrevistasNaFatura,
+  linhasDaFatura,
   type BlocoDeFatura,
   type CobrancaPrevista,
   type TransacaoAgrupavel,
@@ -301,5 +302,59 @@ describe('cobrança prevista dentro da fatura', () => {
 
   it('sem previstas, os dias voltam como estavam', () => {
     expect(juntarPrevistasNaFatura(comFatura(), [])).toEqual(comFatura());
+  });
+});
+
+describe('linhas da fatura (§4.7)', () => {
+  const l = (
+    id: string,
+    valor: number,
+    tipo: 'despesa' | 'transferencia' | 'receita',
+    dividaId: string | null = null,
+    dividaParcela: number | null = null,
+  ) => ({ id, valor, tipo, dividaId, dividaParcela });
+
+  it('as duas linhas de uma parcela viram uma, com principal e juros', () => {
+    const linhas = linhasDaFatura([
+      l('uber', -1294, 'despesa'),
+      l('juros', -15960, 'despesa', 'mercado-pago', 1),
+      l('amortizacao', -6975, 'transferencia', 'mercado-pago', 1),
+    ]);
+
+    expect(linhas).toHaveLength(2);
+    expect(linhas[1]).toMatchObject({
+      tipo: 'parcela-de-divida',
+      numero: 1,
+      total: -22935,
+      principal: 6975,
+      juros: 15960,
+    });
+  });
+
+  it('compra comum continua sozinha, na ordem em que veio', () => {
+    const linhas = linhasDaFatura([l('a', -100, 'despesa'), l('b', 7900, 'receita')]);
+    expect(linhas.map((x) => (x.tipo === 'compra' ? x.transacao.id : x.tipo))).toEqual(['a', 'b']);
+  });
+
+  it('parcelas diferentes da mesma dívida não se juntam', () => {
+    const linhas = linhasDaFatura([
+      l('j1', -100, 'despesa', 'd', 1),
+      l('j2', -100, 'despesa', 'd', 2),
+    ]);
+    expect(linhas).toHaveLength(2);
+  });
+
+  it('agrupar não muda o total da fatura', () => {
+    const transacoes = [
+      l('uber', -1294, 'despesa'),
+      l('estorno', 7900, 'receita'),
+      l('juros', -15960, 'despesa', 'mp', 1),
+      l('amortizacao', -6975, 'transferencia', 'mp', 1),
+    ];
+    const somaDasLinhas = linhasDaFatura(transacoes).reduce(
+      (soma, x) => soma + (x.tipo === 'compra' ? x.transacao.valor : x.total),
+      0,
+    );
+    expect(somaDasLinhas).toBe(transacoes.reduce((soma, t) => soma + t.valor, 0));
   });
 });

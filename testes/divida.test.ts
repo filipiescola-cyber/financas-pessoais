@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parcelaPrice,
+  parcelasPagasPelaFatura,
   parcelasPrevistas,
   parcelasVencidas,
   resumoDaDivida,
@@ -332,5 +333,36 @@ describe('parcelas previstas', () => {
   it('uma janela de vários meses traz todas', () => {
     const p = parcelasPrevistas(divida, tabela, '2026-09-01', '2026-12-31');
     expect(p.map((x) => x.numero)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('parcelas pagas no cartão (§4.7, §2.1)', () => {
+  const paga = (numero: number) => ({ numero, faturaPaga: true });
+  const aberta = (numero: number) => ({ numero, faturaPaga: false });
+
+  it('a entrada conta como paga assim que a fatura dela é paga', () => {
+    // Duas linhas por parcela: amortização e juros.
+    expect(parcelasPagasPelaFatura([paga(1), paga(1), aberta(2), aberta(2)], 10)).toBe(1);
+  });
+
+  it('nenhuma fatura paga, nenhuma parcela paga', () => {
+    expect(parcelasPagasPelaFatura([aberta(1), aberta(2)], 10)).toBe(0);
+  });
+
+  it('conta só as consecutivas desde a primeira', () => {
+    expect(parcelasPagasPelaFatura([paga(1), aberta(2), paga(3)], 10)).toBe(1);
+  });
+
+  it('a parcela precisa de todas as linhas em fatura paga', () => {
+    expect(parcelasPagasPelaFatura([paga(1), aberta(1)], 10)).toBe(0);
+  });
+
+  it('parcela sem lançamento interrompe a contagem', () => {
+    expect(parcelasPagasPelaFatura([paga(1), paga(3)], 10)).toBe(1);
+  });
+
+  it('nunca passa do total de parcelas', () => {
+    const todas = Array.from({ length: 12 }, (_, i) => paga(i + 1));
+    expect(parcelasPagasPelaFatura(todas, 10)).toBe(10);
   });
 });

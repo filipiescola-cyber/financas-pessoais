@@ -305,3 +305,76 @@ export function juntarPrevistasNaFatura<T extends TransacaoAgrupavel>(
     }))
     .sort((a, b) => b.dia.localeCompare(a.dia));
 }
+
+/** O que uma linha de fatura precisa ter para ser agrupada. */
+export type LancamentoDeFatura = {
+  id: string;
+  valor: Centavos;
+  tipo: 'receita' | 'despesa' | 'transferencia';
+  dividaId: string | null;
+  dividaParcela: number | null;
+};
+
+export type ParcelaDeDividaNaFatura<T> = {
+  tipo: 'parcela-de-divida';
+  dividaId: string;
+  numero: number;
+  /** Negativo, como as compras. */
+  total: Centavos;
+  /** A amortização: repaga o que já tinha sido gasto (§4.7). */
+  principal: Centavos;
+  /** O único custo novo da parcela. */
+  juros: Centavos;
+  transacoes: T[];
+};
+
+export type LinhaDaFatura<T> = { tipo: 'compra'; transacao: T } | ParcelaDeDividaNaFatura<T>;
+
+/**
+ * As linhas de uma fatura, com cada parcela de dívida numa linha só (§4.7).
+ *
+ * Toda parcela de dívida é gravada em duas linhas — a amortização como
+ * transferência e os juros como despesa — porque é assim que os relatórios
+ * ficam certos. Mas na fatura as duas apareciam soltas, "juros da 1ª" e
+ * "parcela 1/10", como duas cobranças diferentes misturadas às compras. O banco
+ * cobra UMA parcela; a divisão entre principal e juros é detalhe dela.
+ *
+ * Agrupar não mexe na soma: o total da parcela é a soma exata das duas linhas.
+ * A parcela aparece na posição da primeira linha dela.
+ */
+export function linhasDaFatura<T extends LancamentoDeFatura>(
+  transacoes: readonly T[],
+): LinhaDaFatura<T>[] {
+  const linhas: LinhaDaFatura<T>[] = [];
+  const grupos = new Map<string, ParcelaDeDividaNaFatura<T>>();
+
+  for (const transacao of transacoes) {
+    if (transacao.dividaId === null || transacao.dividaParcela === null) {
+      linhas.push({ tipo: 'compra', transacao });
+      continue;
+    }
+
+    const chave = `${transacao.dividaId}|${transacao.dividaParcela}`;
+    let grupo = grupos.get(chave);
+    if (!grupo) {
+      grupo = {
+        tipo: 'parcela-de-divida',
+        dividaId: transacao.dividaId,
+        numero: transacao.dividaParcela,
+        total: 0,
+        principal: 0,
+        juros: 0,
+        transacoes: [],
+      };
+      grupos.set(chave, grupo);
+      linhas.push(grupo);
+    }
+
+    grupo.transacoes.push(transacao);
+    grupo.total += transacao.valor;
+    if (transacao.tipo === 'despesa') grupo.juros += Math.abs(transacao.valor);
+    else grupo.principal += Math.abs(transacao.valor);
+  }
+
+  return linhas;
+}
