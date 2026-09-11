@@ -11,13 +11,16 @@
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, somarMeses, type DataISO } from '../dominio/datas';
 import {
-  faturaEscolhida,
   proximasFaturas,
   saldoDaFatura,
   type ConfiguracaoDoCartao,
 } from '../dominio/fatura';
-import { criarDivida } from './dividas';
+import { criarDivida, lancarParcelasDoCartao } from './dividas';
+import { idDaFatura } from './idDaFatura';
+import { planoDoParcelamento } from '../dominio/fatura';
 import { supabase } from './supabase';
+
+export { idDaFatura };
 import type { Database, TablesInsert } from './tipos-gerados';
 
 type LinhaFatura = Database['public']['Tables']['faturas']['Row'];
@@ -74,55 +77,6 @@ export async function garantirFaturas(
   );
 
   if (error) throw new Error(error.message);
-}
-
-/**
- * Id da fatura em que uma compra cai, criando-a se ainda não existir.
- * Compra com data antiga ou parcelamento longo pode apontar para um mês fora da
- * janela de 12 — por isso a criação sob demanda, em vez de confiar na janela.
- */
-export async function idDaFatura(
-  cartaoId: string,
-  competencia: DataISO,
-  configuracao: ConfiguracaoDoCartao,
-  /** Ajuste manual em meses sobre a fatura calculada (§2.1). */
-  deslocamento = 0,
-): Promise<string> {
-  const calculada = faturaEscolhida(competencia, configuracao, deslocamento);
-
-  const { data: existente, error: erroBusca } = await supabase
-    .from('faturas')
-    .select('id')
-    .eq('cartao_id', cartaoId)
-    .eq('mes_referencia', calculada.mesReferencia)
-    .maybeSingle();
-  if (erroBusca) throw new Error(erroBusca.message);
-  if (existente) return existente.id;
-
-  const { data, error } = await supabase
-    .from('faturas')
-    .insert({
-      cartao_id: cartaoId,
-      mes_referencia: calculada.mesReferencia,
-      data_fechamento: calculada.dataFechamento,
-      data_vencimento: calculada.dataVencimento,
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    // Corrida com outra aba: alguém criou entre a busca e a inserção.
-    const { data: recuperada } = await supabase
-      .from('faturas')
-      .select('id')
-      .eq('cartao_id', cartaoId)
-      .eq('mes_referencia', calculada.mesReferencia)
-      .maybeSingle();
-    if (recuperada) return recuperada.id;
-    throw new Error(error.message);
-  }
-
-  return data.id;
 }
 
 /** Resolve várias competências de uma vez — o caso do parcelamento em 12x. */
@@ -564,19 +518,58 @@ export async function parcelarFatura(dados: {
   taxaMensal: number;
   /** Cartão (cai nas próximas faturas) ou conta (empréstimo à parte). */
   cobrarEm: string;
+  /**
+   * Só vale no cartão: a 1ª parcela fica nesta fatura, como entrada paga junto
+   * com ela, ou já cai na próxima. Cada banco faz de um jeito.
+   */
+  comEntrada: boolean;
   categoriaId?: string | null;
   data: DataISO;
 }): Promise<void> {
   const restante = Math.abs(dados.restante);
   if (restante <= 0) throw new Error('Não há saldo para parcelar nesta fatura.');
 
-  await criarDivida({
+  const noCartao = dados.cobrarEm === dados.cartaoId;
+
+  /*
+    Numa conta, a 1ª parcela vence um mês depois — é empréstimo à parte, e o
+    dia é o do contrato. No cartão, quem decide é a FATURA: a parcela é
+    cobrança de uma fatura e sai no vencimento dela, como qualquer compra.
+
+    "Hoje + 1 mês" no cartão errava de dois jeitos. Não sabia quando o cartão
+    fecha — uma parcela datada 11/10 num cartão que fecha dia 5 pulava a fatura
+    de outubro. E não sabia de entrada, que em muitos bancos é a 1ª parcela
+    paga junto com a própria fatura parcelada.
+  */
+  let primeiraParcela = somarMeses(dados.data, 1);
+
+  if (noCartao) {
+    const [fatura, cartao] = await Promise.all([
+      supabase.from('faturas').select('mes_referencia').eq('id', dados.faturaId).single(),
+      supabase
+        .from('cartoes')
+        .select('dia_fechamento, dia_vencimento')
+        .eq('conta_id', dados.cartaoId)
+        .single(),
+    ]);
+    if (fatura.error) throw new Error(fatura.error.message);
+    if (cartao.error) throw new Error(cartao.error.message);
+
+    primeiraParcela = planoDoParcelamento(
+      { mesReferencia: fatura.data.mes_referencia },
+      dados.parcelas,
+      dados.comEntrada,
+      { diaFechamento: cartao.data.dia_fechamento, diaVencimento: cartao.data.dia_vencimento },
+    ).primeiraParcela;
+  }
+
+  const dividaId = await criarDivida({
     nome: `Parcelamento da fatura ${dados.nomeDoCartao}`,
     valorFinanciado: restante,
     taxaMensal: dados.taxaMensal,
     parcelas: dados.parcelas,
     sistema: 'price',
-    primeiraParcela: somarMeses(dados.data, 1),
+    primeiraParcela,
     parcelasPagas: 0,
     contaId: dados.cobrarEm,
     categoriaId: dados.categoriaId ?? null,
@@ -596,6 +589,16 @@ export async function parcelarFatura(dados: {
     fatura_paga_id: dados.faturaId,
   });
   if (error) throw new Error(error.message);
+
+  /*
+    No cartão, as parcelas nascem já dentro das faturas — todas, de uma vez.
+
+    É como o cartão trata qualquer parcelamento (§2.2): o banco já anunciou as
+    N cobranças, e é enquanto a fatura está aberta que o total dela serve para
+    alguma coisa. Com entrada, a 1ª cai de volta NESTA fatura, e é por isso que
+    ela deixa de estar quitada: o que falta passa a ser exatamente a entrada.
+  */
+  if (noCartao) await lancarParcelasDoCartao(dividaId);
 
   await acertarStatusDaFatura(dados.faturaId);
 }

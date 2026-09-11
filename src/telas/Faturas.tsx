@@ -1,3 +1,5 @@
+import { planoDoParcelamento } from '../dominio/fatura';
+import type { ConfiguracaoDoCartao } from '../dominio/fatura';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -500,6 +502,8 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
                 cartaoId={cartaoId}
                 nomeDoCartao={nomeDoCartao}
                 restante={saldo.falta}
+                mesReferencia={fatura.mesReferencia}
+                configuracao={cartao}
               />
 
               <RotativoDaFatura
@@ -657,6 +661,10 @@ function PagamentoDeFatura({
  * no CARTÃO ela cai nas próximas faturas, que é como o banco faz no
  * parcelamento do próprio cartão; numa CONTA é empréstimo à parte.
  *
+ * No cartão ainda falta uma pergunta, porque cada banco responde diferente: a
+ * 1ª parcela vem como ENTRADA, paga junto com esta fatura, ou já na próxima.
+ * Com entrada, esta fatura continua devendo exatamente a entrada.
+ *
  * A taxa aceita os dois caminhos do cadastro de dívida — quem tem a proposta do
  * banco informa a taxa, quem tem só o valor da parcela informa a parcela.
  */
@@ -665,11 +673,16 @@ function ParcelamentoDaFatura({
   cartaoId,
   nomeDoCartao,
   restante,
+  mesReferencia,
+  configuracao,
 }: {
   faturaId: string;
   cartaoId: string;
   nomeDoCartao: string;
   restante: Centavos;
+  /** O mês desta fatura: é a partir dele que o plano das parcelas é feito. */
+  mesReferencia: DataISO;
+  configuracao: ConfiguracaoDoCartao;
 }) {
   const invalidar = usarInvalidarTransacoes();
   const { mostrar } = usarAviso();
@@ -681,6 +694,7 @@ function ParcelamentoDaFatura({
   const [taxaAnual, setTaxaAnual] = useState('');
   const [valorDaParcela, setValorDaParcela] = useState<Centavos>(0);
   const [cobrarEm, setCobrarEm] = useState<string>(cartaoId);
+  const [comEntrada, setComEntrada] = useState(true);
 
   const n = Number(parcelas);
 
@@ -693,6 +707,12 @@ function ParcelamentoDaFatura({
   const tabela = podeCalcular ? tabelaDeAmortizacao(restante, taxaMensal, n, 'price') : [];
   const juros = tabela.reduce((soma, p) => soma + p.juros, 0);
 
+  const noCartao = cobrarEm === cartaoId;
+  const plano =
+    noCartao && podeCalcular
+      ? planoDoParcelamento({ mesReferencia }, n, comEntrada, configuracao)
+      : null;
+
   const parcelar = useMutation({
     mutationFn: () =>
       parcelarFatura({
@@ -703,12 +723,17 @@ function ParcelamentoDaFatura({
         parcelas: n,
         taxaMensal: taxaMensal ?? 0,
         cobrarEm,
+        comEntrada: noCartao && comEntrada,
         data: hoje(),
       }),
     onSuccess: async () => {
       await invalidar();
       setAberto(false);
-      mostrar('Fatura parcelada. A dívida aparece em Dívidas, com os juros.');
+      mostrar(
+        noCartao && comEntrada
+          ? 'Fatura parcelada. A entrada ficou nesta fatura e as outras parcelas já estão nas próximas.'
+          : 'Fatura parcelada. A dívida aparece em Dívidas, com os juros.',
+      );
     },
   });
 
@@ -735,9 +760,14 @@ function ParcelamentoDaFatura({
   return (
     <div className="space-y-3 rounded-lg border border-borda-forte bg-superficie-alta p-3">
       <p className="text-xs leading-relaxed text-slate-400">
-        Parcelar tira os <strong>{formatar(restante)}</strong> desta fatura e recobra com juros. A
-        fatura fica quitada — nenhum dinheiro sai agora — e a dívida passa a viver em{' '}
-        <strong>Dívidas</strong>, onde dá para ver o saldo devedor e o quanto os juros custaram.
+        Parcelar tira os <strong>{formatar(restante)}</strong> desta fatura e recobra com juros.{' '}
+        {noCartao && comEntrada
+          ? 'A 1ª parcela fica nesta fatura, como entrada — é ela que você paga no vencimento — e as outras vêm nas próximas faturas.'
+          : noCartao
+            ? 'A fatura fica quitada — nenhum dinheiro sai agora — e a 1ª parcela já vem na próxima fatura.'
+            : 'A fatura fica quitada — nenhum dinheiro sai agora.'}{' '}
+        A dívida passa a viver em <strong>Dívidas</strong>, onde dá para ver o saldo devedor e o
+        quanto os juros custaram.
       </p>
 
       <Campo rotulo="Em quantas vezes">
@@ -788,14 +818,43 @@ function ParcelamentoDaFatura({
         </div>
       </Campo>
 
+      {/* A pergunta que cada banco responde diferente. Só existe no cartão:
+          numa conta, empréstimo à parte não tem "esta fatura" para entrar. */}
+      {noCartao && (
+        <Campo
+          rotulo="A 1ª parcela"
+          ajuda="Está escrito na proposta de parcelamento do banco. Com entrada, a 1ª parcela é paga junto com esta fatura."
+        >
+          <div className="flex flex-wrap gap-2">
+            <Chip ativo={comEntrada} aoClicar={() => setComEntrada(true)}>
+              Nesta fatura, como entrada
+            </Chip>
+            <Chip ativo={!comEntrada} aoClicar={() => setComEntrada(false)}>
+              Na próxima fatura
+            </Chip>
+          </div>
+        </Campo>
+      )}
+
       {podeCalcular && tabela.length > 0 && (
-        <p className="rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-sm text-slate-200">
-          {n}x de <strong>{formatar(tabela[0]!.valor)}</strong> ·{' '}
-          <span className="text-slate-400">
-            {formatar(juros)} de juros ao todo, {((juros / restante) * 100).toFixed(0)}% do que foi
-            parcelado
-          </span>
-        </p>
+        <div className="space-y-1 rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2">
+          <p className="text-sm text-slate-200">
+            {n}x de <strong>{formatar(tabela[0]!.valor)}</strong> ·{' '}
+            <span className="text-slate-400">
+              {formatar(juros)} de juros ao todo, {((juros / restante) * 100).toFixed(0)}% do que
+              foi parcelado
+            </span>
+          </p>
+          {/* As datas, porque "a partir da próxima" é exatamente o que se
+              confunde: quem vê o dia confere com a proposta do banco. */}
+          {plano && (
+            <p className="text-xs text-slate-400">
+              {comEntrada ? 'A entrada vence com esta fatura, em ' : 'A 1ª vence em '}
+              {formatarBR(plano.faturas[0]!.dataVencimento)}
+              {n > 1 && `; a última, em ${formatarBR(plano.faturas[n - 1]!.dataVencimento)}`}.
+            </p>
+          )}
+        </div>
       )}
 
       {parcelar.isError && (

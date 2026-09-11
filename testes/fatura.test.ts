@@ -4,9 +4,13 @@ import {
   faturaDeReferencia,
   faturaDoMes,
   faturaEscolhida,
+  faturaQueVenceNoMes,
+  planoDoParcelamento,
   proximasFaturas,
   saldoDaFatura,
 } from '../src/dominio/fatura';
+import { somarMeses } from '../src/dominio/datas';
+import { vencimentoDaParcela } from '../src/dominio/divida';
 
 // Fecha dia 4, vence dia 10 — o exemplo do §4.2.
 const PADRAO = { diaFechamento: 4, diaVencimento: 10 };
@@ -196,5 +200,100 @@ describe('saldo da fatura', () => {
 
   it('o sinal do valor não importa: fatura cobra, sempre', () => {
     expect(saldoDaFatura(-50000, -20000).falta).toBe(30000);
+  });
+});
+
+describe('parcelamento da fatura (§2.1, §4.7)', () => {
+  const CONFIGURACOES = [
+    { diaFechamento: 4, diaVencimento: 10 }, // vence no mesmo mês
+    { diaFechamento: 28, diaVencimento: 5 }, // vence no mês seguinte
+    { diaFechamento: 31, diaVencimento: 10 }, // fecha no último dia
+    { diaFechamento: 10, diaVencimento: 31 }, // vence no último dia
+    { diaFechamento: 15, diaVencimento: 15 }, // fecha e vence no mesmo dia
+  ];
+
+  it('a fatura que vence num mês é o caminho de volta da fatura do mês', () => {
+    for (const configuracao of CONFIGURACOES) {
+      for (let i = 0; i < 24; i += 1) {
+        const mes = somarMeses('2026-01-01', i);
+        const fatura = faturaDoMes(mes, configuracao);
+        expect(faturaQueVenceNoMes(fatura.dataVencimento, configuracao).mesReferencia).toBe(mes);
+      }
+    }
+  });
+
+  it('com entrada, a 1ª parcela fica na própria fatura parcelada', () => {
+    const plano = planoDoParcelamento({ mesReferencia: '2026-09-01' }, 3, true, PADRAO);
+
+    expect(plano.faturas.map((f) => f.mesReferencia)).toEqual([
+      '2026-09-01',
+      '2026-10-01',
+      '2026-11-01',
+    ]);
+    expect(plano.primeiraParcela).toBe('2026-09-10');
+  });
+
+  it('sem entrada, a 1ª já cai na fatura seguinte', () => {
+    const plano = planoDoParcelamento({ mesReferencia: '2026-09-01' }, 3, false, PADRAO);
+
+    expect(plano.faturas.map((f) => f.mesReferencia)).toEqual([
+      '2026-10-01',
+      '2026-11-01',
+      '2026-12-01',
+    ]);
+    expect(plano.primeiraParcela).toBe('2026-10-10');
+  });
+
+  it('fecha dia 28 e vence dia 5: a entrada vence no mês seguinte ao fechamento', () => {
+    const plano = planoDoParcelamento({ mesReferencia: '2026-09-01' }, 2, true, {
+      diaFechamento: 28,
+      diaVencimento: 5,
+    });
+
+    expect(plano.primeiraParcela).toBe('2026-10-05');
+    expect(plano.faturas[1]!.dataVencimento).toBe('2026-11-05');
+  });
+
+  it('a data guardada na dívida leva cada parcela à mesma fatura do plano', () => {
+    /*
+      A dívida guarda só a data da 1ª parcela; a de cada outra é recalculada
+      somando meses. Se essa conta e a do plano divergirem, a parcela lançada de
+      antemão e a relançada pela rotina de abertura cairiam em faturas
+      diferentes — o mesmo fato calculado em dois lugares, que é o defeito mais
+      repetido deste app.
+
+      Vencimento dia 31 é o caso que quebraria: fevereiro trunca para 28, e a
+      parcela seguinte, somada a partir de 28/02, cai no dia 28 de março.
+    */
+    for (const configuracao of CONFIGURACOES) {
+      for (const comEntrada of [true, false]) {
+        const plano = planoDoParcelamento(
+          { mesReferencia: '2026-11-01' },
+          24,
+          comEntrada,
+          configuracao,
+        );
+
+        plano.faturas.forEach((fatura, i) => {
+          const vencimento = vencimentoDaParcela(plano.primeiraParcela, i + 1);
+          expect(faturaQueVenceNoMes(vencimento, configuracao).mesReferencia).toBe(
+            fatura.mesReferencia,
+          );
+        });
+      }
+    }
+  });
+
+  it('uma parcela por fatura, sem pular nem repetir, atravessando o ano', () => {
+    for (const configuracao of CONFIGURACOES) {
+      const plano = planoDoParcelamento({ mesReferencia: '2026-12-01' }, 14, true, configuracao);
+      plano.faturas.forEach((fatura, i) => {
+        expect(fatura.mesReferencia).toBe(somarMeses('2026-12-01', i));
+      });
+    }
+  });
+
+  it('recusa quantidade de parcelas inválida', () => {
+    expect(() => planoDoParcelamento({ mesReferencia: '2026-09-01' }, 0, true, PADRAO)).toThrow();
   });
 });

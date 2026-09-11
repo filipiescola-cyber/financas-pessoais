@@ -176,3 +176,65 @@ export function saldoDaFatura(total: Centavos, pago: Centavos): SaldoDaFatura {
     quitada: cobrado > 0 && quitado >= cobrado,
   };
 }
+
+/**
+ * A fatura que vence no mês da data informada (§2.1).
+ *
+ * O caminho de volta de `faturaDeReferencia`: aquela parte de uma compra e acha
+ * a fatura; esta parte de um VENCIMENTO. É o que a parcela de um parcelamento de
+ * fatura precisa — ela não tem data de compra, tem o mês em que é cobrada.
+ *
+ * Olha só o MÊS, não o dia, de propósito. Vencimento dia 31 em fevereiro vira
+ * 28, e a parcela de março, calculada somando um mês a partir de 28/02, cai no
+ * dia 28 — sem deixar de ser a fatura de março. Casar pelo dia exato mandaria
+ * essa parcela para outra fatura.
+ */
+export function faturaQueVenceNoMes(data: DataISO, configuracao: ConfiguracaoDoCartao): Fatura {
+  // Mesma regra de `faturaDoMes`: vencimento antes do fechamento cai no mês
+  // seguinte. Aqui ela é aplicada ao contrário.
+  const mesesAteVencer = configuracao.diaVencimento < configuracao.diaFechamento ? 1 : 0;
+  return faturaDoMes(somarMeses(primeiroDiaDoMes(data), -mesesAteVencer), configuracao);
+}
+
+export type PlanoDoParcelamento = {
+  /** O vencimento da 1ª parcela. É a data que a dívida guarda. */
+  primeiraParcela: DataISO;
+  /** A fatura de cada parcela, na ordem. */
+  faturas: Fatura[];
+};
+
+/**
+ * Em que fatura cai cada parcela de um parcelamento de fatura (§2.1, §4.7).
+ *
+ * Com ENTRADA, a 1ª parcela fica na própria fatura que está sendo parcelada e é
+ * paga junto com ela; as outras vão para as seguintes. Sem entrada, a 1ª já cai
+ * na próxima. Cada banco faz de um jeito, e por isso a escolha é de quem tem a
+ * proposta na mão.
+ *
+ * A dívida guarda só a data da 1ª parcela, e a de cada outra é recalculada
+ * somando meses a ela. Por isso as faturas daqui saem de `faturaQueVenceNoMes`
+ * aplicada a essas mesmas datas — é exatamente a conta que o lançamento de cada
+ * parcela faz depois. Duas contas diferentes para a mesma pergunta já
+ * desencontraram fatura e saldo neste app mais de uma vez.
+ */
+export function planoDoParcelamento(
+  faturaAtual: { mesReferencia: DataISO },
+  parcelas: number,
+  comEntrada: boolean,
+  configuracao: ConfiguracaoDoCartao,
+): PlanoDoParcelamento {
+  if (!Number.isInteger(parcelas) || parcelas < 1) {
+    throw new Error(`Quantidade de parcelas inválida: ${parcelas}`);
+  }
+
+  const primeira = faturaDoMes(
+    somarMeses(faturaAtual.mesReferencia, comEntrada ? 0 : 1),
+    configuracao,
+  );
+
+  const faturas = Array.from({ length: parcelas }, (_, indice) =>
+    faturaQueVenceNoMes(somarMeses(primeira.dataVencimento, indice), configuracao),
+  );
+
+  return { primeiraParcela: primeira.dataVencimento, faturas };
+}

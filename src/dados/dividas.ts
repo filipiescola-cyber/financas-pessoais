@@ -21,6 +21,8 @@ import {
   type ResumoDaDivida,
   type SistemaDeAmortizacao,
 } from '../dominio/divida';
+import { faturaQueVenceNoMes } from '../dominio/fatura';
+import { idDaFatura } from './idDaFatura';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
 
@@ -257,10 +259,14 @@ async function lancarParcela(
 ): Promise<void> {
   if (!divida.contaId) return;
 
+  const onde = await ondeCaiAParcela(divida, parcela.numero, data);
+
   const comum = {
     conta_id: divida.contaId,
-    data_competencia: data,
-    data_caixa: data,
+    data_competencia: onde.competencia,
+    data_caixa: onde.caixa,
+    // Nulo numa conta; num cartão, a fatura em que a parcela é cobrada.
+    fatura_id: onde.faturaId,
     origem: 'manual' as const,
     revisado,
     // A ponta que permite desfazer sem deixar lançamento órfão.
@@ -291,6 +297,86 @@ async function lancarParcela(
   // 23505: outra execução já lançou esta parcela. O índice único é a rede da
   // idempotência do §13.3, e ele ter pegado significa que está tudo certo.
   if (error && error.code !== '23505') throw new Error(error.message);
+}
+
+/**
+ * Onde a parcela entra: numa conta, na data dela; num cartão, na fatura (§2.1).
+ *
+ * Parcela cobrada no cartão não é saída de caixa no dia: é cobrança de uma
+ * fatura, e o dinheiro sai no vencimento dela — a mesma regra de qualquer compra
+ * no cartão. Lançada sem fatura, ela ficava de fora do total: a rotina que
+ * encaixa lançamento de cartão na fatura ignora transferência, e a amortização
+ * É transferência. A fatura mostrava só os juros enquanto o banco cobrava a
+ * parcela inteira — errando para menos, que é o pior lado para errar.
+ *
+ * A fatura sai de `faturaQueVenceNoMes` sobre o vencimento da parcela, que é a
+ * MESMA conta do plano feito na hora de parcelar. A parcela lançada de antemão
+ * e a relançada pela rotina precisam cair no mesmo lugar, e o teste do plano
+ * garante isso.
+ */
+async function ondeCaiAParcela(
+  divida: Divida,
+  numero: number,
+  data: DataISO,
+): Promise<{ competencia: DataISO; caixa: DataISO; faturaId: string | null }> {
+  const { data: cartao, error } = await supabase
+    .from('cartoes')
+    .select('dia_fechamento, dia_vencimento')
+    .eq('conta_id', divida.contaId!)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!cartao) return { competencia: data, caixa: data, faturaId: null };
+
+  const configuracao = {
+    diaFechamento: cartao.dia_fechamento,
+    diaVencimento: cartao.dia_vencimento,
+  };
+  const fatura = faturaQueVenceNoMes(
+    vencimentoDaParcela(divida.primeiraParcela, numero),
+    configuracao,
+  );
+
+  return {
+    // A competência é o fechamento da fatura: é o mês em que a cobrança
+    // aparece, e não depende de QUANDO a parcela foi lançada — antes, na hora de
+    // parcelar, ou depois, pela rotina. As duas precisam dar o mesmo resultado.
+    competencia: fatura.dataFechamento,
+    caixa: fatura.dataVencimento,
+    faturaId: await idDaFatura(divida.contaId!, fatura.dataFechamento, configuracao),
+  };
+}
+
+/**
+ * Lança de uma vez todas as parcelas de uma dívida cobrada no cartão (§2.2).
+ *
+ * É como o cartão trata qualquer parcelamento: as N cobranças já existem nas
+ * faturas futuras, porque o banco já as anunciou. Esperar cada vencimento para
+ * lançar deixava a fatura aberta menor do que a que vai chegar — e é enquanto
+ * ela está aberta que o número serve para alguma coisa.
+ *
+ * O contador de pagas não anda aqui: ele segue o calendário, pela rotina de
+ * abertura, como em qualquer outra dívida. Relançar é inofensivo — o índice
+ * único recusa a repetição (§13.3).
+ */
+export async function lancarParcelasDoCartao(dividaId: string): Promise<void> {
+  const { data: linha, error } = await supabase
+    .from('dividas')
+    .select('*')
+    .eq('id', dividaId)
+    .single();
+  if (error) throw new Error(error.message);
+
+  const divida = daLinha(linha);
+  const tabela = tabelaDeAmortizacao(
+    divida.valorFinanciado,
+    divida.taxaMensal,
+    divida.parcelas,
+    divida.sistema,
+  );
+
+  for (const parcela of tabela.slice(divida.parcelasPagas)) {
+    await lancarParcela(divida, parcela, divida.primeiraParcela, true);
+  }
 }
 
 /**
@@ -498,6 +584,23 @@ export async function quitarDivida(id: string, data: DataISO): Promise<void> {
 }
 
 export async function excluirDivida(id: string): Promise<void> {
+  /*
+    As parcelas que ainda não venceram saem junto; as que já venceram ficam.
+
+    Numa dívida cobrada em conta isso não muda nada — a parcela só vira
+    lançamento no dia em que vence. Mas a cobrada no cartão tem todas as
+    parcelas lançadas nas faturas futuras, e o banco solta o vínculo em vez de
+    apagá-las (`on delete set null`): excluir a dívida deixaria cobranças de uma
+    dívida que não existe mais em um ano inteiro de faturas. As que já venceram
+    são dinheiro que saiu, e continuam contando a verdade (§4.8).
+  */
+  const { error: erroFuturas } = await supabase
+    .from('transacoes')
+    .delete()
+    .eq('divida_id', id)
+    .gt('data_caixa', hoje());
+  if (erroFuturas) throw new Error(erroFuturas.message);
+
   const { error } = await supabase.from('dividas').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }

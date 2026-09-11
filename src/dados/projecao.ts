@@ -316,7 +316,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   // parte de confiança alta da projeção: fato consumado, não estimativa.
   const { data: futuras, error: erroFuturas } = await supabase
     .from('transacoes')
-    .select('valor, data_caixa, tipo, descricao, categoria_id')
+    .select('valor, data_caixa, tipo, descricao, categoria_id, divida_id')
     .gt('data_caixa', referencia)
     .neq('tipo', 'transferencia');
   if (erroFuturas) throw erroFuturas;
@@ -324,6 +324,10 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
   const jaLancadoPorMes: Record<DataISO, Centavos> = {};
   for (const linha of futuras ?? []) {
     if (linha.tipo !== 'despesa') continue;
+    // Parcela de dívida entra pela DÍVIDA, logo abaixo, e não pelo lançamento.
+    // A cobrada no cartão já tem as parcelas lançadas no futuro, e contá-las
+    // aqui também somaria os juros de cada uma duas vezes.
+    if (linha.divida_id !== null) continue;
     const mes = primeiroDiaDoMes(linha.data_caixa);
     jaLancadoPorMes[mes] = (jaLancadoPorMes[mes] ?? 0) + Math.abs(paraCentavos(linha.valor));
   }
@@ -343,6 +347,7 @@ export async function montarDadosDaProjecao(referencia: DataISO = hoje()): Promi
 
   for (const linha of futuras ?? []) {
     if (linha.tipo !== 'despesa') continue;
+    if (linha.divida_id !== null) continue;
     const mes = primeiroDiaDoMes(linha.data_caixa);
     if (mes < mesSeguinte) continue;
 

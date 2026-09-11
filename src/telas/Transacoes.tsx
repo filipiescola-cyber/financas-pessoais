@@ -253,7 +253,20 @@ export function Transacoes() {
    * Só as não pagas: a paga já virou lançamento de verdade e conta pelo caminho
    * normal — contá-la aqui de novo tiraria o valor duas vezes.
    */
-  const parcelasDaDivida = (dividas.data ?? [])
+  /*
+    Dívida cobrada no cartão fica de fora das parcelas previstas.
+
+    As parcelas dela já existem, lançadas nas faturas futuras, e entram no saldo
+    pelo bloco da fatura, no vencimento dela. Somá-las aqui também tiraria cada
+    parcela duas vezes — e no dia errado, porque a data da parcela não é o dia
+    em que o dinheiro sai: é o vencimento da fatura que sai.
+  */
+  const contasDeCartao = new Set((cartoes.data ?? []).map((c) => c.contaId));
+  const dividasEmConta = (dividas.data ?? []).filter(
+    (item) => item.divida.contaId === null || !contasDeCartao.has(item.divida.contaId),
+  );
+
+  const parcelasDaDivida = dividasEmConta
     .filter((item) => contaId === null || item.divida.contaId === contaId)
     .flatMap((item) => parcelasPrevistas(item.divida, item.tabela, mes, ultimoDiaDoMes(mes)));
 
@@ -316,13 +329,16 @@ export function Transacoes() {
       geradasDaPonte.data !== undefined &&
       faturasDaPonte.data !== undefined &&
       dividas.data !== undefined &&
+      // Sem saber quais contas são cartão, a dívida do cartão entraria na ponte
+      // e sairia um instante depois — um saldo que muda sozinho na tela.
+      cartoes.data !== undefined &&
       ((faturasDaPonte.data ?? []).length === 0 || pagamentosDaPonte.data !== undefined));
 
   const movimentosDaPonte: MovimentoDeCaixa[] =
     !precisaDePonte || !pontePronta
       ? []
       : [
-          ...(dividas.data ?? [])
+          ...dividasEmConta
             .filter((item) => contaId === null || item.divida.contaId === contaId)
             .flatMap((item) =>
               parcelasPrevistas(item.divida, item.tabela, mesCorrente, somarDias(mes, -1)),

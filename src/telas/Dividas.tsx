@@ -290,7 +290,7 @@ function LinhaDeDivida({ item }: { item: DividaCalculada }) {
 
       {excluindo && (
         <ConfirmacaoDeExclusao
-          consequencia="Excluir apaga o cadastro da dívida. Os lançamentos das parcelas já pagas continuam na lista — eles são dinheiro que saiu."
+          consequencia="Excluir apaga o cadastro da dívida. As parcelas que já venceram continuam na lista — elas são dinheiro que saiu. As que ainda estão nas faturas futuras do cartão saem junto."
           ajuda="Se a dívida acabou de verdade, use Quitar: ela sai da lista e o histórico fica."
           emAndamento={excluir.isPending}
           erro={excluir.isError ? (excluir.error as Error).message : null}
