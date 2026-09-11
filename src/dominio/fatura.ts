@@ -301,3 +301,51 @@ export function dividaEmAbertoPorCartao(
 
   return porCartao;
 }
+
+export type LimiteComACompra = {
+  limite: Centavos;
+  usado: Centavos;
+  /** O que dá para gastar antes da compra. Nunca negativo. */
+  disponivel: Centavos;
+  /** O que sobra depois dela. Negativo quando passa. */
+  sobra: Centavos;
+  /** Quanto a fatura fica acima do limite com a compra. Zero quando cabe. */
+  passa: Centavos;
+  cabe: boolean;
+};
+
+/**
+ * A compra cabe no limite do cartão? (§2.1, §8.4)
+ *
+ * O valor é o TOTAL da compra, mesmo parcelada: é o que o banco tira do limite
+ * no dia, e cada parcela paga devolve um pedaço. Olhar só a parcela diria que
+ * um celular de R$ 6.000 em 12x cabe em R$ 600 de limite.
+ *
+ * Responde com números e não com permissão. Banco aprova acima do limite às
+ * vezes, e o uso do app pode estar um lançamento atrasado: quem decide é quem
+ * está na frente da maquininha (§8.4 — não moralizar).
+ *
+ * Sem limite cadastrado não há o que dizer, e `null` faz a tela calar. Mostrar
+ * "disponível R$ 0,00" para um cartão cujo limite o app não sabe seria a
+ * afirmação errada no lugar de "ainda não sei" (§13.5).
+ */
+export function limiteComACompra(
+  limite: Centavos | null,
+  usado: Centavos,
+  valorDaCompra: Centavos,
+): LimiteComACompra | null {
+  if (limite === null || limite <= 0) return null;
+
+  const usadoReal = Math.max(0, usado);
+  const sobra = limite - usadoReal - Math.abs(valorDaCompra);
+  const passa = Math.max(0, -sobra);
+
+  return {
+    limite,
+    usado: usadoReal,
+    disponivel: Math.max(0, limite - usadoReal),
+    sobra,
+    passa,
+    cabe: passa === 0,
+  };
+}

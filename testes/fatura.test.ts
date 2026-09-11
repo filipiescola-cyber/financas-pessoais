@@ -6,6 +6,7 @@ import {
   faturaDoMes,
   faturaEscolhida,
   faturaQueVenceNoMes,
+  limiteComACompra,
   planoDoParcelamento,
   proximasFaturas,
   saldoDaFatura,
@@ -369,5 +370,37 @@ describe('limite usado do cartão (§2.1, §4.2)', () => {
   it('cartão sem nada a dever não aparece', () => {
     const divida = dividaEmAbertoPorCartao(faturas, [{ faturaId: 'out', valor: 2000 }], []);
     expect(divida.has('nubank')).toBe(false);
+  });
+});
+
+describe('a compra cabe no limite (§2.1, §8.4)', () => {
+  it('cabe, e diz quanto sobra', () => {
+    const r = limiteComACompra(500000, 200000, 100000);
+    expect(r).toMatchObject({ disponivel: 300000, sobra: 200000, passa: 0, cabe: true });
+  });
+
+  it('passa, e diz por quanto', () => {
+    const r = limiteComACompra(500000, 450000, 100000);
+    expect(r).toMatchObject({ disponivel: 50000, passa: 50000, cabe: false });
+  });
+
+  it('gastar exatamente o disponível ainda cabe', () => {
+    expect(limiteComACompra(500000, 400000, 100000)?.cabe).toBe(true);
+  });
+
+  it('o valor entra pelo tamanho: despesa negativa conta igual', () => {
+    expect(limiteComACompra(500000, 200000, -100000)).toEqual(
+      limiteComACompra(500000, 200000, 100000),
+    );
+  });
+
+  it('já acima do limite, o disponível é zero e qualquer compra passa', () => {
+    const r = limiteComACompra(500000, 520000, 1000);
+    expect(r).toMatchObject({ disponivel: 0, passa: 21000, cabe: false });
+  });
+
+  it('sem limite cadastrado não afirma nada (§13.5)', () => {
+    expect(limiteComACompra(null, 0, 100000)).toBeNull();
+    expect(limiteComACompra(0, 0, 100000)).toBeNull();
   });
 });

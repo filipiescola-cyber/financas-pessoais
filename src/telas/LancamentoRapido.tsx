@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatarBR, hoje, ontem, type DataISO } from '../dominio/datas';
-import { faturaEscolhida } from '../dominio/fatura';
+import { faturaEscolhida, limiteComACompra } from '../dominio/fatura';
+import { useQuery } from '@tanstack/react-query';
+import { dividasDosCartoes } from '../dados/faturas';
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { CampoValor } from '../ui/CampoValor';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -46,6 +48,10 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
   const modelos = usarModelos();
   const { mostrar } = usarAviso();
 
+  // O uso do limite pela MESMA chave de cache da tela Cartões: dois lugares
+  // mostrando o limite de um cartão não podem discordar entre si (§13.2).
+  const usoDosCartoes = useQuery({ queryKey: ['dividas-cartoes'], queryFn: dividasDosCartoes });
+
   const [modo, setModo] = useState<Modo>('despesa');
   // Volta ao sugerido a cada folha nova: o ajuste vale para aquela compra, não
   // vira preferência.
@@ -83,6 +89,18 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
   const conta = disponiveis.find((c) => c.id === contaId) ?? null;
   const cartao = cartoes.data?.find((c) => c.contaId === contaId) ?? null;
   const ehCartao = conta?.tipo === 'cartao_credito';
+
+  // Só com o uso já carregado. Antes dele, "disponível" seria o limite inteiro
+  // — um número que parece certo e não é (§13.5). Sem rede, a linha só não
+  // aparece, e o lançamento offline continua funcionando igual.
+  const noLimite =
+    ehCartao && cartao && modo === 'despesa' && usoDosCartoes.data
+      ? limiteComACompra(
+          cartao.limite,
+          usoDosCartoes.data.get(cartao.contaId)?.total ?? 0,
+          valor,
+        )
+      : null;
   const envolveEmpresa =
     conta?.tipo === 'empresa' ||
     disponiveis.find((c) => c.id === contaDestinoId)?.tipo === 'empresa';
@@ -323,6 +341,21 @@ export function LancamentoRapido({ aberto, aoFechar }: { aberto: boolean; aoFech
               </p>
             )}
           </div>
+        )}
+
+        {/* O limite, do jeito que o §5 permite: uma linha, sem bloquear e sem
+            perguntar nada — "deseja salvar?" é antipadrão (§5.4). O banco às
+            vezes aprova acima do limite, e o uso do app pode estar um
+            lançamento atrasado: quem decide é quem está na maquininha. */}
+        {noLimite && (
+          <p className={`text-xs leading-relaxed ${noLimite.cabe ? 'text-slate-500' : 'text-amber-400'}`}>
+            {valor === 0
+              ? `Disponível no limite: ${formatar(noLimite.disponivel)}.`
+              : noLimite.cabe
+                ? `Cabe no limite: sobram ${formatar(noLimite.sobra)} de ${formatar(noLimite.limite)}.`
+                : `Passa ${formatar(noLimite.passa)} do limite — estão disponíveis ${formatar(noLimite.disponivel)}.`}
+            {parcelas > 1 && valor > 0 && ' Parcelada, ela ocupa o valor inteiro de uma vez.'}
+          </p>
         )}
 
         <div className="relative">

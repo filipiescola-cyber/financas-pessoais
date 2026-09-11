@@ -19,6 +19,9 @@ import {
 import { montarDadosDaProjecao } from '../dados/projecao';
 import { listarOrcamentos } from '../dados/orcamentos';
 import { orcamentoComACompra } from '../dominio/orcamento';
+import { limiteComACompra } from '../dominio/fatura';
+import { dividasDosCartoes } from '../dados/faturas';
+import { usarCartoes } from '../dados/usarCartoes';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { CampoValor } from '../ui/CampoValor';
 import { Link } from 'react-router-dom';
@@ -49,9 +52,14 @@ export function Simulador() {
   const [cenario, setCenario] = useState<Cenario>('pessimista');
   const [quando, setQuando] = useState<DataISO>(primeiroDiaDoMes(hoje()));
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
+  const [cartaoId, setCartaoId] = useState<string | null>(null);
 
   const dados = useQuery({ queryKey: ['projecao'], queryFn: () => montarDadosDaProjecao() });
   const categorias = usarCategorias();
+  const cartoes = usarCartoes();
+  // A mesma chave da tela Cartões: o limite não pode dizer uma coisa lá e
+  // outra aqui (§13.2).
+  const usoDosCartoes = useQuery({ queryKey: ['dividas-cartoes'], queryFn: dividasDosCartoes });
 
   // O teto e o já gasto são do MÊS DA COMPRA, não do mês corrente: adiar uma
   // compra para dezembro e ver o teto de setembro responderia outra pergunta.
@@ -156,6 +164,28 @@ export function Simulador() {
         )
       : null;
 
+  /*
+    O limite do cartão (§8.4). A entrada do simulador sempre pediu "conta ou
+    cartão", e o cartão faltava.
+
+    Só aparecem os cartões com limite cadastrado: sem ele não há o que
+    conferir, e oferecer a escolha para depois calar seria pior que não
+    oferecer. O valor é o TOTAL da compra — é o que o banco tira do limite no
+    dia, mesmo parcelada.
+  */
+  const comLimite = (cartoes.data ?? []).filter(
+    (c) => c.conta.ativo && c.limite !== null && c.limite > 0,
+  );
+  const cartaoEscolhido = comLimite.find((c) => c.contaId === cartaoId) ?? null;
+  const noLimite =
+    cartaoEscolhido && usoDosCartoes.data && valor > 0
+      ? limiteComACompra(
+          cartaoEscolhido.limite,
+          usoDosCartoes.data.get(cartaoEscolhido.contaId)?.total ?? 0,
+          valor,
+        )
+      : null;
+
   const aumentoDoCompromisso = impacto
     ? impacto.compromissoDepois - impacto.compromissoAntes
     : 0;
@@ -212,6 +242,27 @@ export function Simulador() {
               ))}
           </div>
         </div>
+
+        {comLimite.length > 0 && (
+          <div>
+            <span className="text-sm text-slate-400">Cartão (opcional)</span>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+              Para conferir o limite disponível. A conta dos meses continua a mesma: a compra
+              sai no mês escolhido acima.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {comLimite.map((c) => (
+                <Chip
+                  key={c.contaId}
+                  ativo={cartaoId === c.contaId}
+                  aoClicar={() => setCartaoId(cartaoId === c.contaId ? null : c.contaId)}
+                >
+                  {c.conta.nome}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <span className="text-sm text-slate-400">Cenário de renda</span>
@@ -292,6 +343,29 @@ export function Simulador() {
                   {formatar(noOrcamento.antes.planejado)} planejados.
                 </>
               )}
+            </Nota>
+          )}
+
+          {/*
+            O limite do cartão — terceira pergunta independente das outras
+            duas. O saldo pode aguentar, o teto pode caber, e a compra ainda
+            não passar na maquininha. Sem moralizar: o número e só (§8.4).
+          */}
+          {noLimite && cartaoEscolhido && (
+            <Nota tom={noLimite.cabe ? undefined : 'atencao'}>
+              {noLimite.cabe ? (
+                <>
+                  Cabe no limite do <strong>{cartaoEscolhido.conta.nome}</strong>: sobram{' '}
+                  {formatar(noLimite.sobra)} de {formatar(noLimite.limite)}.
+                </>
+              ) : (
+                <>
+                  Passa {formatar(noLimite.passa)} do limite do{' '}
+                  <strong>{cartaoEscolhido.conta.nome}</strong>: estão disponíveis{' '}
+                  {formatar(noLimite.disponivel)}.
+                </>
+              )}
+              {parcelas > 1 && ' Parcelada, ela ocupa o valor inteiro de uma vez.'}
             </Nota>
           )}
 
