@@ -174,25 +174,26 @@ describe('escolher a fatura na mão', () => {
 });
 
 describe('saldo da fatura', () => {
+  // A soma das linhas da fatura: compra entra negativa, estorno entra positivo.
   it('pagamento parcial deixa o resto devendo', () => {
     // O bug que isto conserta: pagar R$ 200 de R$ 500 marcava a fatura inteira
     // como paga, e os R$ 300 sumiam de "o que você deve".
-    const saldo = saldoDaFatura(50000, 20000);
+    const saldo = saldoDaFatura(-50000, 20000);
     expect(saldo.falta).toBe(30000);
     expect(saldo.quitada).toBe(false);
   });
 
   it('só fica quitada quando não falta nada', () => {
-    expect(saldoDaFatura(50000, 50000).quitada).toBe(true);
-    expect(saldoDaFatura(50000, 49999).quitada).toBe(false);
+    expect(saldoDaFatura(-50000, 50000).quitada).toBe(true);
+    expect(saldoDaFatura(-50000, 49999).quitada).toBe(false);
   });
 
   it('vários pagamentos somados quitam', () => {
-    expect(saldoDaFatura(50000, 20000 + 30000).quitada).toBe(true);
+    expect(saldoDaFatura(-50000, 20000 + 30000).quitada).toBe(true);
   });
 
   it('pagar a mais não vira crédito nem falta negativa', () => {
-    const saldo = saldoDaFatura(50000, 50100);
+    const saldo = saldoDaFatura(-50000, 50100);
     expect(saldo.falta).toBe(0);
     expect(saldo.quitada).toBe(true);
   });
@@ -201,8 +202,30 @@ describe('saldo da fatura', () => {
     expect(saldoDaFatura(0, 0).quitada).toBe(false);
   });
 
-  it('o sinal do valor não importa: fatura cobra, sempre', () => {
-    expect(saldoDaFatura(-50000, -20000).falta).toBe(30000);
+  it('estorno maior que as compras deixa a fatura em CRÉDITO', () => {
+    /*
+      O caso real: uma compra de R$ 1.055,39 cancelada e estornada numa fatura
+      de R$ 878,18. O banco passa a dever R$ 177,21, e leva o crédito para a
+      fatura seguinte.
+
+      Pelo valor absoluto, o app lia esse crédito como dívida e dizia "você
+      deve R$ 177,21" — errando o sinal no pior sentido possível.
+    */
+    const saldo = saldoDaFatura(17721, 0);
+
+    expect(saldo.credito).toBe(17721);
+    expect(saldo.total).toBe(0);
+    expect(saldo.falta).toBe(0);
+    expect(saldo.quitada).toBe(false);
+  });
+
+  it('fatura que só cobra não tem crédito nenhum', () => {
+    expect(saldoDaFatura(-50000, 0).credito).toBe(0);
+  });
+
+  it('estorno menor que as compras só reduz o que se deve', () => {
+    // Compras de R$ 500 com R$ 79 de reembolso: a fatura cobra R$ 421.
+    expect(saldoDaFatura(-50000 + 7900, 0).falta).toBe(42100);
   });
 });
 
@@ -450,6 +473,16 @@ describe('leitura da fatura: dinheiro x dívida trocada (§2.1, §4.7)', () => {
       pagoEmDinheiro: 0,
       falta: 0,
       quitada: true,
+    });
+  });
+
+  it('estorno maior que as compras: crédito, e nada a pagar', () => {
+    const leitura = leituraDaFatura(17721, []);
+    expect(leitura).toMatchObject({
+      credito: 17721,
+      cobradoEmDinheiro: 0,
+      falta: 0,
+      quitada: false,
     });
   });
 

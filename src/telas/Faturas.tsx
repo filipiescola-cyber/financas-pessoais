@@ -347,7 +347,9 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
     },
   ]);
   const parcial = saldo.pagoEmDinheiro > 0 && !saldo.quitada;
-  const vencida = !saldo.quitada && fatura.dataVencimento < hoje();
+  // Vencida é sobre o que FALTA, não sobre estar quitada: uma fatura em
+  // crédito não venceu coisa nenhuma.
+  const vencida = saldo.falta > 0 && fatura.dataVencimento < hoje();
 
   return (
     <article className="rounded-xl border border-borda bg-superficie">
@@ -357,13 +359,17 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wider text-slate-500">
-            {saldo.quitada
-              ? saldo.cobradoEmDinheiro === 0
-                ? 'Nada a pagar em dinheiro'
-                : 'Você pagou'
-              : parcial
-                ? 'Ainda falta'
-                : 'Você deve'}
+            {saldo.credito > 0
+              ? 'Crédito a seu favor'
+              : saldo.quitada
+                ? saldo.cobradoEmDinheiro === 0
+                  ? 'Nada a pagar em dinheiro'
+                  : 'Você pagou'
+                : saldo.falta === 0
+                  ? 'Nada a pagar'
+                  : parcial
+                    ? 'Ainda falta'
+                    : 'Você deve'}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
             {vencida ? 'Venceu' : 'Vence'} em {formatarBR(fatura.dataVencimento)}
@@ -372,6 +378,14 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
           {parcial && (
             <p className="mt-0.5 text-xs text-slate-500">
               Já pagos {formatar(saldo.pagoEmDinheiro)} de {formatar(saldo.cobradoEmDinheiro)}.
+            </p>
+          )}
+          {/* Crédito precisa dizer o que é: o número grande sozinho parece
+              dívida, e é o contrário. */}
+          {saldo.credito > 0 && (
+            <p className="mt-0.5 text-xs text-emerald-400/80">
+              Os estornos passaram das compras do mês. O banco costuma levar o crédito para a
+              fatura seguinte — quando ele aparecer lá, lance como crédito naquela fatura.
             </p>
           )}
           {/* A dívida trocada de lugar dita em palavras, logo abaixo do valor:
@@ -399,7 +413,13 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
             vencida ? 'text-amber-400' : 'text-slate-100'
           }`}
         >
-          {formatar(saldo.quitada ? saldo.cobradoEmDinheiro : saldo.falta)}
+          {formatar(
+            saldo.credito > 0
+              ? saldo.credito
+              : saldo.quitada
+                ? saldo.cobradoEmDinheiro
+                : saldo.falta,
+          )}
         </span>
       </div>
 
@@ -553,6 +573,11 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
                 )}
               </div>
             </div>
+          ) : saldo.falta === 0 ? (
+            <p className="rounded-md border border-borda-forte px-3 py-2 text-xs leading-relaxed text-slate-400">
+              Nada a pagar nesta fatura. Não há o que registrar, parcelar ou rolar — e, se houver
+              crédito, ele abate a próxima.
+            </p>
           ) : (
             <>
               {parcial && (

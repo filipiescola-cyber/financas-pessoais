@@ -142,12 +142,20 @@ export function descreverFatura(fatura: Fatura): string {
 }
 
 export type SaldoDaFatura = {
-  /** Soma das compras. Sempre positivo: é o que a fatura cobra. */
+  /** O que a fatura cobra, já descontados os estornos. Nunca negativo. */
   total: Centavos;
   pago: Centavos;
   /** O que ainda falta. Nunca negativo — pagar a mais não vira crédito aqui. */
   falta: Centavos;
   quitada: boolean;
+  /**
+   * Crédito: os estornos do mês passaram das compras (§2.1).
+   *
+   * A compra cancelada e estornada é o caso comum — e o banco leva o crédito
+   * para a fatura seguinte. Aqui ele só é nomeado: fatura em crédito não tem
+   * o que pagar.
+   */
+  credito: Centavos;
 };
 
 /**
@@ -164,7 +172,17 @@ export type SaldoDaFatura = {
  * este app tenha.
  */
 export function saldoDaFatura(total: Centavos, pago: Centavos): SaldoDaFatura {
-  const cobrado = Math.abs(total);
+  /*
+    O SINAL da soma diz o que a fatura é.
+
+    Enquanto toda linha era cobrança, o sinal era só convenção e o valor
+    absoluto servia. Estorno quebrou isso: uma compra cancelada de R$ 1.055
+    numa fatura de R$ 878 deixa a fatura em CRÉDITO, e o valor absoluto lia
+    esse crédito como dívida — "você deve R$ 177" de uma fatura em que o banco
+    devia a ele. Errava o sinal do mundo inteiro, e no pior sentido possível.
+  */
+  const cobrado = Math.max(0, -total);
+  const credito = Math.max(0, total);
   const quitado = Math.abs(pago);
 
   return {
@@ -174,6 +192,7 @@ export function saldoDaFatura(total: Centavos, pago: Centavos): SaldoDaFatura {
     // Fatura zerada não está "quitada": não havia o que quitar. A diferença
     // importa na tela, que senão diria "você pagou" para um mês sem compra.
     quitada: cobrado > 0 && quitado >= cobrado,
+    credito,
   };
 }
 
@@ -368,6 +387,8 @@ export type LeituraDaFatura = {
   /** Parcelado ou rolado no rotativo: saiu da fatura sem sair do bolso. */
   trocadoPorDivida: Centavos;
   comoDivida: 'parcelamento' | 'rotativo' | null;
+  /** Estornos maiores que as compras: o banco é que deve (§2.1). */
+  credito: Centavos;
 };
 
 /**
@@ -386,7 +407,10 @@ export function leituraDaFatura(
   total: Centavos,
   pagamentos: readonly PagamentoDeFatura[],
 ): LeituraDaFatura {
-  const cobrado = Math.abs(total);
+  // Mesmo sinal de `saldoDaFatura`: estorno maior que as compras é crédito,
+  // não dívida.
+  const cobrado = Math.max(0, -total);
+  const credito = Math.max(0, total);
 
   const pagoEmDinheiro = pagamentos
     .filter((p) => p.emDinheiro)
@@ -405,6 +429,7 @@ export function leituraDaFatura(
     // Fatura zerada não está "quitada": não havia o que quitar (mesma regra
     // de `saldoDaFatura`).
     quitada: cobrado > 0 && falta === 0,
+    credito,
     trocadoPorDivida,
     comoDivida:
       trocados.length === 0

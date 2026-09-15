@@ -227,7 +227,11 @@ export function faturasQueAindaVaoSair(
       // transferência de quitação, que está entre os movimentos reais — pesar
       // o bruto aqui tirava o valor duas vezes do saldo. Com pagamento
       // parcial isso deixou de ser teoria: metade da fatura contava dobrado.
-      valor: -Math.max(0, Math.abs(fatura.total) - (pagoPorFatura.get(fatura.faturaId) ?? 0)),
+      //
+      // O sinal conta: uma fatura em crédito — estorno maior que as compras —
+      // não é saída nenhuma. Pelo valor absoluto, ela DESCONTAVA do saldo
+      // previsto o crédito que o banco devia.
+      valor: -Math.max(0, -fatura.total - (pagoPorFatura.get(fatura.faturaId) ?? 0)),
       dataCaixa: fatura.vencimento,
       transacaoPaiId: null as null,
     }))

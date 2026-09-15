@@ -180,6 +180,23 @@ describe('fatura no saldo previsto', () => {
     expect(faturasQueAindaVaoSair(blocos(), new Map())).toHaveLength(2);
   });
 
+  it('fatura em crédito não é saída nenhuma', () => {
+    /*
+      Compra cancelada e estornada: os estornos passam das compras e o banco
+      fica devendo. Pelo valor absoluto, esse crédito era DESCONTADO do saldo
+      previsto, como se fosse uma fatura a pagar.
+    */
+    const dias = agruparPorCaixa([
+      t({ id: 'compra', faturaId: 'credito', dataCaixa: '2026-10-09', valor: -87818 }),
+      t({ id: 'estorno', faturaId: 'credito', dataCaixa: '2026-10-09', valor: 105539 }),
+    ]);
+    const blocosComCredito = dias.flatMap((d) =>
+      d.linhas.flatMap((l) => (l.tipo === 'fatura' ? [l] : [])),
+    );
+
+    expect(faturasQueAindaVaoSair(blocosComCredito, new Map())).toEqual([]);
+  });
+
   it('o sinal é o da própria fatura: saída é negativa', () => {
     const [saida] = faturasQueAindaVaoSair(blocos(), new Map([['quitada', 50000]]));
     expect(saida!.valor).toBeLessThan(0);
