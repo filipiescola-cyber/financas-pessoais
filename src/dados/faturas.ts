@@ -21,6 +21,7 @@ import {
   dividaEmAbertoPorCartao,
   leituraDaFatura,
   planoDoParcelamento,
+  podeLevarOCredito,
   type PagamentoDeFatura,
 } from '../dominio/fatura';
 import { supabase } from './supabase';
@@ -761,6 +762,165 @@ export async function desfazerRotativo(faturaId: string): Promise<void> {
   if (error) throw new Error(error.message);
 
   await acertarStatusDaFatura(faturaId);
+}
+
+/*
+  As duas linhas do crédito levado. O texto mora aqui, num lugar só, porque é
+  por ele que a linha é reencontrada depois.
+*/
+const CREDITO_LEVADO = 'Crédito levado para a fatura seguinte';
+const CREDITO_RECEBIDO = 'Crédito da fatura anterior';
+
+/** O crédito que esta fatura já levou para a seguinte, se levou. */
+export async function creditoLevadoDaFatura(
+  faturaId: string,
+): Promise<{ id: string; parId: string | null; valor: Centavos } | null> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('id, valor, transferencia_par_id')
+    .eq('fatura_id', faturaId)
+    .eq('descricao', CREDITO_LEVADO)
+    .limit(1);
+  if (error) throw new Error(error.message);
+
+  const linha = data?.[0];
+  if (!linha) return null;
+
+  return {
+    id: linha.id,
+    parId: linha.transferencia_par_id,
+    valor: Math.abs(paraCentavos(linha.valor)),
+  };
+}
+
+/**
+ * Leva o crédito de uma fatura para a seguinte (§2.1).
+ *
+ * Compra cancelada e estornada pode passar do que a fatura cobrou: o banco fica
+ * devendo e abate na fatura seguinte. Sem isto, a fatura de setembro fica com um
+ * crédito parado que nunca abate nada, e a de outubro chega no app maior do que
+ * chega no banco.
+ *
+ * São duas linhas, como no rotativo: uma tira o crédito daqui, a outra o põe
+ * lá. Nenhuma é receita nem despesa — é o mesmo dinheiro mudando de fatura, e
+ * por isso as duas são transferência (§2.3). Ligadas pelo par, somem juntas.
+ *
+ * Por um clique, e não sozinho na abertura do app: são linhas de dinheiro, e
+ * uma rotina que as recriasse teria de acertá-las toda vez que a fatura
+ * mudasse — a mesma família de defeito da cobrança duplicada (§13.3).
+ */
+export async function levarCreditoParaAProxima(faturaId: string): Promise<void> {
+  const { data: atual, error: erroAtual } = await supabase
+    .from('faturas')
+    .select('cartao_id, data_vencimento, data_fechamento')
+    .eq('id', faturaId)
+    .single();
+  if (erroAtual) throw new Error(erroAtual.message);
+
+  if (await creditoLevadoDaFatura(faturaId)) {
+    throw new Error('O crédito desta fatura já foi levado para a seguinte.');
+  }
+
+  const [total, situacao] = await Promise.all([
+    totalDaFatura(faturaId),
+    situacaoDasFaturas([faturaId]),
+  ]);
+
+  const daFatura = situacao.get(faturaId);
+  const leitura = leituraDaFatura(total, [
+    { valor: daFatura?.pagoEmDinheiro ?? 0, emDinheiro: true, parcelamento: false },
+    { valor: daFatura?.trocadoPorDivida ?? 0, emDinheiro: false, parcelamento: false },
+  ]);
+
+  if (!podeLevarOCredito(leitura.credito, atual.data_fechamento <= hoje())) {
+    throw new Error(
+      'Só dá para levar o crédito depois que a fatura fecha, e só se sobrar crédito nela.',
+    );
+  }
+
+  const { data: seguintes, error: erroSeguinte } = await supabase
+    .from('faturas')
+    .select('id, data_vencimento')
+    .eq('cartao_id', atual.cartao_id)
+    .gt('data_vencimento', atual.data_vencimento)
+    .order('data_vencimento')
+    .limit(1);
+  if (erroSeguinte) throw new Error(erroSeguinte.message);
+
+  const seguinte = seguintes?.[0];
+  if (!seguinte) {
+    throw new Error('A próxima fatura ainda não existe. Abra a aba de cartões para gerá-la.');
+  }
+
+  const comum = {
+    conta_id: atual.cartao_id,
+    tipo: 'transferencia' as const,
+    data_competencia: hoje(),
+    origem: 'manual' as const,
+    revisado: true,
+  };
+
+  const { data: criadas, error } = await supabase
+    .from('transacoes')
+    .insert([
+      // Tira o crédito daqui: esta fatura passa a fechar em zero.
+      {
+        ...comum,
+        fatura_id: faturaId,
+        data_caixa: atual.data_vencimento,
+        valor: paraNumerico(-leitura.credito),
+        descricao: CREDITO_LEVADO,
+      },
+      // E põe lá, abatendo a fatura seguinte.
+      {
+        ...comum,
+        fatura_id: seguinte.id,
+        data_caixa: seguinte.data_vencimento,
+        valor: paraNumerico(leitura.credito),
+        descricao: CREDITO_RECEBIDO,
+      },
+    ])
+    .select('id');
+  if (error) throw new Error(error.message);
+
+  const [saida, entrada] = criadas ?? [];
+  if (!saida || !entrada) throw new Error('Crédito gravado pela metade.');
+
+  await Promise.all([
+    supabase.from('transacoes').update({ transferencia_par_id: entrada.id }).eq('id', saida.id),
+    supabase.from('transacoes').update({ transferencia_par_id: saida.id }).eq('id', entrada.id),
+  ]);
+
+  await Promise.all([acertarStatusDaFatura(faturaId), acertarStatusDaFatura(seguinte.id)]);
+}
+
+/**
+ * Devolve o crédito para a fatura de onde ele saiu (§2.1).
+ *
+ * As duas linhas caem juntas: apagar só uma deixaria o mesmo crédito abatendo
+ * uma fatura e faltando na outra.
+ */
+export async function desfazerCreditoLevado(faturaId: string): Promise<void> {
+  const levado = await creditoLevadoDaFatura(faturaId);
+  if (!levado) throw new Error('Esta fatura não levou crédito para a seguinte.');
+
+  // A fatura que recebeu, para acertar o status dela também.
+  let faturaSeguinte: string | null = null;
+  if (levado.parId !== null) {
+    const { data } = await supabase
+      .from('transacoes')
+      .select('fatura_id')
+      .eq('id', levado.parId)
+      .maybeSingle();
+    faturaSeguinte = data?.fatura_id ?? null;
+  }
+
+  const ids = levado.parId === null ? [levado.id] : [levado.id, levado.parId];
+  const { error } = await supabase.from('transacoes').delete().in('id', ids);
+  if (error) throw new Error(error.message);
+
+  await acertarStatusDaFatura(faturaId);
+  if (faturaSeguinte !== null) await acertarStatusDaFatura(faturaSeguinte);
 }
 
 /** Quanto desta fatura foi rolado para a seguinte, se foi. */

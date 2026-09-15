@@ -439,3 +439,16 @@ export function leituraDaFatura(
           : 'rotativo',
   };
 }
+
+/**
+ * Dá para levar o crédito desta fatura para a seguinte? (§2.1)
+ *
+ * Só depois que ela FECHA. Enquanto aberta ainda entra compra, e o crédito que
+ * existe hoje pode ser consumido amanhã — levá-lo cedo criaria uma cobrança na
+ * fatura seguinte para devolver um crédito que nunca sobrou.
+ *
+ * É a mesma hora em que o banco faz a conta: no fechamento.
+ */
+export function podeLevarOCredito(credito: Centavos, fechada: boolean): boolean {
+  return fechada && credito > 0;
+}

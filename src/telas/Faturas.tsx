@@ -16,6 +16,7 @@ import {
   faturaDeReferencia,
   faturaDoMes,
   leituraDaFatura,
+  podeLevarOCredito,
 } from '../dominio/fatura';
 import { linhasDaFatura } from '../dominio/agrupamento';
 import { listarDividas } from '../dados/dividas';
@@ -34,6 +35,9 @@ import { usarContas } from '../dados/usarContas';
 import { usarBuscaDeCategoria } from '../dados/usarTransacoes';
 import {
   cartoesComFaturaPendente,
+  creditoLevadoDaFatura,
+  desfazerCreditoLevado,
+  levarCreditoParaAProxima,
   desfazerPagamentoDeFatura,
   listarFaturas,
   pagarFatura,
@@ -328,6 +332,27 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
     queryFn: () => situacaoDasFaturas([fatura.id]).then((mapa) => mapa.get(fatura.id) ?? null),
   });
 
+  const creditoLevado = useQuery({
+    queryKey: ['credito-levado', fatura.id],
+    queryFn: () => creditoLevadoDaFatura(fatura.id),
+  });
+
+  const levarCredito = useMutation({
+    mutationFn: () => levarCreditoParaAProxima(fatura.id),
+    onSuccess: async () => {
+      await invalidar();
+      mostrar('Crédito levado para a fatura seguinte.');
+    },
+  });
+
+  const devolverCredito = useMutation({
+    mutationFn: () => desfazerCreditoLevado(fatura.id),
+    onSuccess: async () => {
+      await invalidar();
+      mostrar('Crédito devolvido para esta fatura.');
+    },
+  });
+
   /*
     O que falta é calculado, nunca lido do status (§13.2) — e separando o que
     saiu em DINHEIRO do que virou dívida.
@@ -574,10 +599,57 @@ function CartaoDeFatura({ fatura, cartao }: { fatura: Fatura; cartao: CartaoComC
               </div>
             </div>
           ) : saldo.falta === 0 ? (
-            <p className="rounded-md border border-borda-forte px-3 py-2 text-xs leading-relaxed text-slate-400">
-              Nada a pagar nesta fatura. Não há o que registrar, parcelar ou rolar — e, se houver
-              crédito, ele abate a próxima.
-            </p>
+            <div className="space-y-2">
+              <p className="rounded-md border border-borda-forte px-3 py-2 text-xs leading-relaxed text-slate-400">
+                Nada a pagar nesta fatura. Não há o que registrar, parcelar ou rolar.
+              </p>
+
+              {/* O crédito sobrando vai para a fatura seguinte, como no banco.
+                  Por um clique: são duas linhas de dinheiro, e quem confere a
+                  fatura é quem sabe se ela já fechou de verdade. */}
+              {podeLevarOCredito(saldo.credito, fatura.dataFechamento <= hoje()) &&
+                !creditoLevado.data && (
+                  <button
+                    onClick={() => levarCredito.mutate()}
+                    disabled={levarCredito.isPending}
+                    className="w-full rounded-lg border border-emerald-900/60 bg-emerald-950/20 px-4 py-2 text-sm text-emerald-200 transition hover:border-emerald-700 disabled:opacity-40"
+                  >
+                    {levarCredito.isPending
+                      ? 'Levando…'
+                      : `Levar ${formatar(saldo.credito)} para a próxima fatura`}
+                  </button>
+                )}
+
+              {saldo.credito > 0 && fatura.dataFechamento > hoje() && (
+                <p className="text-xs leading-relaxed text-slate-500">
+                  O crédito vai para a próxima fatura quando esta fechar, em{' '}
+                  {formatarBR(fatura.dataFechamento)} — até lá ainda pode entrar compra que o
+                  consuma.
+                </p>
+              )}
+
+              {creditoLevado.data && (
+                <div className="space-y-1 rounded-md border border-borda-forte px-3 py-2">
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    {formatar(creditoLevado.data.valor)} levados para a fatura seguinte, onde
+                    aparecem como crédito.
+                  </p>
+                  <button
+                    onClick={() => devolverCredito.mutate()}
+                    disabled={devolverCredito.isPending}
+                    className={`text-xs text-slate-500 transition hover:text-slate-300 ${ALVO_DE_TOQUE}`}
+                  >
+                    {devolverCredito.isPending ? 'Devolvendo…' : 'Devolver para esta fatura'}
+                  </button>
+                </div>
+              )}
+
+              {(levarCredito.isError || devolverCredito.isError) && (
+                <p className="text-xs text-red-400">
+                  {((levarCredito.error ?? devolverCredito.error) as Error).message}
+                </p>
+              )}
+            </div>
           ) : (
             <>
               {parcial && (

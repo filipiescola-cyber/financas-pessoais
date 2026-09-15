@@ -9,6 +9,7 @@ import {
   leituraDaFatura,
   limiteComACompra,
   planoDoParcelamento,
+  podeLevarOCredito,
   proximasFaturas,
   saldoDaFatura,
 } from '../src/dominio/fatura';
@@ -508,5 +509,21 @@ describe('leitura da fatura: dinheiro x dívida trocada (§2.1, §4.7)', () => {
         }
       }
     }
+  });
+});
+
+describe('levar o crédito para a fatura seguinte (§2.1)', () => {
+  it('fatura fechada com crédito pode levar', () => {
+    expect(podeLevarOCredito(17721, true)).toBe(true);
+  });
+
+  it('fatura ainda aberta não: pode entrar compra que consuma o crédito', () => {
+    // Levando antes de fechar, a fatura seguinte receberia um abatimento que
+    // a compra de amanhã desmente — e aí seria preciso desfazer.
+    expect(podeLevarOCredito(17721, false)).toBe(false);
+  });
+
+  it('sem crédito não há o que levar', () => {
+    expect(podeLevarOCredito(0, true)).toBe(false);
   });
 });
