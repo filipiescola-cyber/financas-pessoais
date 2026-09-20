@@ -119,6 +119,33 @@ export async function definirTeto(
 }
 
 /**
+ * Grava de uma vez os tetos que um cenário sugere (§8.6).
+ *
+ * Em porcentagem, sempre: é o cenário que está sendo aplicado, e cenário é
+ * porcentagem da renda. Gravar o valor em reais congelaria a decisão no
+ * salário de hoje.
+ */
+export async function definirTetosEmLote(
+  mes: DataISO,
+  tetos: readonly { categoriaId: string; percentual: number }[],
+): Promise<number> {
+  if (tetos.length === 0) return 0;
+
+  const { error } = await supabase.from('orcamentos').upsert(
+    tetos.map((teto) => ({
+      mes_referencia: primeiroDiaDoMes(mes),
+      categoria_id: teto.categoriaId,
+      valor_planejado: 0,
+      percentual_da_renda: Math.min(teto.percentual, 100),
+    })),
+    { onConflict: 'mes_referencia,categoria_id' },
+  );
+  if (error) throw new Error(error.message);
+
+  return tetos.length;
+}
+
+/**
  * Copia os tetos de um mês para outro. Orçamento muda pouco de mês a mês, e
  * redigitar tudo todo mês é o tipo de atrito que faz a funcionalidade morrer.
  */

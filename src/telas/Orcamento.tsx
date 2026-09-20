@@ -8,15 +8,18 @@ import {
   ROTULOS_DAS_FAIXAS,
   comparacaoComOCenario,
   divisaoDaRenda,
+  tetosDoCenario,
   mereceAlerta,
   panoramaDaRenda,
   progressoDoOrcamento,
+  type CenarioDeOrcamento,
   type FaixaDoOrcamento,
   type ProgressoDoOrcamento,
 } from '../dominio/orcamento';
 import {
   copiarOrcamentoDoMesAnterior,
   definirTeto,
+  definirTetosEmLote,
   listarOrcamentos,
   rendaFixaCadastrada,
   type TetoEscolhido,
@@ -27,6 +30,7 @@ import { usarAviso } from '../ui/Aviso';
 import {
   ALVO_DE_TOQUE,
   Botao,
+  ENTRADA,
   Cartao,
   Chip,
   Dinheiro,
@@ -60,6 +64,18 @@ export function Orcamento() {
     queryFn: () => listarOrcamentos(mes),
   });
   const transacoes = usarTransacoes({ de: mes, ate: ultimoDiaDoMes(mes) });
+
+  /*
+    Três meses para repartir a faixa entre as categorias dela.
+
+    O mês corrente sozinho não serve: no dia 3, quase toda categoria está
+    zerada, e a sugestão sairia dando a faixa inteira para quem passou no posto
+    no dia 2. Três meses já têm a forma do gasto de quem está olhando.
+  */
+  const historico = usarTransacoes({
+    de: primeiroDiaDoMes(somarMeses(mes, -2)),
+    ate: ultimoDiaDoMes(mes),
+  });
 
   // A renda fixa do mês: é o denominador de todas as porcentagens daqui.
   const renda = useQuery({
@@ -105,6 +121,23 @@ export function Orcamento() {
 
   const realizadoPorCategoria = new Map(
     gastoPorCategoria(paraRelatorio).map((fatia) => [fatia.categoriaId, fatia.total]),
+  );
+
+  const paisComFilhasNoHistorico = new Set(
+    (historico.data ?? []).map((t) => t.transacaoPaiId).filter((id): id is string => id !== null),
+  );
+  const gastoDoHistorico = new Map(
+    gastoPorCategoria(
+      (historico.data ?? []).map((t) => ({
+        valor: t.valor,
+        tipo: t.tipo,
+        dataCompetencia: t.dataCompetencia,
+        categoriaId: t.categoriaId,
+        natureza: null,
+        transacaoPaiId: t.transacaoPaiId,
+        temFilhas: paisComFilhasNoHistorico.has(t.id),
+      })),
+    ).map((fatia) => [fatia.categoriaId, fatia.total]),
   );
 
   const tetos = new Map((orcamentos.data ?? []).map((o) => [o.categoriaId, o.valorPlanejado]));
@@ -166,6 +199,27 @@ export function Orcamento() {
   const gastandoSemFaixa = comMovimento.filter(
     (c) => c.faixa === null && (realizadoPorCategoria.get(c.id) ?? 0) > 0,
   );
+
+  // A colinha de cada categoria: o que cada cenário daria PARA ELA.
+  const paraOsCenarios = despesas.map((c) => ({ id: c.id, faixa: c.faixa }));
+  const sugestoesPorCategoria = new Map<string, { cenario: string; percentual: number }[]>();
+  for (const cenario of CENARIOS_DE_ORCAMENTO) {
+    for (const sugestao of tetosDoCenario(cenario, paraOsCenarios, gastoDoHistorico)) {
+      sugestoesPorCategoria.set(sugestao.categoriaId, [
+        ...(sugestoesPorCategoria.get(sugestao.categoriaId) ?? []),
+        { cenario: cenario.nome, percentual: sugestao.percentual },
+      ]);
+    }
+  }
+
+  const aplicar = useMutation({
+    mutationFn: (cenario: CenarioDeOrcamento) =>
+      definirTetosEmLote(mes, tetosDoCenario(cenario, paraOsCenarios, gastoDoHistorico)),
+    onSuccess: async (quantidade) => {
+      await cliente.invalidateQueries({ queryKey: ['orcamentos'] });
+      mostrar(`${quantidade} teto(s) definido(s) pelo cenário.`);
+    },
+  });
 
   return (
     <Pagina
@@ -270,6 +324,7 @@ export function Orcamento() {
               )}
               percentualDaRenda={percentuais.get(categoria.id) ?? null}
               rendaFixa={renda.data ?? 0}
+              sugestoes={sugestoesPorCategoria.get(categoria.id) ?? []}
               aoDefinirTeto={async (teto) => {
                 await definirTeto(mes, categoria.id, teto);
                 await cliente.invalidateQueries({ queryKey: ['orcamentos'] });
@@ -285,6 +340,14 @@ export function Orcamento() {
             <Cartao key={cenario.nome} className="p-4">
               <h3 className="text-sm text-slate-100">{cenario.nome}</h3>
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{cenario.quandoServe}</p>
+
+              <AplicarCenario
+                sugestoes={tetosDoCenario(cenario, paraOsCenarios, gastoDoHistorico)}
+                nomeDaCategoria={(id) => despesas.find((c) => c.id === id)?.nome ?? '—'}
+                rendaFixa={renda.data ?? 0}
+                aplicando={aplicar.isPending}
+                aoAplicar={() => aplicar.mutate(cenario)}
+              />
 
               <div className="mt-3 space-y-2">
                 {comparacaoComOCenario(cenario, divisao, panorama.rendaFixa).map((faixa) => {
@@ -381,6 +444,92 @@ export function Orcamento() {
   );
 }
 
+/**
+ * Aplicar um cenário a todas as categorias de uma vez (§8.6).
+ *
+ * Com prévia antes de gravar, e não num clique só: isto REESCREVE os tetos que
+ * já existem, e um botão que mexe em quinze linhas de uma vez precisa dizer
+ * quais são as quinze antes de mexer.
+ */
+function AplicarCenario({
+  sugestoes,
+  nomeDaCategoria,
+  rendaFixa,
+  aplicando,
+  aoAplicar,
+}: {
+  sugestoes: readonly { categoriaId: string; percentual: number }[];
+  nomeDaCategoria: (id: string) => string;
+  rendaFixa: Centavos;
+  aplicando: boolean;
+  aoAplicar: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+
+  if (sugestoes.length === 0) {
+    return (
+      <p className="mt-2 text-[11px] text-slate-600">
+        Sem gasto nos últimos três meses nas categorias destas faixas, não há como repartir a
+        renda entre elas.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className={`mt-2 text-xs text-emerald-500 hover:text-emerald-400 ${ALVO_DE_TOQUE}`}
+      >
+        {aberto ? 'Fechar' : 'Definir os tetos por este cenário'}
+      </button>
+
+      {aberto && (
+        <div className="mt-2 space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">
+          <p className="text-xs leading-relaxed text-slate-400">
+            Os tetos ficam assim — em porcentagem da renda, repartida entre as categorias na
+            mesma proporção dos últimos três meses. Isto substitui os tetos que já existem
+            nestas categorias.
+          </p>
+
+          <ul className="max-h-48 space-y-1 overflow-y-auto">
+            {sugestoes.map((sugestao) => (
+              <li
+                key={sugestao.categoriaId}
+                className="flex items-baseline justify-between gap-3 text-xs"
+              >
+                <span className="truncate text-slate-300">
+                  {nomeDaCategoria(sugestao.categoriaId)}
+                </span>
+                <span className="shrink-0 tabular-nums text-slate-500">
+                  {sugestao.percentual}%
+                  {rendaFixa > 0 &&
+                    ` · ${formatar(Math.round((rendaFixa * sugestao.percentual) / 100))}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex gap-2">
+            <Botao
+              aoClicar={() => {
+                aoAplicar();
+                setAberto(false);
+              }}
+              desabilitado={aplicando}
+            >
+              {aplicando ? 'Aplicando…' : 'Aplicar'}
+            </Botao>
+            <Botao tipo="secundario" aoClicar={() => setAberto(false)}>
+              Cancelar
+            </Botao>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function LinhaDoOrcamento({
   nome,
   icone,
@@ -388,6 +537,7 @@ function LinhaDoOrcamento({
   progresso,
   percentualDaRenda,
   rendaFixa,
+  sugestoes,
   aoDefinirTeto,
 }: {
   nome: string;
@@ -396,6 +546,8 @@ function LinhaDoOrcamento({
   progresso: ProgressoDoOrcamento;
   percentualDaRenda: number | null;
   rendaFixa: Centavos;
+  /** O que cada cenário daria para ESTA categoria. A colinha de quem está decidindo. */
+  sugestoes: readonly { cenario: string; percentual: number }[];
   aoDefinirTeto: (teto: TetoEscolhido) => Promise<void>;
 }) {
   const [editando, setEditando] = useState(false);
@@ -503,12 +655,14 @@ function LinhaDoOrcamento({
           ) : (
             <label className="block">
               <span className="text-xs text-slate-400">Porcentagem da renda fixa</span>
+              {/* A entrada padrão do app. Escrita à mão, esta ficava sem a cor
+                  de placeholder e com outro respiro — diferente por acidente. */}
               <input
                 inputMode="decimal"
                 value={percentual}
                 onChange={(e) => setPercentual(e.target.value.replace(/[^\d,.]/g, '').slice(0, 5))}
                 placeholder="10"
-                className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-600"
+                className={`mt-1 ${ENTRADA}`}
               />
               <span className="mt-1 block text-[11px] text-slate-500">
                 {rendaFixa > 0
@@ -516,6 +670,28 @@ function LinhaDoOrcamento({
                   : 'Sem renda fixa cadastrada, a porcentagem fica guardada e vira valor assim que houver uma recorrência de receita.'}
               </span>
             </label>
+          )}
+
+          {/* A colinha: o que cada cenário daria para ESTA categoria, já
+              repartido dentro da faixa dela. Um toque preenche o campo —
+              porque a conta certa que dá trabalho de copiar não é usada. */}
+          {modo === 'percentual' && sugestoes.length > 0 && (
+            <div>
+              <span className="text-[11px] text-slate-500">
+                Pelos cenários, esta categoria ficaria com:
+              </span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {sugestoes.map((sugestao) => (
+                  <button
+                    key={sugestao.cenario}
+                    onClick={() => setPercentual(String(sugestao.percentual).replace('.', ','))}
+                    className={`rounded-full border border-borda px-2.5 py-1 text-[11px] text-slate-400 transition hover:border-emerald-700 hover:text-emerald-300 ${ALVO_DE_TOQUE}`}
+                  >
+                    {sugestao.cenario} <span className="tabular-nums">{sugestao.percentual}%</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           <div className="flex gap-2">

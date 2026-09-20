@@ -12,6 +12,7 @@ import {
   progressoDaMeta,
   progressoDoOrcamento,
   rendaFixaDoMes,
+  tetosDoCenario,
   tetoDoOrcamento,
   valoresDoCenario,
 } from '../src/dominio/orcamento';
@@ -393,5 +394,82 @@ describe('as faixas do cenário e as categorias (§8.6)', () => {
       const chaves = cenario.faixas.map((f) => f.chave);
       expect(new Set(chaves)).toEqual(new Set(['essenciais', 'estilo_de_vida', 'futuro']));
     }
+  });
+});
+
+describe('aplicar um cenário vira teto por categoria (§8.6)', () => {
+  const categorias = [
+    { id: 'moradia', faixa: 'essenciais' as const },
+    { id: 'mercado', faixa: 'essenciais' as const },
+    { id: 'lazer', faixa: 'estilo_de_vida' as const },
+    { id: 'assinaturas', faixa: 'estilo_de_vida' as const },
+    { id: 'investimento', faixa: 'futuro' as const },
+    { id: 'outros', faixa: null },
+  ];
+
+  // Essenciais: 300 de Moradia e 100 de Mercado — 75% e 25% da faixa.
+  const gastos = new Map<string | null, number>([
+    ['moradia', 300000],
+    ['mercado', 100000],
+    ['lazer', 60000],
+    ['assinaturas', 20000],
+    ['investimento', 50000],
+    ['outros', 10000],
+  ]);
+
+  const equilibrado = CENARIOS_DE_ORCAMENTO[0]!;
+
+  it('cada categoria mantém a fatia que já tem DENTRO da faixa', () => {
+    const sugestoes = tetosDoCenario(equilibrado, categorias, gastos);
+    const porId = new Map(sugestoes.map((s) => [s.categoriaId, s.percentual]));
+
+    // Essenciais valem 50% da renda: 75% disso é 37,5% e 25% é 12,5%.
+    expect(porId.get('moradia')).toBe(37.5);
+    expect(porId.get('mercado')).toBe(12.5);
+  });
+
+  it('as sugestões de uma faixa somam a porcentagem da faixa', () => {
+    const sugestoes = tetosDoCenario(equilibrado, categorias, gastos);
+    const essenciais = sugestoes
+      .filter((s) => ['moradia', 'mercado'].includes(s.categoriaId))
+      .reduce((soma, s) => soma + s.percentual, 0);
+
+    expect(essenciais).toBeCloseTo(50, 1);
+  });
+
+  it('futuro não vira teto: ele é o que sobra, não um gasto planejado', () => {
+    const sugestoes = tetosDoCenario(equilibrado, categorias, gastos);
+    expect(sugestoes.some((s) => s.categoriaId === 'investimento')).toBe(false);
+  });
+
+  it('categoria sem faixa não recebe sugestão nenhuma', () => {
+    const sugestoes = tetosDoCenario(equilibrado, categorias, gastos);
+    expect(sugestoes.some((s) => s.categoriaId === 'outros')).toBe(false);
+  });
+
+  it('categoria sem histórico não recebe teto inventado', () => {
+    const semMercado = new Map(gastos);
+    semMercado.set('mercado', 0);
+
+    const sugestoes = tetosDoCenario(equilibrado, categorias, semMercado);
+    expect(sugestoes.some((s) => s.categoriaId === 'mercado')).toBe(false);
+    // E a faixa inteira vai para quem gastou.
+    expect(sugestoes.find((s) => s.categoriaId === 'moradia')?.percentual).toBe(50);
+  });
+
+  it('faixa sem gasto nenhum não gera sugestão, em vez de dividir por zero', () => {
+    const vazio = new Map<string | null, number>();
+    expect(tetosDoCenario(equilibrado, categorias, vazio)).toEqual([]);
+  });
+
+  it('cenário mais apertado aperta todo mundo na mesma proporção', () => {
+    const apertado = CENARIOS_DE_ORCAMENTO.find((c) => c.nome === 'Quitando dívida')!;
+    const porId = new Map(
+      tetosDoCenario(apertado, categorias, gastos).map((s) => [s.categoriaId, s.percentual]),
+    );
+
+    // Estilo de vida cai de 30% para 15%: Lazer tem 75% da faixa, 11,3%.
+    expect(porId.get('lazer')).toBeCloseTo(11.3, 1);
+    expect(porId.get('assinaturas')).toBeCloseTo(3.8, 1);
   });
 });

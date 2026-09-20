@@ -579,3 +579,57 @@ export function comparacaoComOCenario(
     };
   });
 }
+
+export type TetoSugerido = {
+  categoriaId: string;
+  /** Porcentagem da renda, com uma casa. */
+  percentual: number;
+};
+
+/**
+ * O cenário virado em teto por categoria (§8.6).
+ *
+ * A faixa diz quanto vai para Essenciais; ela não diz quanto vai para Mercado.
+ * A repartição sai do histórico: cada categoria fica com a MESMA fatia que já
+ * tem dentro da faixa dela, só que a faixa inteira passa a caber no que o
+ * cenário manda. Quem gasta 60% dos essenciais em Moradia continua com 60%
+ * deles — o que muda é o tamanho do bolo.
+ *
+ * Dividir igualmente seria pior do que não sugerir nada: daria o mesmo teto
+ * para Moradia e para Pets, e ninguém cumpre um orçamento desses.
+ *
+ * Futuro fica de fora de propósito: ele é o que SOBRA (ver `DivisaoDaRenda`), e
+ * um teto de gasto nele seria uma promessa medida pelo lado errado.
+ *
+ * Categoria sem histórico na faixa não recebe teto: sugerir para quem nunca
+ * gastou é inventar (§13.5).
+ */
+export function tetosDoCenario(
+  cenario: CenarioDeOrcamento,
+  categorias: readonly { id: string; faixa: FaixaDoOrcamento | null }[],
+  gastoPorCategoria: ReadonlyMap<string | null, Centavos>,
+): TetoSugerido[] {
+  const sugestoes: TetoSugerido[] = [];
+
+  for (const faixa of cenario.faixas) {
+    if (faixa.chave === 'futuro') continue;
+
+    const daFaixa = categorias.filter((c) => c.faixa === faixa.chave);
+    const total = daFaixa.reduce((soma, c) => soma + (gastoPorCategoria.get(c.id) ?? 0), 0);
+    if (total <= 0) continue;
+
+    for (const categoria of daFaixa) {
+      const gasto = gastoPorCategoria.get(categoria.id) ?? 0;
+      if (gasto <= 0) continue;
+
+      // Uma casa decimal: 8,2% da renda é um teto; 8,1743% é um número que
+      // ninguém confere. O banco guarda três, e a soma fecha na faixa.
+      const percentual = Math.round(((gasto / total) * faixa.percentual) * 10) / 10;
+      if (percentual <= 0) continue;
+
+      sugestoes.push({ categoriaId: categoria.id, percentual });
+    }
+  }
+
+  return sugestoes;
+}
