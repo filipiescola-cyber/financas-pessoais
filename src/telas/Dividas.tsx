@@ -30,6 +30,7 @@ import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 import { usarAviso } from '../ui/Aviso';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
 import { CampoValor } from '../ui/CampoValor';
+import { ChipsDeConta } from '../ui/ChipsDeConta';
 import { ConfirmacaoDeExclusao } from '../ui/ConfirmacaoDeExclusao';
 import {
   ALVO_DE_TOQUE,
@@ -630,23 +631,15 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
         rotulo="De onde sai a parcela (opcional)"
         ajuda="Informando, a parcela aparece sozinha todo mês e some no mês da quitação. Num cartão, ela entra nas faturas, como qualquer parcelamento. Sem isso, a dívida não pesa no fluxo de caixa."
       >
-        <div className="flex flex-wrap gap-2">
-          {(contas.data ?? []).filter(podeCobrarParcela).map((conta) => (
-            <Chip
-              key={conta.id}
-              ativo={contaId === conta.id}
-              aoClicar={() => setContaId(contaId === conta.id ? null : conta.id)}
-            >
-              <span className="flex items-center gap-1.5">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: conta.cor ?? 'var(--color-borda-forte)' }}
-                />
-                {conta.nome}
-              </span>
-            </Chip>
-          ))}
-        </div>
+        {/* O cartão em bloco separado, como nas outras telas (§5.1): "Nubank"
+            conta e "Nubank" cartão eram dois chips idênticos, e o errado manda
+            a parcela para o lugar errado. Enquanto cartão não aparecia aqui,
+            uma fila só bastava. */}
+        <ChipsDeConta
+          contas={(contas.data ?? []).filter(podeCobrarParcela)}
+          escolhida={contaId}
+          aoEscolher={(id) => setContaId(contaId === id ? null : id)}
+        />
 
         {/* O cartão muda o que vai acontecer, e vale dizer antes de salvar. */}
         {noCartao && (
