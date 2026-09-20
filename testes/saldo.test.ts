@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   empresaComSaldoSuspeito,
   entraNoConsolidado,
+  podeCobrarParcela,
+  podePagarFatura,
   podeResgatarHoje,
   rotuloDaContaEmpresa,
   saldoConsolidado,
@@ -147,5 +149,35 @@ describe('travado em aplicação', () => {
   it('o que venceu volta para o disponível', () => {
     const venceu = { liquidezDiaria: false, vencimento: '2026-08-31', aplicado: 300000 };
     expect(travadoEmAplicacao([venceu], 800000, HOJE)).toBe(0);
+  });
+});
+
+describe('de onde sai a parcela de uma dívida (§2.1, §4.7)', () => {
+  it('dinheiro de verdade paga fatura e parcela', () => {
+    for (const tipo of ['corrente', 'poupanca', 'carteira'] as const) {
+      expect(podePagarFatura({ tipo })).toBe(true);
+      expect(podeCobrarParcela({ tipo })).toBe(true);
+    }
+  });
+
+  it('cartão não paga fatura, mas COBRA parcela', () => {
+    /*
+      A diferença que separa as duas perguntas. Cartão não paga cartão — mas
+      parcelamento de fatura, compra em N vezes e o "parcelamento de pendências"
+      que o banco oferece são dívidas cobradas no cartão: a parcela entra na
+      fatura do mês, e o dinheiro só sai quando a fatura vence.
+
+      Enquanto só existia `podePagarFatura`, o formulário de dívida não deixava
+      escolher o cartão, e esse parcelamento não tinha como ser cadastrado.
+    */
+    expect(podePagarFatura({ tipo: 'cartao_credito' })).toBe(false);
+    expect(podeCobrarParcela({ tipo: 'cartao_credito' })).toBe(true);
+  });
+
+  it('investimento, empresa e dívida ficam de fora das duas', () => {
+    for (const tipo of ['investimento', 'empresa', 'divida'] as const) {
+      expect(podePagarFatura({ tipo })).toBe(false);
+      expect(podeCobrarParcela({ tipo })).toBe(false);
+    }
   });
 });

@@ -59,6 +59,21 @@ export function podePagarFatura(conta: { tipo: TipoDeConta }): boolean {
   return conta.tipo === 'corrente' || conta.tipo === 'poupanca' || conta.tipo === 'carteira';
 }
 
+/**
+ * Onde a parcela de uma dívida pode ser cobrada (§2.1, §4.7).
+ *
+ * Mais largo que `podePagarFatura`, e de propósito: o cartão entra. Parcelamento
+ * de fatura, compra em N vezes, o "parcelamento de pendências" que o banco
+ * oferece — tudo isso é dívida cobrada NO cartão, e a parcela não sai do caixa
+ * no dia: ela entra na fatura do mês, e o dinheiro sai quando a fatura vence.
+ *
+ * Fora isso, a mesma regra: investimento precisa ser resgatado antes, e Empresa
+ * e dívida não são caixa (§2.6).
+ */
+export function podeCobrarParcela(conta: { tipo: TipoDeConta }): boolean {
+  return podePagarFatura(conta) || conta.tipo === 'cartao_credito';
+}
+
 export const TIPOS_FORA_DO_CONSOLIDADO: readonly TipoDeConta[] = [
   'empresa',
   'divida',

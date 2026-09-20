@@ -25,7 +25,7 @@ import {
 } from '../dados/dividas';
 import { usarContas } from '../dados/usarContas';
 import { usarCategorias } from '../dados/usarTransacoes';
-import { podePagarFatura } from '../dominio/saldo';
+import { podeCobrarParcela } from '../dominio/saldo';
 import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 import { usarAviso } from '../ui/Aviso';
 import { CampoInstituicao } from '../ui/CampoInstituicao';
@@ -433,6 +433,11 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
   const n = Number(parcelas);
   const jaPagas = Math.min(Number(pagas) || 0, n);
 
+  const contaEscolhida = (contas.data ?? []).find((c) => c.id === contaId) ?? null;
+  // Cobrada no cartão, a dívida se comporta de outro jeito: as parcelas entram
+  // nas faturas, e "quantas já foram pagas" deixa de ser um número digitado.
+  const noCartao = contaEscolhida?.tipo === 'cartao_credito';
+
   // Os dois caminhos para a taxa. Pela parcela só faz sentido no Price, onde a
   // parcela é constante — no SAC ela muda todo mês e "a parcela" não existe.
   const taxaMensal =
@@ -475,7 +480,9 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
         parcelas: n,
         sistema,
         primeiraParcela: primeira,
-        parcelasPagas: jaPagas,
+        // No cartão, pagas vem da fatura (§2.1): guardar um número aqui seria
+        // a mesma verdade em dois lugares, e o daqui nunca mais andaria.
+        parcelasPagas: noCartao ? 0 : jaPagas,
         contaId,
         categoriaId,
       }),
@@ -599,24 +606,32 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
         />
       </Campo>
 
-      <Campo
-        rotulo="Quantas já foram pagas"
-        ajuda="Quase ninguém começa a usar um app no mês em que assinou o contrato. Sem este número, o saldo devedor nasce errado."
-      >
-        <input
-          inputMode="numeric"
-          value={pagas}
-          onChange={(e) => setPagas(e.target.value.replace(/\D/g, '').slice(0, 3))}
-          className={ENTRADA}
-        />
-      </Campo>
+      {noCartao ? (
+        <p className="rounded-md border border-borda-forte px-3 py-2 text-xs leading-relaxed text-slate-400">
+          No cartão não se paga a parcela: paga-se a fatura em que ela caiu. Por isso o app conta
+          sozinho quantas já foram pagas, e não pergunta. Se este parcelamento já começou, cadastre
+          só o que FALTA: o saldo devedor de hoje e as parcelas que ainda vêm.
+        </p>
+      ) : (
+        <Campo
+          rotulo="Quantas já foram pagas"
+          ajuda="Quase ninguém começa a usar um app no mês em que assinou o contrato. Sem este número, o saldo devedor nasce errado."
+        >
+          <input
+            inputMode="numeric"
+            value={pagas}
+            onChange={(e) => setPagas(e.target.value.replace(/\D/g, '').slice(0, 3))}
+            className={ENTRADA}
+          />
+        </Campo>
+      )}
 
       <Campo
-        rotulo="De qual conta sai a parcela (opcional)"
-        ajuda="Informando, o app cria a recorrência com prazo: a parcela aparece sozinha todo mês e some no mês da quitação. Sem isso, a dívida não pesa no fluxo de caixa."
+        rotulo="De onde sai a parcela (opcional)"
+        ajuda="Informando, a parcela aparece sozinha todo mês e some no mês da quitação. Num cartão, ela entra nas faturas, como qualquer parcelamento. Sem isso, a dívida não pesa no fluxo de caixa."
       >
         <div className="flex flex-wrap gap-2">
-          {(contas.data ?? []).filter(podePagarFatura).map((conta) => (
+          {(contas.data ?? []).filter(podeCobrarParcela).map((conta) => (
             <Chip
               key={conta.id}
               ativo={contaId === conta.id}
@@ -632,6 +647,15 @@ export function FormularioDeDivida({ aoTerminar }: { aoTerminar: () => void }) {
             </Chip>
           ))}
         </div>
+
+        {/* O cartão muda o que vai acontecer, e vale dizer antes de salvar. */}
+        {noCartao && (
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            {n > 0 ? `As ${n} parcelas entram` : 'As parcelas entram'} de uma vez nas próximas
+            faturas de {contaEscolhida?.nome}, a partir da primeira parcela — é o que o banco já
+            fez do lado dele.
+          </p>
+        )}
       </Campo>
 
       {contaId && (

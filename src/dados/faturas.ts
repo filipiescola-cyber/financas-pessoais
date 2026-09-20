@@ -15,7 +15,7 @@ import {
   saldoDaFatura,
   type ConfiguracaoDoCartao,
 } from '../dominio/fatura';
-import { criarDivida, lancarParcelasDoCartao } from './dividas';
+import { criarDivida } from './dividas';
 import { idDaFatura } from './idDaFatura';
 import {
   dividaEmAbertoPorCartao,
@@ -628,15 +628,14 @@ export async function parcelarFatura(dados: {
   if (error) throw new Error(error.message);
 
   /*
-    No cartão, as parcelas nascem já dentro das faturas — todas, de uma vez.
+    As parcelas já nasceram dentro das faturas, em `criarDivida` — todas, de uma
+    vez, como o cartão trata qualquer parcelamento (§2.2): o banco já anunciou
+    as N cobranças, e é enquanto a fatura está aberta que o total dela serve
+    para alguma coisa. Com entrada, a 1ª cai de volta NESTA fatura, e é por isso
+    que ela deixa de estar quitada: o que falta passa a ser exatamente a entrada.
 
-    É como o cartão trata qualquer parcelamento (§2.2): o banco já anunciou as
-    N cobranças, e é enquanto a fatura está aberta que o total dela serve para
-    alguma coisa. Com entrada, a 1ª cai de volta NESTA fatura, e é por isso que
-    ela deixa de estar quitada: o que falta passa a ser exatamente a entrada.
+    Por isso o status é acertado depois: a fatura mudou no meio do caminho.
   */
-  if (noCartao) await lancarParcelasDoCartao(dividaId);
-
   await acertarStatusDaFatura(dados.faturaId);
 }
 

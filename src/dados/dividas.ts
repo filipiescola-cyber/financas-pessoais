@@ -241,6 +241,17 @@ export type NovaDivida = {
  * A dívida pesa no fluxo de caixa mesmo assim — a projeção lê as dívidas
  * diretamente, como compromisso com prazo (§8.2).
  */
+/** A conta é um cartão? É o que decide se a parcela cai na fatura ou no caixa. */
+async function ehCartao(contaId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('contas')
+    .select('tipo')
+    .eq('id', contaId)
+    .single();
+  if (error) throw new Error(error.message);
+  return data.tipo === 'cartao_credito';
+}
+
 export async function criarDivida(nova: NovaDivida): Promise<string> {
   const { data, error } = await supabase
     .from('dividas')
@@ -261,6 +272,24 @@ export async function criarDivida(nova: NovaDivida): Promise<string> {
     .single();
 
   if (error) throw new Error(error.message);
+
+  /*
+    No cartão, a dívida NASCE com as parcelas dentro das faturas (§2.2).
+
+    Aqui, e não em quem chama, porque são dois caminhos — parcelar a fatura e
+    cadastrar a dívida à mão — e a regra é a mesma nos dois. Enquanto só o
+    primeiro lançava, cadastrar um parcelamento cobrado no cartão criava uma
+    dívida invisível: as faturas seguintes não sabiam dela, e a rotina diária
+    não mexe em dívida de cartão de propósito (o contador de pagas vem da
+    fatura, não do calendário). A dívida existia na aba Dívidas e em lugar
+    nenhum mais.
+
+    Relançar é inofensivo: o índice único recusa a repetição (§13.3).
+  */
+  if (nova.contaId && (await ehCartao(nova.contaId))) {
+    await lancarParcelasDoCartao(data.id);
+  }
+
   return data.id;
 }
 
