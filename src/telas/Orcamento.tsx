@@ -4,15 +4,34 @@ import { hoje, primeiroDiaDoMes, somarMeses, ultimoDiaDoMes, type DataISO } from
 import { formatar, type Centavos } from '../dominio/dinheiro';
 import { gastoPorCategoria, type TransacaoDeRelatorio } from '../dominio/relatorios';
 import {
+  CENARIOS_DE_ORCAMENTO,
   mereceAlerta,
+  panoramaDaRenda,
   progressoDoOrcamento,
+  valoresDoCenario,
   type ProgressoDoOrcamento,
 } from '../dominio/orcamento';
-import { copiarOrcamentoDoMesAnterior, definirTeto, listarOrcamentos } from '../dados/orcamentos';
+import {
+  copiarOrcamentoDoMesAnterior,
+  definirTeto,
+  listarOrcamentos,
+  rendaFixaCadastrada,
+  type TetoEscolhido,
+} from '../dados/orcamentos';
 import { usarCategorias, usarTransacoes } from '../dados/usarTransacoes';
 import { CampoValor } from '../ui/CampoValor';
 import { usarAviso } from '../ui/Aviso';
-import { ALVO_DE_TOQUE, Botao, Cartao, Dinheiro, Nota, Pagina, Secao, Vazio } from '../ui/base';
+import {
+  ALVO_DE_TOQUE,
+  Botao,
+  Cartao,
+  Chip,
+  Dinheiro,
+  Nota,
+  Pagina,
+  Secao,
+  Vazio,
+} from '../ui/base';
 import { IconeDeCategoria } from '../ui/iconesDeCategoria';
 
 const MESES = [
@@ -38,6 +57,12 @@ export function Orcamento() {
     queryFn: () => listarOrcamentos(mes),
   });
   const transacoes = usarTransacoes({ de: mes, ate: ultimoDiaDoMes(mes) });
+
+  // A renda fixa do mês: é o denominador de todas as porcentagens daqui.
+  const renda = useQuery({
+    queryKey: ['renda-fixa', mes],
+    queryFn: () => rendaFixaCadastrada(mes),
+  });
 
   const copiar = useMutation({
     mutationFn: () => copiarOrcamentoDoMesAnterior(mes, somarMeses(mes, -1)),
@@ -101,6 +126,15 @@ export function Orcamento() {
   });
 
   const totalPlanejado = [...tetos.values()].reduce((s, v) => s + v, 0);
+  const totalRealizado = despesas.reduce(
+    (total, c) => total + (realizadoPorCategoria.get(c.id) ?? 0),
+    0,
+  );
+
+  const percentuais = new Map(
+    (orcamentos.data ?? []).map((o) => [o.categoriaId, o.percentualDaRenda]),
+  );
+  const panorama = panoramaDaRenda(renda.data ?? 0, totalPlanejado, totalRealizado);
 
   return (
     <Pagina
@@ -122,6 +156,49 @@ export function Orcamento() {
           {comAlerta.map((c) => c.nome).join(', ')}{' '}
           {comAlerta.length === 1 ? 'passou' : 'passaram'} do ritmo esperado para esta altura do
           mês. Ainda dá para reagir.
+        </Nota>
+      )}
+
+      {/*
+        A renda inteira como denominador (§8.6).
+
+        Teto por categoria responde "cabe no que eu decidi para Lazer?". Esta
+        barra responde a pergunta de cima — "sobrou quanto do que entra?" — que
+        é a que decide se a compra acontece.
+      */}
+      {!panorama.semRenda && (
+        <Cartao className="p-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-xs uppercase tracking-wider text-slate-500">
+              Renda fixa do mês
+            </span>
+            <Dinheiro centavos={panorama.rendaFixa} className="text-sm text-slate-200" />
+          </div>
+
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-superficie-alta">
+            <div
+              className={`h-full rounded-full transition-all ${
+                panorama.proporcaoRealizada > 1 ? 'bg-red-500' : 'bg-emerald-600'
+              }`}
+              style={{ width: `${Math.min(panorama.proporcaoRealizada * 100, 100)}%` }}
+            />
+          </div>
+
+          <p className="mt-2 text-xs text-slate-400">
+            <strong className="text-slate-200">
+              {Math.round(panorama.proporcaoLivre * 100)}% livre
+            </strong>{' '}
+            — já saíram {Math.round(panorama.proporcaoRealizada * 100)}% (
+            <Dinheiro centavos={panorama.realizado} className="text-slate-400" />) e os tetos
+            reservam {Math.round(panorama.proporcaoPlanejada * 100)}% do que entra.
+          </p>
+        </Cartao>
+      )}
+
+      {panorama.semRenda && totalPlanejado > 0 && (
+        <Nota>
+          Para orçar por porcentagem, o app precisa saber o que entra todo mês: cadastre o salário
+          como recorrência de receita. Sem isso, só dá para definir teto em reais.
         </Nota>
       )}
 
@@ -160,13 +237,47 @@ export function Orcamento() {
                 realizadoPorCategoria.get(categoria.id) ?? 0,
                 referencia,
               )}
-              aoDefinirTeto={async (valor) => {
-                await definirTeto(mes, categoria.id, valor);
+              percentualDaRenda={percentuais.get(categoria.id) ?? null}
+              rendaFixa={renda.data ?? 0}
+              aoDefinirTeto={async (teto) => {
+                await definirTeto(mes, categoria.id, teto);
                 await cliente.invalidateQueries({ queryKey: ['orcamentos'] });
               }}
             />
           ))}
         </div>
+      </Secao>
+
+      <Secao titulo="Três cenários, para se guiar">
+        <div className="space-y-2">
+          {CENARIOS_DE_ORCAMENTO.map((cenario) => (
+            <Cartao key={cenario.nome} className="p-4">
+              <h3 className="text-sm text-slate-100">{cenario.nome}</h3>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{cenario.quandoServe}</p>
+
+              <div className="mt-3 space-y-1.5">
+                {valoresDoCenario(cenario, panorama.rendaFixa).map((faixa) => (
+                  <div key={faixa.nome} className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 text-xs text-slate-300">
+                      <span className="tabular-nums text-slate-500">{faixa.percentual}%</span>{' '}
+                      {faixa.nome}
+                      <span className="block text-[11px] text-slate-600">{faixa.exemplos}</span>
+                    </span>
+                    {!panorama.semRenda && (
+                      <Dinheiro centavos={faixa.valor} className="shrink-0 text-xs text-slate-400" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Cartao>
+          ))}
+        </div>
+
+        <Nota>
+          São pontos de partida publicados, não recomendação para o seu caso: servem para dar
+          ordem de grandeza a quem está dividindo a renda pela primeira vez. Nenhum deles sabe da
+          sua vida — o seu orçamento é o que você consegue cumprir três meses seguidos.
+        </Nota>
       </Secao>
 
       {totalPlanejado > 0 && (
@@ -184,16 +295,31 @@ function LinhaDoOrcamento({
   icone,
   corDaCategoria,
   progresso,
+  percentualDaRenda,
+  rendaFixa,
   aoDefinirTeto,
 }: {
   nome: string;
   icone: string | null;
   corDaCategoria: string | null;
   progresso: ProgressoDoOrcamento;
-  aoDefinirTeto: (valor: Centavos) => Promise<void>;
+  percentualDaRenda: number | null;
+  rendaFixa: Centavos;
+  aoDefinirTeto: (teto: TetoEscolhido) => Promise<void>;
 }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState<Centavos>(progresso.planejado);
+  // Abre no modo em que o teto foi decidido: quem definiu 10% da renda volta
+  // para mudar a porcentagem, não para redigitar reais.
+  const [modo, setModo] = useState<'valor' | 'percentual'>(
+    percentualDaRenda === null ? 'valor' : 'percentual',
+  );
+  const [percentual, setPercentual] = useState(
+    percentualDaRenda === null ? '' : String(percentualDaRenda),
+  );
+
+  const percentualDigitado = Number(percentual.replace(',', '.')) || 0;
+  const previa = Math.round((rendaFixa * percentualDigitado) / 100);
 
   const cor =
     progresso.situacao === 'estourado'
@@ -213,7 +339,7 @@ function LinhaDoOrcamento({
           onClick={() => setEditando((v) => !v)}
           className={`shrink-0 text-xs text-slate-500 hover:text-slate-300 ${ALVO_DE_TOQUE}`}
         >
-          {progresso.planejado > 0 ? 'Mudar teto' : 'Definir teto'}
+          {progresso.planejado > 0 || percentualDaRenda !== null ? 'Mudar teto' : 'Definir teto'}
         </button>
       </div>
 
@@ -229,6 +355,9 @@ function LinhaDoOrcamento({
             <span className="text-slate-500">
               <Dinheiro centavos={progresso.realizado} className="text-slate-300" /> de{' '}
               <Dinheiro centavos={progresso.planejado} className="text-slate-400" />
+              {percentualDaRenda !== null && (
+                <span className="text-slate-600"> · {percentualDaRenda}% da renda</span>
+              )}
             </span>
             <span
               className={
@@ -239,9 +368,13 @@ function LinhaDoOrcamento({
                     : 'text-slate-500'
               }
             >
+              {/* Em reais E em porcentagem: quem decidiu o teto por
+                  porcentagem acompanha por porcentagem. */}
               {progresso.restante < 0
                 ? `${formatar(Math.abs(progresso.restante))} acima`
-                : `${formatar(progresso.restante)} restam`}
+                : `${formatar(progresso.restante)} restam · ${Math.round(
+                    progresso.proporcaoRestante * 100,
+                  )}% livre`}
             </span>
           </div>
           {progresso.acimaDoRitmo && progresso.situacao !== 'estourado' && (
@@ -251,6 +384,12 @@ function LinhaDoOrcamento({
             </p>
           )}
         </>
+      ) : percentualDaRenda !== null ? (
+        // Porcentagem definida e renda desconhecida: dizer o que falta é melhor
+        // que mostrar um teto de R$ 0,00 que ninguém pediu (§13.5).
+        <p className="mt-1 text-xs text-amber-400/80">
+          {percentualDaRenda}% da renda · cadastre a renda fixa para isto virar um valor
+        </p>
       ) : (
         <p className="mt-1 text-xs text-slate-500">
           Sem teto · gasto de <Dinheiro centavos={progresso.realizado} className="text-slate-400" />
@@ -259,11 +398,43 @@ function LinhaDoOrcamento({
 
       {editando && (
         <div className="mt-3 space-y-2 rounded-lg border border-borda-forte bg-superficie-alta p-3">
-          <CampoValor valor={valor} aoMudar={setValor} rotulo="Teto mensal" />
+          <div className="flex gap-2">
+            <Chip ativo={modo === 'valor'} aoClicar={() => setModo('valor')}>
+              Em reais
+            </Chip>
+            <Chip ativo={modo === 'percentual'} aoClicar={() => setModo('percentual')}>
+              % da renda
+            </Chip>
+          </div>
+
+          {modo === 'valor' ? (
+            <CampoValor valor={valor} aoMudar={setValor} rotulo="Teto mensal" />
+          ) : (
+            <label className="block">
+              <span className="text-xs text-slate-400">Porcentagem da renda fixa</span>
+              <input
+                inputMode="decimal"
+                value={percentual}
+                onChange={(e) => setPercentual(e.target.value.replace(/[^\d,.]/g, '').slice(0, 5))}
+                placeholder="10"
+                className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-600"
+              />
+              <span className="mt-1 block text-[11px] text-slate-500">
+                {rendaFixa > 0
+                  ? `${percentualDigitado || 0}% de ${formatar(rendaFixa)} = ${formatar(previa)} por mês. Se a renda mudar, o teto acompanha.`
+                  : 'Sem renda fixa cadastrada, a porcentagem fica guardada e vira valor assim que houver uma recorrência de receita.'}
+              </span>
+            </label>
+          )}
+
           <div className="flex gap-2">
             <Botao
               aoClicar={async () => {
-                await aoDefinirTeto(valor);
+                await aoDefinirTeto(
+                  modo === 'valor'
+                    ? { tipo: 'valor', valor }
+                    : { tipo: 'percentual', percentual: percentualDigitado },
+                );
                 setEditando(false);
               }}
             >

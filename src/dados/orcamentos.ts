@@ -2,6 +2,7 @@
 
 import { paraCentavos, paraNumerico, type Centavos } from '../dominio/dinheiro';
 import { hoje, primeiroDiaDoMes, type DataISO } from '../dominio/datas';
+import { rendaFixaDoMes, tetoDoOrcamento } from '../dominio/orcamento';
 import { calcularTodos } from './investimentos';
 import { supabase } from './supabase';
 import type { Database } from './tipos-gerados';
@@ -12,33 +13,90 @@ export type Orcamento = {
   id: string;
   mesReferencia: DataISO;
   categoriaId: string;
+  /**
+   * O teto em reais, já resolvido (§8.6, §13.2).
+   *
+   * Vindo de porcentagem, é calculado sobre a renda fixa do mês — e é calculado
+   * AQUI, num lugar só, para que alerta, simulador e tela recebam o mesmo
+   * número sem cada um precisar lembrar da regra.
+   */
   valorPlanejado: Centavos;
+  /** Preenchido quando o teto é uma porcentagem da renda, e não um valor fixo. */
+  percentualDaRenda: number | null;
 };
 
-export async function listarOrcamentos(mes: DataISO): Promise<Orcamento[]> {
+/**
+ * A renda fixa cadastrada para aquele mês (§4.5, §8.6).
+ *
+ * É a base das porcentagens do orçamento. Sai das recorrências de receita, que
+ * é onde o app já guarda "o que entra todo mês" — nenhum cadastro novo.
+ */
+export async function rendaFixaCadastrada(mes: DataISO): Promise<Centavos> {
   const { data, error } = await supabase
-    .from('orcamentos')
-    .select('*')
-    .eq('mes_referencia', primeiroDiaDoMes(mes));
-  if (error) throw error;
+    .from('recorrencias')
+    .select('tipo, frequencia, valor_previsto, incremento, comeca_em, termina_em, ativo')
+    .eq('tipo', 'receita')
+    .eq('ativo', true);
+  if (error) throw new Error(error.message);
 
-  return (data ?? []).map((linha) => ({
-    id: linha.id,
-    mesReferencia: linha.mes_referencia,
-    categoriaId: linha.categoria_id,
-    valorPlanejado: paraCentavos(linha.valor_planejado),
-  }));
+  return rendaFixaDoMes(
+    (data ?? []).map((linha) => ({
+      tipo: linha.tipo as 'receita' | 'despesa',
+      frequencia: linha.frequencia as 'mensal' | 'anual',
+      valorPrevisto: linha.valor_previsto === null ? null : paraCentavos(linha.valor_previsto),
+      incremento: paraCentavos(linha.incremento ?? 0),
+      comecaEm: linha.comeca_em,
+      terminaEm: linha.termina_em,
+      ativo: linha.ativo,
+    })),
+    mes,
+  );
 }
 
-/** Teto por categoria por mês. Definir zero remove o teto. */
+export async function listarOrcamentos(mes: DataISO): Promise<Orcamento[]> {
+  const [{ data, error }, rendaFixa] = await Promise.all([
+    supabase.from('orcamentos').select('*').eq('mes_referencia', primeiroDiaDoMes(mes)),
+    rendaFixaCadastrada(mes),
+  ]);
+  if (error) throw error;
+
+  return (data ?? []).map((linha) => {
+    const guardado = {
+      valorPlanejado: paraCentavos(linha.valor_planejado),
+      percentualDaRenda: linha.percentual_da_renda,
+    };
+
+    return {
+      id: linha.id,
+      mesReferencia: linha.mes_referencia,
+      categoriaId: linha.categoria_id,
+      valorPlanejado: tetoDoOrcamento(guardado, rendaFixa),
+      percentualDaRenda: guardado.percentualDaRenda,
+    };
+  });
+}
+
+/**
+ * Como o teto foi decidido: em reais ou em porcentagem da renda (§8.6).
+ *
+ * Os dois nunca convivem na mesma linha — o banco recusa. Guardar a
+ * porcentagem e o valor juntos seria a mesma verdade em dois lugares, e um
+ * deles ficaria para trás no primeiro aumento.
+ */
+export type TetoEscolhido =
+  | { tipo: 'valor'; valor: Centavos }
+  | { tipo: 'percentual'; percentual: number };
+
+/** Teto por categoria por mês. Valor ou porcentagem zerada remove o teto. */
 export async function definirTeto(
   mes: DataISO,
   categoriaId: string,
-  valor: Centavos,
+  teto: TetoEscolhido,
 ): Promise<void> {
   const mesReferencia = primeiroDiaDoMes(mes);
+  const quantidade = teto.tipo === 'valor' ? teto.valor : teto.percentual;
 
-  if (valor <= 0) {
+  if (quantidade <= 0) {
     const { error } = await supabase
       .from('orcamentos')
       .delete()
@@ -52,7 +110,8 @@ export async function definirTeto(
     {
       mes_referencia: mesReferencia,
       categoria_id: categoriaId,
-      valor_planejado: paraNumerico(valor),
+      valor_planejado: teto.tipo === 'valor' ? paraNumerico(teto.valor) : 0,
+      percentual_da_renda: teto.tipo === 'percentual' ? Math.min(teto.percentual, 100) : null,
     },
     { onConflict: 'mes_referencia,categoria_id' },
   );
@@ -67,14 +126,22 @@ export async function copiarOrcamentoDoMesAnterior(
   mesDestino: DataISO,
   mesOrigem: DataISO,
 ): Promise<number> {
-  const origem = await listarOrcamentos(mesOrigem);
-  if (origem.length === 0) return 0;
+  // As linhas CRUAS, não as de `listarOrcamentos`: lá o teto já vem resolvido
+  // em reais, e copiar o resolvido transformaria "10% da renda" num valor fixo
+  // — a decisão viraria um número, e pararia de acompanhar a renda.
+  const { data: origem, error: erroOrigem } = await supabase
+    .from('orcamentos')
+    .select('categoria_id, valor_planejado, percentual_da_renda')
+    .eq('mes_referencia', primeiroDiaDoMes(mesOrigem));
+  if (erroOrigem) throw new Error(erroOrigem.message);
+  if (!origem || origem.length === 0) return 0;
 
   const { error } = await supabase.from('orcamentos').upsert(
     origem.map((o) => ({
       mes_referencia: primeiroDiaDoMes(mesDestino),
-      categoria_id: o.categoriaId,
-      valor_planejado: paraNumerico(o.valorPlanejado),
+      categoria_id: o.categoria_id,
+      valor_planejado: o.valor_planejado,
+      percentual_da_renda: o.percentual_da_renda,
     })),
     { onConflict: 'mes_referencia,categoria_id' },
   );

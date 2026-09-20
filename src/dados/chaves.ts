@@ -84,6 +84,8 @@ export const DERIVADO_DE_TRANSACAO: readonly (readonly string[])[] = [
   ['rotativo'],
   // O crédito de uma fatura levado para a seguinte (§2.1).
   ['credito-levado'],
+  // A renda fixa que sustenta os tetos em porcentagem (§8.6).
+  ['renda-fixa'],
   // A ponte entre o mês de hoje e um mês futuro, na lista de lançamentos.
   ['faturas-ponte'],
   ['pagamentos-ponte'],

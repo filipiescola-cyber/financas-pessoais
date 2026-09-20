@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CENARIOS_DE_ORCAMENTO,
   calcularReserva,
   conferir,
   dataPadraoDaConferencia,
   mereceAlerta,
   orcamentoComACompra,
+  panoramaDaRenda,
   progressoDaMeta,
   progressoDoOrcamento,
+  rendaFixaDoMes,
+  tetoDoOrcamento,
+  valoresDoCenario,
 } from '../src/dominio/orcamento';
 
 describe('progresso do orçamento', () => {
@@ -176,5 +181,127 @@ describe('o teto com a compra', () => {
 
   it('o sinal da compra não muda a conta', () => {
     expect(orcamentoComACompra(100000, 60000, -50000, DIA).depois.realizado).toBe(110000);
+  });
+});
+
+describe('renda fixa do mês (§4.5, §8.6)', () => {
+  const salario = {
+    tipo: 'receita' as const,
+    frequencia: 'mensal' as const,
+    valorPrevisto: 500000,
+    incremento: 0,
+    comecaEm: '2026-01-05',
+    terminaEm: null,
+    ativo: true,
+  };
+
+  it('soma as receitas mensais cadastradas', () => {
+    expect(
+      rendaFixaDoMes([salario, { ...salario, valorPrevisto: 120000 }], '2026-09-01'),
+    ).toBe(620000);
+  });
+
+  it('despesa não é renda', () => {
+    expect(rendaFixaDoMes([{ ...salario, tipo: 'despesa' }], '2026-09-01')).toBe(0);
+  });
+
+  it('receita ANUAL fica de fora: o 13º não paga o aluguel de março', () => {
+    expect(rendaFixaDoMes([{ ...salario, frequencia: 'anual' }], '2026-09-01')).toBe(0);
+  });
+
+  it('renda que ainda não começou não sustenta teto', () => {
+    expect(rendaFixaDoMes([{ ...salario, comecaEm: '2026-11-01' }], '2026-09-01')).toBe(0);
+  });
+
+  it('renda que acabou antes do mês não conta', () => {
+    expect(rendaFixaDoMes([{ ...salario, terminaEm: '2026-08-31' }], '2026-09-01')).toBe(0);
+    // Terminando DENTRO do mês, ela ainda entra: o dinheiro chegou.
+    expect(rendaFixaDoMes([{ ...salario, terminaEm: '2026-09-30' }], '2026-09-01')).toBe(500000);
+  });
+
+  it('arquivada não conta', () => {
+    expect(rendaFixaDoMes([{ ...salario, ativo: false }], '2026-09-01')).toBe(0);
+  });
+
+  it('gradativa vale o valor daquele mês (§5.2)', () => {
+    // Começou em R$ 5.000 em janeiro e sobe R$ 100 por mês: em setembro são
+    // oito degraus, R$ 5.800.
+    expect(rendaFixaDoMes([{ ...salario, incremento: 10000 }], '2026-09-01')).toBe(580000);
+  });
+
+  it('sem valor previsto, soma zero em vez de NaN', () => {
+    expect(rendaFixaDoMes([{ ...salario, valorPrevisto: null }], '2026-09-01')).toBe(0);
+  });
+});
+
+describe('teto como porcentagem da renda (§8.6)', () => {
+  it('sem porcentagem, vale o valor guardado', () => {
+    expect(tetoDoOrcamento({ valorPlanejado: 50000, percentualDaRenda: null }, 620000)).toBe(50000);
+  });
+
+  it('com porcentagem, o valor é consequência da renda', () => {
+    expect(tetoDoOrcamento({ valorPlanejado: 0, percentualDaRenda: 10 }, 620000)).toBe(62000);
+  });
+
+  it('a renda subiu: o teto sobe junto, sem ninguém editar nada', () => {
+    const teto = { valorPlanejado: 0, percentualDaRenda: 10 };
+    expect(tetoDoOrcamento(teto, 500000)).toBe(50000);
+    expect(tetoDoOrcamento(teto, 700000)).toBe(70000);
+  });
+
+  it('sem renda cadastrada, porcentagem não inventa valor', () => {
+    expect(tetoDoOrcamento({ valorPlanejado: 0, percentualDaRenda: 10 }, 0)).toBe(0);
+  });
+
+  it('arredonda para o centavo', () => {
+    expect(tetoDoOrcamento({ valorPlanejado: 0, percentualDaRenda: 33.3 }, 123456)).toBe(41111);
+  });
+});
+
+describe('quanto por cento falta', () => {
+  it('o restante do teto em porcentagem acompanha o gasto', () => {
+    expect(progressoDoOrcamento(50000, 20000, '2026-09-10').proporcaoRestante).toBeCloseTo(0.6);
+  });
+
+  it('estourado é zero livre, não porcentagem negativa', () => {
+    expect(progressoDoOrcamento(50000, 70000, '2026-09-10').proporcaoRestante).toBe(0);
+  });
+
+  it('panorama: o denominador é a renda, não a soma dos tetos', () => {
+    const p = panoramaDaRenda(620000, 310000, 155000);
+    expect(p.proporcaoPlanejada).toBeCloseTo(0.5);
+    expect(p.proporcaoRealizada).toBeCloseTo(0.25);
+    expect(p.proporcaoLivre).toBeCloseTo(0.75);
+  });
+
+  it('gastar mais que a renda não deixa sobra negativa', () => {
+    expect(panoramaDaRenda(620000, 0, 700000).proporcaoLivre).toBe(0);
+  });
+
+  it('sem renda cadastrada, o panorama diz que não sabe', () => {
+    const p = panoramaDaRenda(0, 50000, 20000);
+    expect(p.semRenda).toBe(true);
+    expect(p.proporcaoRealizada).toBe(0);
+  });
+});
+
+describe('cenários de referência (§8.6)', () => {
+  it('todo cenário fecha em 100%: orçamento que não fecha é lista de desejos', () => {
+    for (const cenario of CENARIOS_DE_ORCAMENTO) {
+      const soma = cenario.faixas.reduce((total, f) => total + f.percentual, 0);
+      expect(soma).toBe(100);
+    }
+  });
+
+  it('em reais, as faixas somam a renda', () => {
+    for (const cenario of CENARIOS_DE_ORCAMENTO) {
+      const faixas = valoresDoCenario(cenario, 620000);
+      expect(faixas.reduce((total, f) => total + f.valor, 0)).toBe(620000);
+    }
+  });
+
+  it('são três, e cada um serve a uma situação diferente', () => {
+    expect(CENARIOS_DE_ORCAMENTO).toHaveLength(3);
+    expect(new Set(CENARIOS_DE_ORCAMENTO.map((c) => c.nome)).size).toBe(3);
   });
 });
