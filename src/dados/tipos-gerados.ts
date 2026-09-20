@@ -220,6 +220,7 @@ export type Database = {
           ativo: boolean
           categoria_pai_id: string | null
           cor: string | null
+          faixa: string | null
           icone: string | null
           id: string
           natureza: string | null
@@ -232,6 +233,7 @@ export type Database = {
           ativo?: boolean
           categoria_pai_id?: string | null
           cor?: string | null
+          faixa?: string | null
           icone?: string | null
           id?: string
           natureza?: string | null
@@ -244,6 +246,7 @@ export type Database = {
           ativo?: boolean
           categoria_pai_id?: string | null
           cor?: string | null
+          faixa?: string | null
           icone?: string | null
           id?: string
           natureza?: string | null

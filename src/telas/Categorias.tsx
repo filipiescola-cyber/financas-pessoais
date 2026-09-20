@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROTULOS, type Natureza } from '../dominio/natureza';
+import { ROTULOS_DAS_FAIXAS, type FaixaDoOrcamento } from '../dominio/orcamento';
 import {
   arquivarCategoria,
   excluirCategoria,
@@ -20,6 +21,43 @@ import { usarAcaoDaPagina } from '../ui/AcaoDaPagina';
 import type { TipoDeCategoria } from '../dados/tipos';
 
 const NATUREZAS: (Natureza | null)[] = ['fixa', 'variavel', 'eventual', null];
+
+/*
+  A faixa do orçamento (§8.6). Fica ao lado da natureza porque as duas
+  perguntas são diferentes e as duas importam: natureza é "dá para prever?",
+  faixa é "para que serve?". O aluguel é fixo E essencial; o streaming é fixo E
+  estilo de vida — uma pergunta só não separaria os dois.
+
+  Sem faixa é uma resposta legítima, e o gasto dessa categoria aparece
+  separado na tela de Orçamento em vez de entrar calado numa faixa errada.
+*/
+const FAIXAS: (FaixaDoOrcamento | null)[] = ['essenciais', 'estilo_de_vida', 'futuro', null];
+
+function ChipsDeFaixa({
+  escolhida,
+  aoEscolher,
+}: {
+  escolhida: FaixaDoOrcamento | null;
+  aoEscolher: (faixa: FaixaDoOrcamento | null) => void;
+}) {
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {FAIXAS.map((faixa) => (
+        <button
+          key={faixa ?? 'sem-faixa'}
+          onClick={() => aoEscolher(faixa)}
+          className={`rounded-full px-2.5 py-1 text-xs ${
+            escolhida === faixa
+              ? 'bg-emerald-700 text-white'
+              : 'border border-borda text-slate-500 hover:border-borda-forte'
+          }`}
+        >
+          {faixa ? ROTULOS_DAS_FAIXAS[faixa] : 'Sem faixa'}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Categorias (§4.3). O conjunto padrão já veio no seed; aqui é ajuste fino.
@@ -79,7 +117,11 @@ export function Categorias() {
 
       <ul className="space-y-2">
         {lista.map((categoria) => (
-          <LinhaCategoria key={categoria.id} categoria={categoria} />
+          <LinhaCategoria
+            key={categoria.id}
+            categoria={categoria}
+            mostrarFaixa={tipo === 'despesa'}
+          />
         ))}
       </ul>
 
@@ -108,12 +150,19 @@ type CategoriaDaLista = {
   id: string;
   nome: string;
   natureza: Natureza | null;
+  faixa: FaixaDoOrcamento | null;
   sistema: boolean;
   cor: string | null;
   icone: string | null;
 };
 
-function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
+function LinhaCategoria({
+  categoria,
+  mostrarFaixa,
+}: {
+  categoria: CategoriaDaLista;
+  mostrarFaixa: boolean;
+}) {
   const cliente = useQueryClient();
   // O erro de "arquivar categoria de sistema" agora sobe pelo tratamento
   // global do QueryClient, junto com o das outras setenta e quatro mutations.
@@ -123,6 +172,11 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
 
   const atualizar = useMutation({
     mutationFn: (natureza: Natureza | null) => atualizarCategoria(categoria.id, { natureza }),
+    onSuccess: invalidar,
+  });
+
+  const trocarFaixa = useMutation({
+    mutationFn: (faixa: FaixaDoOrcamento | null) => atualizarCategoria(categoria.id, { faixa }),
     onSuccess: invalidar,
   });
 
@@ -218,6 +272,13 @@ function LinhaCategoria({ categoria }: { categoria: CategoriaDaLista }) {
           </button>
         ))}
       </div>
+
+      {mostrarFaixa && (
+        <ChipsDeFaixa
+          escolhida={categoria.faixa}
+          aoEscolher={(faixa) => trocarFaixa.mutate(faixa)}
+        />
+      )}
     </li>
   );
 }
@@ -234,10 +295,13 @@ function FormularioCategoria({
   const [natureza, setNatureza] = useState<Natureza | null>(
     tipo === 'despesa' ? 'variavel' : 'variavel',
   );
+  // Nasce sem faixa de propósito: chutar "essenciais" para toda categoria nova
+  // encheria a faixa mais cara com coisas que ninguém classificou (§13.5).
+  const [faixa, setFaixa] = useState<FaixaDoOrcamento | null>(null);
   const [icone, setIcone] = useState<string | null>(null);
 
   const criar = useMutation({
-    mutationFn: () => criarCategoria({ nome, tipo, natureza, icone }),
+    mutationFn: () => criarCategoria({ nome, tipo, natureza, faixa, icone }),
     onSuccess: async () => {
       await cliente.invalidateQueries({ queryKey: chaves.categorias.todas });
       aoTerminar();
@@ -268,6 +332,13 @@ function FormularioCategoria({
           </button>
         ))}
       </div>
+      {tipo === 'despesa' && (
+        <div>
+          <span className="text-xs text-slate-500">Faixa do orçamento</span>
+          <ChipsDeFaixa escolhida={faixa} aoEscolher={setFaixa} />
+        </div>
+      )}
+
       <div className="rounded-lg border border-borda bg-superficie-alta p-3">
         <EscolherIcone escolhido={icone} aoEscolher={setIcone} />
       </div>

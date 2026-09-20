@@ -335,7 +335,24 @@ export function panoramaDaRenda(
   };
 }
 
+/**
+ * Para que serve o gasto (§8.6).
+ *
+ * Não confundir com natureza (§2.5), que responde outra pergunta: natureza é
+ * "dá para prever?", faixa é "para que serve?". Elas cruzam — o aluguel é fixo
+ * e essencial, a assinatura de streaming é fixa e estilo de vida — e por isso
+ * são dois campos, não um.
+ */
+export type FaixaDoOrcamento = 'essenciais' | 'estilo_de_vida' | 'futuro';
+
+export const ROTULOS_DAS_FAIXAS: Record<FaixaDoOrcamento, string> = {
+  essenciais: 'Essenciais',
+  estilo_de_vida: 'Estilo de vida',
+  futuro: 'Futuro',
+};
+
 export type FaixaDoCenario = {
+  chave: FaixaDoOrcamento;
   nome: string;
   percentual: number;
   exemplos: string;
@@ -364,16 +381,23 @@ export const CENARIOS_DE_ORCAMENTO: readonly CenarioDeOrcamento[] = [
     quandoServe: 'As contas fixas cabem em metade do que entra e não há dívida cara correndo.',
     faixas: [
       {
+        chave: 'essenciais',
         nome: 'Essenciais',
         percentual: 50,
         exemplos: 'Moradia, Contas, Mercado, Transporte, Saúde',
       },
       {
+        chave: 'estilo_de_vida',
         nome: 'Estilo de vida',
         percentual: 30,
         exemplos: 'Lazer, Assinaturas, Vestuário, Presentes',
       },
-      { nome: 'Futuro', percentual: 20, exemplos: 'Reserva, investimento e amortização' },
+      {
+        chave: 'futuro',
+        nome: 'Futuro',
+        percentual: 20,
+        exemplos: 'Reserva, investimento e amortização',
+      },
     ],
   },
   {
@@ -381,9 +405,24 @@ export const CENARIOS_DE_ORCAMENTO: readonly CenarioDeOrcamento[] = [
     quandoServe:
       'Enquanto existe dívida cara, cada real amortizado economiza o juro que deixa de correr — e o juro do cartão é maior que o de qualquer aplicação.',
     faixas: [
-      { nome: 'Essenciais', percentual: 55, exemplos: 'O mesmo de sempre, sem folga' },
-      { nome: 'Estilo de vida', percentual: 15, exemplos: 'O que dá para segurar por alguns meses' },
-      { nome: 'Futuro', percentual: 30, exemplos: 'Quase tudo em dívida, até ela acabar' },
+      {
+        chave: 'essenciais',
+        nome: 'Essenciais',
+        percentual: 55,
+        exemplos: 'O mesmo de sempre, sem folga',
+      },
+      {
+        chave: 'estilo_de_vida',
+        nome: 'Estilo de vida',
+        percentual: 15,
+        exemplos: 'O que dá para segurar por alguns meses',
+      },
+      {
+        chave: 'futuro',
+        nome: 'Futuro',
+        percentual: 30,
+        exemplos: 'Quase tudo em dívida, até ela acabar',
+      },
     ],
   },
   {
@@ -391,9 +430,24 @@ export const CENARIOS_DE_ORCAMENTO: readonly CenarioDeOrcamento[] = [
     quandoServe:
       'O essencial já come 70% do que entra. Prometer 20% de sobra aqui é promessa que não se cumpre — e orçamento que não se cumpre é abandonado.',
     faixas: [
-      { nome: 'Essenciais', percentual: 70, exemplos: 'Moradia, Contas, Mercado, Transporte' },
-      { nome: 'Estilo de vida', percentual: 20, exemplos: 'O pouco que cabe, sem culpa' },
-      { nome: 'Futuro', percentual: 10, exemplos: 'Reserva primeiro, mesmo devagar' },
+      {
+        chave: 'essenciais',
+        nome: 'Essenciais',
+        percentual: 70,
+        exemplos: 'Moradia, Contas, Mercado, Transporte',
+      },
+      {
+        chave: 'estilo_de_vida',
+        nome: 'Estilo de vida',
+        percentual: 20,
+        exemplos: 'O pouco que cabe, sem culpa',
+      },
+      {
+        chave: 'futuro',
+        nome: 'Futuro',
+        percentual: 10,
+        exemplos: 'Reserva primeiro, mesmo devagar',
+      },
     ],
   },
 ];
@@ -409,4 +463,119 @@ export function valoresDoCenario(
     ...faixa,
     valor: Math.round((rendaFixa * faixa.percentual) / 100),
   }));
+}
+
+export type DivisaoDaRenda = {
+  essenciais: Centavos;
+  estiloDeVida: Centavos;
+  /**
+   * O que sobra da renda — é daqui que saem aporte e amortização.
+   *
+   * Sobra, e não soma de categorias, porque no app aporte e amortização são
+   * TRANSFERÊNCIA (§2.3, §14): o dinheiro mudou de lugar, não virou gasto.
+   * Medir esta faixa somando despesas daria quase zero e diria que ninguém
+   * guarda nada — quando o que a pessoa guarda é justamente o que ela não
+   * gastou. Negativo é a informação mais importante que este número dá: saiu
+   * mais do que entrou.
+   */
+  futuro: Centavos;
+  /**
+   * Gasto que não entrou em faixa nenhuma. Sai do futuro, e fica à vista.
+   *
+   * Duas origens: categoria sem faixa e lançamento sem categoria — este último
+   * descoberto pelo compilador, e ele sozinho já bastaria para o número mentir
+   * para mais. Dinheiro que saiu e ninguém classificou não é dinheiro guardado.
+   */
+  semFaixa: Centavos;
+  /** O que já foi gasto em categorias de futuro — juros, taxas de aplicação. */
+  gastoEmFuturo: Centavos;
+};
+
+/**
+ * Onde a renda do mês está caindo, nas três faixas dos cenários (§8.6).
+ *
+ * Essenciais e estilo de vida se medem pelo gasto das categorias classificadas.
+ * Futuro se mede pelo resto — ver o comentário do campo. As três somam a renda
+ * por construção, que é o que permite comparar com um cenário que também soma
+ * 100%.
+ */
+export function divisaoDaRenda(
+  categorias: readonly { id: string; faixa: FaixaDoOrcamento | null }[],
+  gastoPorCategoria: ReadonlyMap<string | null, Centavos>,
+  rendaFixa: Centavos,
+): DivisaoDaRenda {
+  let essenciais = 0;
+  let estiloDeVida = 0;
+  let semFaixa = 0;
+  let gastoEmFuturo = 0;
+
+  for (const categoria of categorias) {
+    const gasto = gastoPorCategoria.get(categoria.id) ?? 0;
+    if (gasto === 0) continue;
+
+    if (categoria.faixa === 'essenciais') essenciais += gasto;
+    else if (categoria.faixa === 'estilo_de_vida') estiloDeVida += gasto;
+    else if (categoria.faixa === 'futuro') gastoEmFuturo += gasto;
+    else semFaixa += gasto;
+  }
+
+  // O gasto sem categoria alguma (§5.4). Ele não aparece na volta acima, que
+  // percorre categorias — e some da conta se ninguém for buscá-lo aqui.
+  semFaixa += gastoPorCategoria.get(null) ?? 0;
+
+  return {
+    essenciais,
+    estiloDeVida,
+    futuro: rendaFixa - essenciais - estiloDeVida - semFaixa,
+    semFaixa,
+    gastoEmFuturo,
+  };
+}
+
+export type ComparacaoDaFaixa = {
+  chave: FaixaDoOrcamento;
+  nome: string;
+  exemplos: string;
+  percentualAlvo: number;
+  valorAlvo: Centavos;
+  valorHoje: Centavos;
+  /** Onde você está, em porcentagem da renda. Pode passar de 100 e pode ser negativo. */
+  percentualHoje: number;
+  /** Positivo: você está gastando mais que o cenário sugere nesta faixa. */
+  diferenca: Centavos;
+};
+
+/**
+ * O cenário ao lado de onde a pessoa está (§8.6).
+ *
+ * Um cenário sozinho é um cartaz. O que torna ele útil é a coluna "hoje" —
+ * saber que o essencial come 64% quando o cenário fala em 50% é o que faz
+ * alguém mudar alguma coisa.
+ */
+export function comparacaoComOCenario(
+  cenario: CenarioDeOrcamento,
+  divisao: DivisaoDaRenda,
+  rendaFixa: Centavos,
+): ComparacaoDaFaixa[] {
+  const hoje: Record<FaixaDoOrcamento, Centavos> = {
+    essenciais: divisao.essenciais,
+    estilo_de_vida: divisao.estiloDeVida,
+    futuro: divisao.futuro,
+  };
+
+  return cenario.faixas.map((faixa) => {
+    const valorAlvo = Math.round((rendaFixa * faixa.percentual) / 100);
+    const valorHoje = hoje[faixa.chave];
+
+    return {
+      chave: faixa.chave,
+      nome: faixa.nome,
+      exemplos: faixa.exemplos,
+      percentualAlvo: faixa.percentual,
+      valorAlvo,
+      valorHoje,
+      percentualHoje: rendaFixa > 0 ? (valorHoje / rendaFixa) * 100 : 0,
+      diferenca: valorHoje - valorAlvo,
+    };
+  });
 }

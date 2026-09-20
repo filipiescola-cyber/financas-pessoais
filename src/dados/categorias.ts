@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 import type { Categoria, LinhaCategoria, TipoDeCategoria } from './tipos';
 import type { Natureza } from '../dominio/natureza';
+import type { FaixaDoOrcamento } from '../dominio/orcamento';
 import type { Database } from './tipos-gerados';
 
 type AtualizacaoCategoria = Database['public']['Tables']['categorias']['Update'];
@@ -17,6 +18,7 @@ function daLinha(linha: LinhaCategoria): Categoria {
     cor: linha.cor,
     icone: linha.icone,
     natureza: linha.natureza as Natureza | null,
+    faixa: linha.faixa as FaixaDoOrcamento | null,
     sistema: linha.sistema,
     ativo: linha.ativo,
   };
@@ -35,6 +37,8 @@ export async function criarCategoria(nova: {
   nome: string;
   tipo: TipoDeCategoria;
   natureza: Natureza | null;
+  /** Só despesa tem faixa: receita não se divide em essencial e supérfluo. */
+  faixa?: FaixaDoOrcamento | null;
   cor?: string | null;
   /** Chave do banco de ícones do front, não o desenho (§4.3). */
   icone?: string | null;
@@ -45,6 +49,7 @@ export async function criarCategoria(nova: {
       nome: nova.nome.trim(),
       tipo: nova.tipo,
       natureza: nova.natureza,
+      faixa: nova.tipo === 'despesa' ? (nova.faixa ?? null) : null,
       cor: nova.cor ?? null,
       icone: nova.icone ?? null,
     })
@@ -60,6 +65,7 @@ export async function atualizarCategoria(
   campos: {
     nome?: string;
     natureza?: Natureza | null;
+    faixa?: FaixaDoOrcamento | null;
     cor?: string | null;
     icone?: string | null;
   },
@@ -67,6 +73,7 @@ export async function atualizarCategoria(
   const atualizacao: AtualizacaoCategoria = {};
   if (campos.nome !== undefined) atualizacao.nome = campos.nome.trim();
   if (campos.natureza !== undefined) atualizacao.natureza = campos.natureza;
+  if (campos.faixa !== undefined) atualizacao.faixa = campos.faixa;
   if (campos.cor !== undefined) atualizacao.cor = campos.cor;
   if (campos.icone !== undefined) atualizacao.icone = campos.icone;
 

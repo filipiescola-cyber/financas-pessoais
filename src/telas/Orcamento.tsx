@@ -5,10 +5,13 @@ import { formatar, type Centavos } from '../dominio/dinheiro';
 import { gastoPorCategoria, type TransacaoDeRelatorio } from '../dominio/relatorios';
 import {
   CENARIOS_DE_ORCAMENTO,
+  ROTULOS_DAS_FAIXAS,
+  comparacaoComOCenario,
+  divisaoDaRenda,
   mereceAlerta,
   panoramaDaRenda,
   progressoDoOrcamento,
-  valoresDoCenario,
+  type FaixaDoOrcamento,
   type ProgressoDoOrcamento,
 } from '../dominio/orcamento';
 import {
@@ -136,6 +139,34 @@ export function Orcamento() {
   );
   const panorama = panoramaDaRenda(renda.data ?? 0, totalPlanejado, totalRealizado);
 
+  /*
+    Onde a renda está caindo, nas três faixas dos cenários (§8.6).
+
+    É o que liga o cartaz do 50/30/20 à vida de quem olha: sem esta conta, o
+    cenário diz onde se deveria estar e cala sobre onde se está.
+  */
+  const divisao = divisaoDaRenda(
+    despesas.map((c) => ({ id: c.id, faixa: c.faixa })),
+    realizadoPorCategoria,
+    renda.data ?? 0,
+  );
+
+  // Só as categorias que mexeram este mês: listar as trinta viraria parede.
+  const comMovimento = despesas.filter(
+    (c) => tetos.has(c.id) || (realizadoPorCategoria.get(c.id) ?? 0) > 0,
+  );
+  const nomesPorFaixa = new Map<FaixaDoOrcamento, string[]>();
+  for (const categoria of comMovimento) {
+    if (categoria.faixa === null) continue;
+    nomesPorFaixa.set(categoria.faixa, [
+      ...(nomesPorFaixa.get(categoria.faixa) ?? []),
+      categoria.nome,
+    ]);
+  }
+  const gastandoSemFaixa = comMovimento.filter(
+    (c) => c.faixa === null && (realizadoPorCategoria.get(c.id) ?? 0) > 0,
+  );
+
   return (
     <Pagina
       titulo="Orçamento"
@@ -255,23 +286,83 @@ export function Orcamento() {
               <h3 className="text-sm text-slate-100">{cenario.nome}</h3>
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{cenario.quandoServe}</p>
 
-              <div className="mt-3 space-y-1.5">
-                {valoresDoCenario(cenario, panorama.rendaFixa).map((faixa) => (
-                  <div key={faixa.nome} className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 text-xs text-slate-300">
-                      <span className="tabular-nums text-slate-500">{faixa.percentual}%</span>{' '}
-                      {faixa.nome}
-                      <span className="block text-[11px] text-slate-600">{faixa.exemplos}</span>
-                    </span>
-                    {!panorama.semRenda && (
-                      <Dinheiro centavos={faixa.valor} className="shrink-0 text-xs text-slate-400" />
-                    )}
-                  </div>
-                ))}
+              <div className="mt-3 space-y-2">
+                {comparacaoComOCenario(cenario, divisao, panorama.rendaFixa).map((faixa) => {
+                  /*
+                    Passar do alvo é alerta em essenciais e estilo de vida. No
+                    futuro é o contrário: o que preocupa é ficar ABAIXO — e foi
+                    por trocar esse sinal que a primeira versão desta tela
+                    pintava de amarelo justamente quem estava guardando mais.
+                  */
+                  const fora =
+                    faixa.chave === 'futuro' ? faixa.diferenca < 0 : faixa.diferenca > 0;
+
+                  return (
+                    <div key={faixa.chave}>
+                      <div className="flex items-baseline justify-between gap-3 text-xs">
+                        <span className="min-w-0 text-slate-300">
+                          <span className="tabular-nums text-slate-500">
+                            {faixa.percentualAlvo}%
+                          </span>{' '}
+                          {faixa.nome}
+                        </span>
+                        {!panorama.semRenda && (
+                          <Dinheiro
+                            centavos={faixa.valorAlvo}
+                            className="shrink-0 text-xs text-slate-400"
+                          />
+                        )}
+                      </div>
+
+                      {!panorama.semRenda && (
+                        <p
+                          className={`text-[11px] ${fora ? 'text-amber-400/90' : 'text-slate-600'}`}
+                        >
+                          hoje {Math.round(faixa.percentualHoje)}% ·{' '}
+                          {formatar(faixa.valorHoje)}
+                          {faixa.diferenca !== 0 &&
+                            ` (${formatar(Math.abs(faixa.diferenca))} ${
+                              faixa.diferenca > 0 ? 'acima' : 'abaixo'
+                            })`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </Cartao>
           ))}
         </div>
+
+        {/* De qual categoria sai cada faixa. Sem isto, os três cartazes acima
+            são porcentagens sobre nada: é a classificação da categoria que
+            transforma "30% em estilo de vida" em "Lazer, Assinaturas e
+            Vestuário somam R$ 1.340". */}
+        <Cartao className="p-4">
+          <h3 className="text-sm text-slate-100">De onde vem cada faixa</h3>
+
+          <div className="mt-2 space-y-2">
+            {(['essenciais', 'estilo_de_vida', 'futuro'] as const).map((faixa) => (
+              <div key={faixa}>
+                <span className="text-xs text-slate-400">{ROTULOS_DAS_FAIXAS[faixa]}</span>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  {nomesPorFaixa.get(faixa)?.join(' · ') ??
+                    (faixa === 'futuro'
+                      ? 'O que sobra da renda: aporte e amortização saem daqui e são transferência, não gasto (§2.3).'
+                      : 'Nenhuma categoria com esta faixa mexeu este mês.')}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {gastandoSemFaixa.length > 0 && (
+            <p className="mt-3 text-[11px] leading-relaxed text-amber-400/80">
+              Sem faixa: {gastandoSemFaixa.map((c) => c.nome).join(' · ')}. Enquanto não tiverem
+              faixa, o gasto delas sai do Futuro — a conta fica pessimista de propósito. Dá para
+              classificar em Categorias, num toque.
+            </p>
+          )}
+        </Cartao>
 
         <Nota>
           São pontos de partida publicados, não recomendação para o seu caso: servem para dar

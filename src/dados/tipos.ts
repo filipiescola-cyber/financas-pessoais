@@ -10,6 +10,7 @@
 import type { Centavos } from '../dominio/dinheiro';
 import type { DataISO } from '../dominio/datas';
 import type { Natureza } from '../dominio/natureza';
+import type { FaixaDoOrcamento } from '../dominio/orcamento';
 import type { TipoDeConta } from '../dominio/saldo';
 import type { Database } from './tipos-gerados';
 
@@ -72,6 +73,8 @@ export type Categoria = {
   cor: string | null;
   icone: string | null;
   natureza: Natureza | null;
+  /** Para que o gasto serve, nas três faixas do orçamento (§8.6). */
+  faixa: FaixaDoOrcamento | null;
   sistema: boolean;
   ativo: boolean;
 };

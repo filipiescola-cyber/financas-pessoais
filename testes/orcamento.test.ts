@@ -6,6 +6,8 @@ import {
   dataPadraoDaConferencia,
   mereceAlerta,
   orcamentoComACompra,
+  comparacaoComOCenario,
+  divisaoDaRenda,
   panoramaDaRenda,
   progressoDaMeta,
   progressoDoOrcamento,
@@ -303,5 +305,93 @@ describe('cenários de referência (§8.6)', () => {
   it('são três, e cada um serve a uma situação diferente', () => {
     expect(CENARIOS_DE_ORCAMENTO).toHaveLength(3);
     expect(new Set(CENARIOS_DE_ORCAMENTO.map((c) => c.nome)).size).toBe(3);
+  });
+});
+
+describe('as faixas do cenário e as categorias (§8.6)', () => {
+  const categorias = [
+    { id: 'moradia', faixa: 'essenciais' as const },
+    { id: 'mercado', faixa: 'essenciais' as const },
+    { id: 'lazer', faixa: 'estilo_de_vida' as const },
+    { id: 'juros', faixa: 'futuro' as const },
+    { id: 'outros', faixa: null },
+  ];
+
+  const gastos = new Map([
+    ['moradia', 250000],
+    ['mercado', 80000],
+    ['lazer', 90000],
+    ['juros', 30000],
+    ['outros', 20000],
+  ]);
+
+  it('essenciais e estilo de vida vêm do gasto classificado', () => {
+    const divisao = divisaoDaRenda(categorias, gastos, 620000);
+    expect(divisao.essenciais).toBe(330000);
+    expect(divisao.estiloDeVida).toBe(90000);
+  });
+
+  it('futuro é o que SOBRA: aporte e amortização são transferência (§2.3, §14)', () => {
+    // 620.000 de renda, menos 330.000 de essenciais, 90.000 de estilo de vida
+    // e 20.000 sem faixa. O que a pessoa gastou de juros já está dentro dessa
+    // sobra — foi dinheiro que não foi para essencial nem para estilo de vida.
+    const divisao = divisaoDaRenda(categorias, gastos, 620000);
+    expect(divisao.futuro).toBe(180000);
+    expect(divisao.gastoEmFuturo).toBe(30000);
+  });
+
+  it('gastar mais do que entra deixa o futuro NEGATIVO, e isso é a informação', () => {
+    const divisao = divisaoDaRenda(categorias, gastos, 300000);
+    expect(divisao.futuro).toBeLessThan(0);
+  });
+
+  it('categoria sem faixa fica à vista em vez de sumir na conta', () => {
+    expect(divisaoDaRenda(categorias, gastos, 620000).semFaixa).toBe(20000);
+  });
+
+  it('gasto SEM categoria nenhuma também sai do futuro', () => {
+    // A volta principal percorre categorias, então o gasto sem categoria (§5.4)
+    // não passa por ela: sem buscá-lo à parte, ele sumia da conta e o futuro
+    // aparecia maior do que é — mentindo para o lado otimista.
+    const comSolto = new Map<string | null, number>([...gastos, [null, 15000]]);
+    const divisao = divisaoDaRenda(categorias, comSolto, 620000);
+
+    expect(divisao.semFaixa).toBe(35000);
+    expect(divisao.futuro).toBe(165000);
+  });
+
+  it('as três faixas somam a renda, que é o que permite comparar com o cenário', () => {
+    const divisao = divisaoDaRenda(categorias, gastos, 620000);
+    const soma = divisao.essenciais + divisao.estiloDeVida + divisao.futuro + divisao.semFaixa;
+    expect(soma).toBe(620000);
+  });
+
+  it('a comparação diz onde você está, não só onde deveria estar', () => {
+    const divisao = divisaoDaRenda(categorias, gastos, 620000);
+    const equilibrado = CENARIOS_DE_ORCAMENTO[0]!;
+    const linhas = comparacaoComOCenario(equilibrado, divisao, 620000);
+
+    const essenciais = linhas.find((l) => l.chave === 'essenciais')!;
+    expect(essenciais.percentualAlvo).toBe(50);
+    expect(essenciais.valorAlvo).toBe(310000);
+    expect(essenciais.valorHoje).toBe(330000);
+    // Gastando 20.000 a mais do que o cenário sugere para essenciais.
+    expect(essenciais.diferenca).toBe(20000);
+    expect(essenciais.percentualHoje).toBeCloseTo(53.2, 1);
+  });
+
+  it('sem renda cadastrada a comparação não inventa porcentagem', () => {
+    const divisao = divisaoDaRenda(categorias, gastos, 0);
+    for (const linha of comparacaoComOCenario(CENARIOS_DE_ORCAMENTO[0]!, divisao, 0)) {
+      expect(linha.percentualHoje).toBe(0);
+      expect(linha.valorAlvo).toBe(0);
+    }
+  });
+
+  it('todo cenário cobre as três faixas, uma vez cada', () => {
+    for (const cenario of CENARIOS_DE_ORCAMENTO) {
+      const chaves = cenario.faixas.map((f) => f.chave);
+      expect(new Set(chaves)).toEqual(new Set(['essenciais', 'estilo_de_vida', 'futuro']));
+    }
   });
 });
